@@ -10,7 +10,7 @@ class st_debug {
         return date("d-m-Y H:i:s");
     }
 
-    public static function prepare_output($content) {
+    private static function prepare_output($content) {
         $output = print_r($content, true);
         $output = '<pre>'.self::get_timestamp().PHP_EOL.$output.'</pre>';
 
@@ -84,10 +84,14 @@ class st_debug {
         return true;
     }
 
-    public static function setGetPassword($password_name = 'test', $password = null) {
-        if (!isset($_GET[$password_name])) die();
+    public static function setGetPassword($password_name = 'test', $password = null, $die_func = null) {
         if ($password === null) $password = self::$password;
-        if ($_GET[$password_name] != $password) die();
+        
+        if ((!isset($_GET[$password_name])) || ($_GET[$password_name] != $password)) {
+            if ($die_func === null) die();
+
+            $die_func();
+        }
 
         return true;
     }
