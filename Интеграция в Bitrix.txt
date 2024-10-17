@@ -1,6 +1,7 @@
-// /*В init.php нужно вставить код (пример):*/
-// use Bitrix\Main\Loader;
+/*
+//В init.php нужно вставить код (пример):
+\Bitrix\Main\Loader::registerAutoLoadClasses(null, [
+    'MyNamespace\MyClass' => '/local/php_interface/classes/MyNamespace/MyClass.php',
+]);
 
-// Loader::registerAutoLoadClasses(null, [
-//     'MyNamespace\MyClass' => '/local/php_interface/classes/MyNamespace/MyClass.php',
-// ]);
+*/
