@@ -4,4 +4,5 @@
     'MyNamespace\MyClass' => '/local/php_interface/classes/MyNamespace/MyClass.php',
 ]);
 
+\MyNamespace\MyClass::staticFunc();
 */
