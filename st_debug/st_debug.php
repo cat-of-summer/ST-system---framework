@@ -2,97 +2,159 @@
 
 namespace ST_system;
 
-class st_debug {
+class Debug {
+    
+    public static function get_timestamp($format = null) { //"d-m-Y H:i:s"
+        $microtime = microtime(true);
 
-    private static $password = 'Y';
+        if ($format === null)
+            return $microtime;
 
-    public static function get_timestamp() {
-        return date("d-m-Y H:i:s");
+        $DateTime = new DateTime();
+        $DateTime->setTimestamp($microtime);
+
+        return $DateTime->format($format);
     }
 
-    private static function prepare_output($content) {
-        $output = print_r($content, true);
-        $output = '<pre>'.self::get_timestamp().PHP_EOL.$output.'</pre>';
+    public static class Dump {
 
-        return $output;
-    }
+        private static $DateTimeFormat = 'd-m-Y H:i:s';
+        private static $FileExtension = '.html';
 
-    private static function prepare_dir_path($dir_path) {
-        $dir_path = $_SERVER["DOCUMENT_ROOT"].'/'.$dir_path;
+        private static function get_output($content) {
+            $timestamp = Debug::get_timestamp();
+            
+            ob_start();
+            var_dump($content);
+            $output = ob_get_clean();
 
-        return $dir_path;
-    }
+            $DateTime = new DateTime();
+            $DateTime->setTimestamp($timestamp);
+            $ms = (int)(($timestamp - floor($timestamp)) * 1000);
+            $mcs = sprintf("%03d", ($timestamp - floor($timestamp)) * 1000000);
 
-    private static function prepare_full_path($full_path) {
-        $full_path = str_replace('//', '/', $full_path);
+            return '<pre>'.$DateTime->format(self::$DateTimeFormat).':'.$ms.':'.$mcs.PHP_EOL.$output.'</pre>';
+        }
 
-        return $full_path;
-    }
+        private static function get_dir_path($dir_path) {
+            return $_SERVER["DOCUMENT_ROOT"].'/'.$dir_path;
+        }
 
-    private static function prepare_file_name($file_name, $add_timestamp = false) {
-        $last_slash_position = strrpos($file_name, '/');
-        $last_dot_position = strrpos($file_name, '.', $last_slash_position);
+        private static function get_full_path($full_path) {
+            return str_replace('//', '/', $full_path);
+        }
 
-        if (!$last_dot_position)
-            $file_name .= '.html';
-
-        if ($add_timestamp) {
+        private static function get_file_name($file_name, $add_timestamp) {
+            $last_slash_position = strrpos($file_name, '/');
             $last_dot_position = strrpos($file_name, '.', $last_slash_position);
-            $file_name = substr_replace($file_name, '_'.self::get_timestamp().'.', $last_dot_position, 1);
+    
+            if (!$last_dot_position)
+                $file_name .= self::$FileExtension;
+    
+            if ($add_timestamp) {
+                $last_dot_position = strrpos($file_name, '.', $last_slash_position);
+                $file_name = substr_replace($file_name, '_'.Debug::get_timestamp(self::$DateTimeFormat).'.', $last_dot_position, 1);
+            }
+    
+            return $file_name;
+        }
+        
+        /*
+            [
+                'content' => null,
+                'dont_echo' => false
+            ]
+        */
+        public static function here($PARAMS = []) {
+
+            $content = isset($PARAMS['content']) ? $PARAMS['content'] : null;
+            $dont_echo = isset($PARAMS['dont_echo']) ? (bool)$PARAMS['dont_echo'] : false;
+
+            $output = self::get_output($content);
+    
+            if ($dont_echo) 
+                return $output;
+            
+            echo $output;
+            return true;
         }
 
-        return $file_name;
-    }
+        /*
+            [
+                'content' => null,
+                'file_name' => 'log',
+                'dir_path' => 'logs',
+                'all_to_one_file' => true,
+                'add_timestamp' => false,
+                'append' => true,
+            ]
+        */
+        public static function to_file($PARAMS = []) {
 
-    public static function dumpToFile($content,
-                                      $file_name_from_dir_path = 'log',
-                                      $dir_path_from_document_root = 'logs',
-                                      $add_timestamp = false,
-                                      $need_to_append = false) {
-        
-        if ($add_timestamp)
-            $need_to_append = true;
+            $content = isset($PARAMS['content']) ? $PARAMS['content'] : null;
+            $file_name_from_dir_path = isset($PARAMS['file_name']) ? htmlspecialchars($PARAMS['file_name']) : 'log';
+            $dir_path_from_document_root = isset($PARAMS['dir_path']) ? htmlspecialchars($PARAMS['dir_path']) : 'logs';
 
-        $output = self::prepare_output($content);
-        $file_name = self::prepare_file_name($file_name_from_dir_path, $add_timestamp);
-        $dir_path = self::prepare_dir_path($dir_path_from_document_root);
+            $all_dumps_to_one_file = isset($PARAMS['all_to_one_file']) ? (bool)$PARAMS['all_to_one_file'] : true; 
+            $add_timestamp_to_name = $all_dumps_to_one_file ? false : isset($PARAMS['add_timestamp']) ? (bool)$PARAMS['add_timestamp'] : false;
+            $need_to_append_file = $add_timestamp_to_name ? false : isset($PARAMS['append']) ? (bool)$PARAMS['append'] : true;
 
-		if (!is_dir($dir_path)) 
-			mkdir($dir_path, 0777, true);
+            $output = self::get_output($content);
+            $file_name = self::get_file_name($file_name_from_dir_path, $add_timestamp_to_name);
+            $dir_path = self::get_dir_path($dir_path_from_document_root);
 
-		$full_path = self::prepare_full_path($dir_path.'/'.$file_name);
+            if (!is_dir($dir_path)) mkdir($dir_path, 0777, true);
 
-		return file_put_contents($full_path, $output, !$need_to_append ?: FILE_APPEND);
-    }
+            $full_path = self::get_full_path($dir_path.'/'.$file_name);
 
-    public static function dumpToEmail($content, 
-                                       $emailTo, 
-                                       $subject = 'dumpToEmail_result') {
-
-        $output = self::prepare_output($content);
-
-        return mail($emailTo, $subject, $output);
-    }
-
-    public static function dumpHere($content, $dont_echo = false) {
-        $output = self::prepare_output($content);
-
-        if ($dont_echo) 
-            return $output;
-        
-        echo $output;
-        return true;
-    }
-
-    public static function setGetPassword($password_name = 'test', $password = null, $die_func = null) {
-        if ($password === null) $password = self::$password;
-        
-        if ((!isset($_GET[$password_name])) || ($_GET[$password_name] != $password)) {
-            if ($die_func === null) die();
-
-            $die_func();
+            return file_put_contents($full_path, $output, !$need_to_append_file ?: FILE_APPEND);
         }
 
-        return true;
+        /*
+            [
+                'content' => null,
+                'email_to' => null,
+                'subject' => 'logs'
+            ]
+        */
+        public static function to_email($PARAMS = []) {
+
+            $content = isset($PARAMS['content']) ? $PARAMS['content'] : null;
+            $email_to = isset($PARAMS['email_to']) ? htmlspecialchars($PARAMS['email_to']) : null;
+            $subject = isset($PARAMS['subject']) ? htmlspecialchars($PARAMS['subject']) : null;
+
+            $output = self::get_output($content);
+
+            return mail($email_to, $subject, $output);
+        }
+
     }
+
+    public static class Access {
+        
+        private static $PasswordName = 'pass';
+        private static $DieFunc = function () {LocalRedirect("/");}
+
+        private static $ExistingTransmissionMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+
+        /*
+            [
+                'name' => self::$PasswordName,
+                'value' => Debug::get_timestamp('dmY'),
+                'die_func' => self::$DieFunc
+            ]
+        */
+        public static function set_password($PARAMS = []) {
+
+            $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::$PasswordName;
+            $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : Debug::get_timestamp('dmY');
+            $die_func = (isset($PARAMS['die_func']) && is_callable($PARAMS['die_func'])) ? $PARAMS['die_func'] : self::$DieFunc;
+
+            if (!isset($_REQUEST[$password_name]) || ($_REQUEST[$password_name] != $password_value))
+                return $die_func();
+
+        }
+
+    }
+
 }
