@@ -1,6 +1,11 @@
-// /*В init.php нужно вставить код (пример):*/
-// use Bitrix\Main\Loader;
+<?php
 
-// Loader::registerAutoLoadClasses(null, [
-//     'MyNamespace\MyClass' => '/local/php_interface/classes/MyNamespace/MyClass.php',
-// ]);
+//В init.php нужно вставить код (пример):
+use Bitrix\Main\Loader;
+
+Loader::registerAutoLoadClasses(null, [
+    'MyNamespace\MyClass' => '/local/php_interface/classes/MyNamespace/MyClass.php',
+]);
+
+//Затем использовать в нужном месте (пример):
+\MyNamespace\MyClass::static_method();
