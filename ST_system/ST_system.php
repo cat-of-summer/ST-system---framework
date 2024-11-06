@@ -33,10 +33,8 @@ class Debug {
 
         $DateTime = new \DateTime();
         $DateTime->setTimestamp((int)$timestamp_value);
-        $ms = (int)(($timestamp_value - floor($timestamp_value)) * 1000);
-        $mcs = sprintf("%03d", ($timestamp_value - floor($timestamp_value)) * 1000000);
         
-        $timestamp = $DateTime->format(self::$DateTimeFormat).':'.$ms.':'.$mcs;
+        $timestamp = $DateTime->format(self::$DateTimeFormat).':'.$timestamp_value;
         $backtrace = $add_tree_backtrace ? self::get_backtrace(['skip_start' => 1]) : self::get_backtrace(['skip_start' => 1, 'chain' => false]) ;
 
         return '<pre>'.PHP_EOL.$timestamp.PHP_EOL.$backtrace.PHP_EOL.$output.PHP_EOL.'</pre>';
@@ -89,12 +87,12 @@ class Debug {
         /*
             [
                 'echo' => true,
-                'add_backtrace' => true
+                'add_backtrace' => false
             ]
         */
 
         $echo = isset($PARAMS['echo']) ? (bool)$PARAMS['echo'] : true;
-        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : true;
+        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
 
         $output = self::get_output($content, $add_tree_backtrace_to_content);
 
@@ -110,7 +108,7 @@ class Debug {
                 'file_name' => 'log', //log.txt
                 'dir_path' => 'logs',
                 'merge_dumps' => true,
-                'add_backtrace' => true,
+                'add_backtrace' => false,
                 'add_timestamp' => false,
                 'append' => false,
             ]
@@ -134,7 +132,7 @@ class Debug {
         $file_name_from_dir_path = isset($PARAMS['file_name']) ? htmlspecialchars($PARAMS['file_name']) : 'log';
         $dir_path_from_document_root = isset($PARAMS['dir_path']) ? htmlspecialchars($PARAMS['dir_path']) : 'logs';
         $merge_dumps_in_one_file = isset($PARAMS['merge_dumps']) ? (bool)$PARAMS['merge_dumps'] : true;
-        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : true;
+        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
         $add_timestamp_to_name = isset($PARAMS['add_timestamp']) ? (bool)$PARAMS['add_timestamp'] : false;
         $need_to_append_files = isset($PARAMS['append']) ? (bool)$PARAMS['append'] : false;
     
@@ -159,13 +157,13 @@ class Debug {
             [
                 'to' => null,
                 'subject' => 'dump_to_email_log',
-                'add_backtrace' => true
+                'add_backtrace' => false
             ]
         */
 
         $email_to = isset($PARAMS['to']) ? htmlspecialchars($PARAMS['to']) : null;
         $subject = isset($PARAMS['subject']) ? htmlspecialchars($PARAMS['subject']) : 'dump_to_email_log';
-        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : true;
+        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
 
         $output = self::get_output($content, $add_tree_backtrace_to_content);
 
@@ -176,13 +174,13 @@ class Debug {
 
 class Access {
         
-    private static $PasswordName = 'pass';
+    private static $DefaultPasswordName = 'pass';
     private static $ExistingTransmissionMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
-
+    
     public static function set_password($PARAMS = []) {
         /*
             [
-                'name' => self::$PasswordName,
+                'name' => self::$DefaultPasswordName,
                 'value' => Main::get_timestamp('dm'),
                 'die_func' => function () {
                     header("Location: /");
@@ -191,11 +189,13 @@ class Access {
             ]
         */
 
-        $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::$PasswordName;
+        $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::$DefaultPasswordName;
         $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : Main::get_timestamp('dm');
-        $die_func = (isset($PARAMS['die_func']) && is_callable($PARAMS['die_func'])) ? $PARAMS['die_func'] : function () {
-            header("Location: /");
-            exit;
+        $die_func = (isset($PARAMS['die_func']) && is_callable($PARAMS['die_func'])) 
+            ? $PARAMS['die_func'] 
+            : function () {
+                header("Location: /");
+                exit;
         };
 
         if (!isset($_REQUEST[$password_name]) || ($_REQUEST[$password_name] != $password_value))
@@ -244,6 +244,83 @@ class Access {
         
         header("Access-Control-Allow-Headers: " . implode(", ", $allowed_headers));
     }
-        
+
 }
 
+class URL_parser {
+
+    private static $URL_parsers_list = [];
+
+    private $Init_RulesHandler;
+    private $Init_UrlRules;
+
+    public function __construct($PARAMS = []) {
+        /*
+            [
+                'url_rules' => [],
+                 Пример url_rules => [ //Первый парметр, url, потом передача аргумента, третий параметр - приориетность. Возвращаться будут все валидные правила высшего приоритета
+                    ['/local/', ['test']],
+                    ['/local/test.php', 'value', 1],
+                    ['/local/test/test.php', $param, 2]
+                 ],
+                'rules_handler' => function($PAGE_PARAMS, $URL_PARAMS) {
+                    return ['PAGE_PARAMS' => $PAGE_PARAMS, 'URL_PARAMS' => $URL_PARAMS];
+                },
+                'key' => null //index
+            ]
+        */
+
+        $this->Init_UrlRules = (isset($PARAMS['url_rules']) && is_array($PARAMS['url_rules']))
+            ? $PARAMS['url_rules']
+            : [];
+
+        $this->Init_RulesHandler = (isset($PARAMS['rules_handler']) && is_callable($PARAMS['rules_handler']))
+            ? $PARAMS['rules_handler']
+            : function($URL_PARAMS, $PAGE_PARAMS) {
+                return ['URL_PARAMS' => $URL_PARAMS, 'PAGE_PARAMS' => $PAGE_PARAMS];
+            };
+
+        if (isset($PARAMS['key']))
+            self::$URL_parsers_list[(string)$PARAMS['key']] = $this;
+        else
+            self::$URL_parsers_list[] = $this;
+
+        return key(end(self::$URL_parsers_list));
+    }
+
+    public function get_handler() {
+        return $this->Init_RulesHandler;
+    }
+
+    public function get_url_rules() {
+        return $this->Init_UrlRules;
+    }
+
+    public static function apply_parser($key, ...$PAGE_PARAMS) {
+        
+        if (!isset(self::$URL_parsers_list[$key]))
+            return false;
+
+        $url_parser_obj = self::$URL_parsers_list[$key];
+
+        if (empty($url_parser_obj->get_url_rules()))
+            return false;
+
+        $request_url = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+
+        $URL_PARAMS = [];
+        $current_priority = 0;
+        foreach ($url_parser_obj->get_url_rules() as $rule_param)
+            if (preg_match("#".preg_quote($rule_param[0], '#')."#", $request_url)) {
+                if ($current_priority < isset($rule_param[2]) ? (int)$rule_param[2] : 0 ) {
+                    $URL_PARAMS = [];
+                    $current_priority = (int)$rule_param[2];
+                }
+                $URL_PARAMS[] = $rule_param[1];
+            }
+            
+        return call_user_func($url_parser_obj->get_handler(), $URL_PARAMS, $PAGE_PARAMS);
+            
+    }
+    
+}
