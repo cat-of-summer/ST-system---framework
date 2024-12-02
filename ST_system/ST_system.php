@@ -21,14 +21,18 @@ class Debug {
 
     public static $DateTimeFormat = 'd-m-Y H:i:s';
     public static $DateTimeFileFormat = 'd-m-Y~H-i-s';
-
+    public static $dump_method = 'var_dump'; //'var_dump'
+    
     private static $dump_call_counter = [];
 
     private static function get_output($content, $add_tree_backtrace) {
         $timestamp_value = Main::get_timestamp();
         
         ob_start();
-        var_dump($content);
+        if (self::$dump_method == 'print_r')
+            print_r($content);
+        else
+            var_dump($content);
         $output = ob_get_clean();
 
         $DateTime = new \DateTime();
@@ -203,21 +207,38 @@ class Access {
 
     }
 
-    public static function handle_cors($PARAMS = []) {
+    private static function throw_403() {
+        header("HTTP/1.1 403 Forbidden");
+        header("Content-Type: text/plain");
+        header("X-Content-Type-Options: nosniff");
+        echo "Access denied: The origin is not allowed by the CORS policy.";
+        exit;
+    }
+    
+    private static function get_client_origin() {
+        return isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
+    }
+
+    public static function handle_CORS($PARAMS = []) {
         /*
             [
-                'origins' => ['*'],
+                'allowed_origins' => ['*'], //Например: https://example.com, https://sub.example.com, http://localhost, http://127.0.0.1
+                'forbidden_origins' => [], 
                 'methods' => self::$ExistingTransmissionMethods,
                 'headers' => ['Content-Type', 'Authorization', 'X-Requested-With']
             ]
         */
         
-        $allowed_origins = (isset($PARAMS['origins']) && is_array($PARAMS['origins'])) 
-            ? array_map('htmlspecialchars', $PARAMS['origins']) 
+        $allowed_origins = (isset($PARAMS['allowed_origins']) && is_array($PARAMS['allowed_origins'])) 
+            ? array_filter($PARAMS['allowed_origins'], fn($origin) => !empty($origin) && (filter_var($origin, FILTER_VALIDATE_URL) || $origin === '*'))
             : ['*'];
-            
+        
+        $forbidden_origins = (isset($PARAMS['forbidden_origins']) && is_array($PARAMS['forbidden_origins'])) 
+            ? array_filter($PARAMS['forbidden_origins'], fn($origin) => !empty($origin) && filter_var($origin, FILTER_VALIDATE_URL))
+            : [];
+
         $allowed_methods = (isset($PARAMS['methods']) && is_array($PARAMS['methods'])) 
-            ? array_map('strtoupper', $PARAMS['methods']) 
+            ? array_intersect(array_map('strtoupper', $PARAMS['methods']), self::$ExistingTransmissionMethods)
             : self::$ExistingTransmissionMethods;
 
         $allowed_headers = (isset($PARAMS['headers']) && is_array($PARAMS['headers'])) 
@@ -226,20 +247,27 @@ class Access {
         
         header("Access-Control-Allow-Credentials: true");
     
+        if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+            header("Access-Control-Allow-Methods: " . implode(", ", $allowed_methods));
+            header("Access-Control-Allow-Headers: " . implode(", ", $allowed_headers));
+            header("HTTP/1.1 200 OK");
+            exit;
+        }
+
+        $client_origin = self::get_client_origin();
+
+        if (!empty($client_origin) && in_array($client_origin, $forbidden_origins)) 
+            self::throw_403();
+        
+
         if (in_array('*', $allowed_origins))
             header("Access-Control-Allow-Origin: *");
         else {
-            $origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
-            if (in_array($origin, $allowed_origins)) 
-                header("Access-Control-Allow-Origin: $origin");
-        }
-
-        if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
             
-            header("Access-Control-Allow-Methods: " . implode(", ", $allowed_methods));
-            header("HTTP/1.1 200 OK");
-
-            exit;
+            if (!empty($client_origin) && in_array($client_origin, $allowed_origins)) 
+                header("Access-Control-Allow-Origin: $client_origin");
+            else 
+                self::throw_403();   
         }
         
         header("Access-Control-Allow-Headers: " . implode(", ", $allowed_headers));
