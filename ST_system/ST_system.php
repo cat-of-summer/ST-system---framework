@@ -215,6 +215,14 @@ class Access {
         exit;
     }
     
+    private static function throw_404() {
+        header("HTTP/1.1 404 Not Found");
+        header("Content-Type: text/plain");
+        header("X-Content-Type-Options: nosniff");
+        echo "Error 404: The requested resource was not found.";
+        exit;
+    }
+
     private static function get_client_origin() {
         return isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
     }
