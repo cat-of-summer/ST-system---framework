@@ -207,7 +207,7 @@ class Access {
 
     }
 
-    private static function throw_403() {
+    public static function throw_403() {
         header("HTTP/1.1 403 Forbidden");
         header("Content-Type: text/plain");
         header("X-Content-Type-Options: nosniff");
@@ -215,7 +215,7 @@ class Access {
         exit;
     }
     
-    private static function throw_404() {
+    public static function throw_404() {
         header("HTTP/1.1 404 Not Found");
         header("Content-Type: text/plain");
         header("X-Content-Type-Options: nosniff");
