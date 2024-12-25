@@ -43,7 +43,7 @@ class Debug {
         $output = ob_get_clean();
 
         if (self::$dump_method == 'var_dump')
-            $output = preg_replace('/^(.*?\n){1}/', '', $output, 1);
+            $output = preg_replace('/^.*?:\d*:/', '', $output, 1);
         
         $DateTime = new \DateTime();
         $DateTime->setTimestamp((int)$timestamp_value);
