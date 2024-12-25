@@ -29,12 +29,15 @@ class Debug {
         $timestamp_value = Main::get_timestamp();
         
         ob_start();
-        if (self::$dump_method == 'print_r')
-            print_r($content);
-        else
+        if (self::$dump_method == 'var_dump')
             var_dump($content);
+        else
+            print_r($content);
         $output = ob_get_clean();
 
+        if (self::$dump_method == 'var_dump')
+            $output = preg_replace('/^(.*?\n){2}/', '', $output, 1);
+        
         $DateTime = new \DateTime();
         $DateTime->setTimestamp((int)$timestamp_value);
         
