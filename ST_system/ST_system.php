@@ -21,7 +21,7 @@ class Debug {
 
     public static $DateTimeFormat = 'd-m-Y H:i:s';
     public static $DateTimeFileFormat = 'd-m-Y~H-i-s';
-    public static $dump_method = 'var_dump'; //'var_dump'
+    public static $dump_method = 'var_dump'; //'var_dump', 'print_r', 'var_export'
     
     private static $dump_call_counter = [];
 
@@ -29,10 +29,17 @@ class Debug {
         $timestamp_value = Main::get_timestamp();
         
         ob_start();
-        if (self::$dump_method == 'var_dump')
-            var_dump($content);
-        else
-            print_r($content);
+        switch (self::$dump_method) {
+            case 'print_r':
+                print_r($content);
+                break;
+            case 'var_export':
+                var_export($content);
+                break;
+            default:
+                var_dump($content);
+                break;
+        }
         $output = ob_get_clean();
 
         if (self::$dump_method == 'var_dump')
@@ -44,7 +51,7 @@ class Debug {
         $timestamp = $DateTime->format(self::$DateTimeFormat).':'.$timestamp_value;
         $backtrace = $add_tree_backtrace ? self::get_backtrace(['skip_start' => 1]) : self::get_backtrace(['skip_start' => 1, 'chain' => false]) ;
 
-        return '<pre>'.PHP_EOL.$timestamp.PHP_EOL.$backtrace.PHP_EOL.$output.PHP_EOL.'</pre>';
+        return '<pre>'.PHP_EOL.$timestamp.PHP_EOL.$backtrace.$output.PHP_EOL.'</pre>';
     }
     
     public static function get_backtrace($PARAMS = []) {
@@ -93,18 +100,18 @@ class Debug {
     public static function dump_here($content, $PARAMS = []) {
         /*
             [
-                'echo' => true,
+                'print' => true,
                 'add_backtrace' => false
             ]
         */
 
-        $echo = isset($PARAMS['echo']) ? (bool)$PARAMS['echo'] : true;
+        $to_print = isset($PARAMS['print']) ? (bool)$PARAMS['print'] : true;
         $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
 
         $output = self::get_output($content, $add_tree_backtrace_to_content);
 
-        if ($echo) 
-            echo $output;
+        if ($to_print) 
+            print $output;
         
         return $output;
     }
@@ -189,24 +196,35 @@ class Access {
             [
                 'name' => self::$DefaultPasswordName,
                 'value' => Main::get_timestamp('dm'),
-                'die_func' => function () {
+                'onFail' => function () {
                     header("Location: /");
                     exit;
+                },
+                'onSuccess' => function () {
+                    return true;
                 }
             ]
         */
 
         $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::$DefaultPasswordName;
         $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : Main::get_timestamp('dm');
-        $die_func = (isset($PARAMS['die_func']) && is_callable($PARAMS['die_func'])) 
-            ? $PARAMS['die_func'] 
+        $onFail_func = (isset($PARAMS['onFail']) && is_callable($PARAMS['onFail'])) 
+            ? $PARAMS['onFail'] 
             : function () {
                 header("Location: /");
                 exit;
         };
 
+        $onSuccess_func = (isset($PARAMS['onSuccess']) && is_callable($PARAMS['onSuccess'])) 
+            ? $PARAMS['onSuccess'] 
+            : function () {
+                return true;
+        };
+
         if (!isset($_REQUEST[$password_name]) || ($_REQUEST[$password_name] != $password_value))
-            return $die_func();
+            return call_user_func($onFail_func);
+        else
+            return call_user_func($onSuccess_func);
 
     }
 
@@ -284,6 +302,9 @@ class Access {
         header("Access-Control-Allow-Headers: " . implode(", ", $allowed_headers));
     }
 
+    public static function htaccess($PARAMS = []) {
+
+    }
 }
 
 class URL_parser {
