@@ -48,7 +48,7 @@ class Debug {
         $DateTime = new \DateTime();
         $DateTime->setTimestamp((int)$timestamp_value);
         
-        $timestamp = $DateTime->format(self::$DateTimeFormat).':'.$timestamp_value;
+        $timestamp = $DateTime->format(self::$DateTimeFormat).strstr((string)$timestamp_value, '.', false);
         $backtrace = $add_tree_backtrace ? self::get_backtrace(['skip_start' => 1]) : self::get_backtrace(['skip_start' => 1, 'chain' => false]) ;
 
         return '<pre>'.PHP_EOL.$timestamp.PHP_EOL.$backtrace.$output.PHP_EOL.'</pre>';
@@ -157,7 +157,7 @@ class Debug {
 
         if (!is_dir($dir_path)) mkdir($dir_path, 0777, true);
 
-        self::$dump_call_counter[$full_path]++;
+        self::$dump_call_counter[$full_path] = (self::$dump_call_counter[$full_path] ?? 0) + 1;
 
         $need_to_append_current_file = (self::$dump_call_counter[$full_path] == 1) 
             ? (file_exists($full_path) && $need_to_append_files) 
@@ -303,7 +303,7 @@ class Access {
     }
 
     public static function htaccess($PARAMS = []) {
-
+        
     }
 }
 
@@ -344,33 +344,28 @@ class URL_parser {
             self::$URL_parsers_list[(string)$PARAMS['key']] = $this;
         else
             self::$URL_parsers_list[] = $this;
-
-        return key(end(self::$URL_parsers_list));
-    }
-
-    public function get_RulesHandler() {
-        return $this->RulesHandler;
-    }
-
-    public function get_UrlRules() {
-        return $this->UrlRules;
     }
 
     public static function apply_parser($key, ...$PAGE_PARAMS) {
         
         if (!isset(self::$URL_parsers_list[$key]))
-            return false;
+            return null;
 
         $url_parser_obj = self::$URL_parsers_list[$key];
 
-        if (empty($url_parser_obj->get_UrlRules()))
-            return false;
+        if (empty($url_parser_obj->UrlRules))
+            return null;
 
+        return $url_parser_obj->apply(...$PAGE_PARAMS);
+    }
+    
+    public function apply(...$PAGE_PARAMS) {
         $request_url = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
         $URL_PARAMS = [];
         $max_priority = 0;
-        foreach ($url_parser_obj->get_UrlRules() as $rule_param)
+        
+        foreach ($this->UrlRules as $rule_param)
             if (preg_match("#".preg_quote($rule_param[0], '#')."#", $request_url)) {
                 if ($max_priority < isset($rule_param[2]) ? (int)$rule_param[2] : 0 ) {
                     $URL_PARAMS = [];
@@ -379,10 +374,8 @@ class URL_parser {
                 $URL_PARAMS[] = $rule_param[1];
             }
             
-        return call_user_func($url_parser_obj->get_RulesHandler(), $URL_PARAMS, $PAGE_PARAMS);
-            
+        return call_user_func($this->RulesHandler, $URL_PARAMS, $PAGE_PARAMS);
     }
-    
 }
 
 class YandexCaptcha {
