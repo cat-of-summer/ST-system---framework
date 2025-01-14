@@ -311,8 +311,8 @@ class URL_parser {
 
     private static $URL_parsers_list = [];
 
-    private $Init_RulesHandler;
-    private $Init_UrlRules;
+    private $RulesHandler;
+    private $UrlRules;
 
     public function __construct($PARAMS = []) {
         /*
@@ -330,11 +330,11 @@ class URL_parser {
             ]
         */
 
-        $this->Init_UrlRules = (isset($PARAMS['url_rules']) && is_array($PARAMS['url_rules']))
+        $this->UrlRules = (isset($PARAMS['url_rules']) && is_array($PARAMS['url_rules']))
             ? $PARAMS['url_rules']
             : [];
 
-        $this->Init_RulesHandler = (isset($PARAMS['rules_handler']) && is_callable($PARAMS['rules_handler']))
+        $this->RulesHandler = (isset($PARAMS['rules_handler']) && is_callable($PARAMS['rules_handler']))
             ? $PARAMS['rules_handler']
             : function($URL_PARAMS, $PAGE_PARAMS) {
                 return ['URL_PARAMS' => $URL_PARAMS, 'PAGE_PARAMS' => $PAGE_PARAMS];
@@ -348,12 +348,12 @@ class URL_parser {
         return key(end(self::$URL_parsers_list));
     }
 
-    public function get_handler() {
-        return $this->Init_RulesHandler;
+    public function get_RulesHandler() {
+        return $this->RulesHandler;
     }
 
-    public function get_url_rules() {
-        return $this->Init_UrlRules;
+    public function get_UrlRules() {
+        return $this->UrlRules;
     }
 
     public static function apply_parser($key, ...$PAGE_PARAMS) {
@@ -363,23 +363,23 @@ class URL_parser {
 
         $url_parser_obj = self::$URL_parsers_list[$key];
 
-        if (empty($url_parser_obj->get_url_rules()))
+        if (empty($url_parser_obj->get_UrlRules()))
             return false;
 
         $request_url = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
         $URL_PARAMS = [];
-        $current_priority = 0;
-        foreach ($url_parser_obj->get_url_rules() as $rule_param)
+        $max_priority = 0;
+        foreach ($url_parser_obj->get_UrlRules() as $rule_param)
             if (preg_match("#".preg_quote($rule_param[0], '#')."#", $request_url)) {
-                if ($current_priority < isset($rule_param[2]) ? (int)$rule_param[2] : 0 ) {
+                if ($max_priority < isset($rule_param[2]) ? (int)$rule_param[2] : 0 ) {
                     $URL_PARAMS = [];
-                    $current_priority = (int)$rule_param[2];
+                    $max_priority = (int)$rule_param[2];
                 }
                 $URL_PARAMS[] = $rule_param[1];
             }
             
-        return call_user_func($url_parser_obj->get_handler(), $URL_PARAMS, $PAGE_PARAMS);
+        return call_user_func($url_parser_obj->get_RulesHandler(), $URL_PARAMS, $PAGE_PARAMS);
             
     }
     
