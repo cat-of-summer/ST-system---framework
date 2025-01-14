@@ -157,7 +157,9 @@ class Debug {
 
         if (!is_dir($dir_path)) mkdir($dir_path, 0777, true);
 
-        self::$dump_call_counter[$full_path] = (self::$dump_call_counter[$full_path] ?? 0) + 1;
+        isset(self::$dump_call_counter[$full_path])
+            ? self::$dump_call_counter[$full_path]
+            : self::$dump_call_counter[$full_path] = 1;
 
         $need_to_append_current_file = (self::$dump_call_counter[$full_path] == 1) 
             ? (file_exists($full_path) && $need_to_append_files) 
@@ -244,8 +246,31 @@ class Access {
         exit;
     }
 
-    private static function get_client_origin() {
-        return isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
+    public static function get_request_origin() {
+        return isset($_SERVER['HTTP_ORIGIN'])
+            ? $_SERVER['HTTP_ORIGIN']
+            : (function_exists('getallheaders') && isset(getallheaders()['Origin'])
+                ? getallheaders()['Origin']
+                : (function_exists('apache_request_headers') && isset(apache_request_headers()['Origin'])
+                    ? apache_request_headers()['Origin']
+                    : (isset($_SERVER['HTTP_REFERER'])
+                        ? parse_url($_SERVER['HTTP_REFERER'], PHP_URL_HOST)
+                        : ""
+                    )
+                )
+            );
+    }
+
+    public static function get_client_ip() {
+        return isset($_SERVER['HTTP_X_FORWARDED_FOR'])
+            ? explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0]
+            : (isset($_SERVER['REMOTE_ADDR'])
+                ? $_SERVER['REMOTE_ADDR']
+                : (isset($_SERVER['HTTP_CLIENT_IP'])
+                    ? $_SERVER['HTTP_CLIENT_IP'] 
+                    : ""
+                )
+            );
     }
 
     public static function handle_CORS($PARAMS = []) {
@@ -283,9 +308,9 @@ class Access {
             exit;
         }
 
-        $client_origin = self::get_client_origin();
+        $request_origin = self::get_request_origin();
 
-        if (!empty($client_origin) && in_array($client_origin, $forbidden_origins)) 
+        if (!empty($request_origin) && in_array($request_origin, $forbidden_origins)) 
             self::throw_403();
         
 
@@ -293,8 +318,8 @@ class Access {
             header("Access-Control-Allow-Origin: *");
         else {
             
-            if (!empty($client_origin) && in_array($client_origin, $allowed_origins)) 
-                header("Access-Control-Allow-Origin: $client_origin");
+            if (!empty($request_origin) && in_array($request_origin, $allowed_origins)) 
+                header("Access-Control-Allow-Origin: $request_origin");
             else 
                 self::throw_403();   
         }
@@ -364,7 +389,7 @@ class URL_parser {
 
         $URL_PARAMS = [];
         $max_priority = 0;
-        
+
         foreach ($this->UrlRules as $rule_param)
             if (preg_match("#".preg_quote($rule_param[0], '#')."#", $request_url)) {
                 if ($max_priority < isset($rule_param[2]) ? (int)$rule_param[2] : 0 ) {
