@@ -618,3 +618,40 @@ class YandexCaptcha {
             return false;
     }
 }
+
+class Markup {
+    static $vocabularies = [
+        'schema.org' => [
+            'name' => 'https://schema.org',
+            'types' => [
+                'Thing' => [
+                    'properties' => [
+                        'description' => ['value'],
+                        'url' => ['href', 'value'],
+                        'image' => ['src', 'alt'],
+                    ],
+                    'required_properties' => [
+                        'name'
+                    ],
+                ]
+            ],
+            'methods' => [
+                'JSON-LD' => [
+                    'structure' => '
+                        <script type="application/ld+json">
+                            "@context": "#l",
+                            "@type": "#t",
+                            #pv
+                        </script>
+                    ', 
+                    'properties' => '"#p": "#v",'
+                ], 
+                'RDFa' => []
+            ]
+        ],
+        'Twitter Cards' => []
+    ];
+
+
+
+}
