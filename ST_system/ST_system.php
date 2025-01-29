@@ -26,7 +26,7 @@ class Debug {
     private static $dump_call_counter = [];
 
     private static function get_output($content, $add_tree_backtrace) {
-        $timestamp_value = Main::get_timestamp();
+        $timestamp_value = microtime(true);
         
         ob_start();
         switch (self::$dump_method) {
@@ -137,7 +137,7 @@ class Debug {
     
             if ($add_timestamp) {
                 $last_dot_position = strrpos($file_name, '.', $last_slash_position);
-                $file_name = substr_replace($file_name, '_'.Main::get_timestamp(self::$DateTimeFileFormat).'.', $last_dot_position, 1);
+                $file_name = substr_replace($file_name, '_'. date(self::$DateTimeFileFormat).'.', $last_dot_position, 1);
             }
     
             return $file_name;
@@ -197,7 +197,7 @@ class Access {
         /*
             [
                 'name' => self::$DefaultPasswordName,
-                'value' => Main::get_timestamp('dm'),
+                'value' => date('dm'),
                 'onFail' => function () {
                     header("Location: /");
                     exit;
@@ -209,7 +209,7 @@ class Access {
         */
 
         $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::$DefaultPasswordName;
-        $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : Main::get_timestamp('dm');
+        $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm');
         $onFail_func = (isset($PARAMS['onFail']) && is_callable($PARAMS['onFail'])) 
             ? $PARAMS['onFail'] 
             : function () {
