@@ -1,0 +1,13 @@
+<?php
+
+//В init.php нужно вставить код (пример):
+
+$classes = [
+	'MyNamespace\MyPropertyClass' => '/local/php_interface/MyPropertyClass.php',
+];
+
+\Bitrix\Main\Loader::registerAutoLoadClasses(null, $classes);
+
+$EventManager = \Bitrix\Main\EventManager::getInstance();
+foreach ($classes as $className => $classPath)
+    $EventManager->addEventHandler('iblock', 'OnIBlockPropertyBuildList', [$className, 'GetUserTypeDescription']);
