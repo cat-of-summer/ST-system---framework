@@ -408,7 +408,7 @@ class YandexCaptcha {
     private $private_key;
     private $render_params_array;
 
-    static private $THROW_ERRORS = true;
+    static private $THROW_ERRORS = false;
     static private $USE_CONSOLE_LOG_IN_DEFAULT_PARAM = false;
     static private $VERIFY_URL = 'https://smartcaptcha.yandexcloud.net/validate';
 
@@ -417,6 +417,8 @@ class YandexCaptcha {
     public function __construct($PARAMS = []) {
         /*
             [
+                'public_key' => '',
+                'private_key' => '',
                 'render_params_array' => [
                     'default' => [ Параметры по умолчанию, собранные при создании конструктора
                         'smart-captcha' => false,
@@ -466,6 +468,8 @@ class YandexCaptcha {
     public function connect_CDN($PARAMS = []) {
         /*
             [
+                'in_footer' => false,
+                'return' => false, // Возврат либо вставить через echo
                 'onload_JS_func' => function () {
                     return "console.log('Успешное подключение CDN!')";
                 },
@@ -480,13 +484,17 @@ class YandexCaptcha {
             ? "console.log('Успешное подключение CDN!')" 
             : '');
 
-        echo "
+        $where = $PARAMS['in_footer']
+            ? 'body'
+            : 'head';
+
+        $result =  "
             <script type='text/javascript' defer>
                 if (window.IS_CDN_INCLUDED == undefined) {
                     let script = document.createElement('script');
                     script.src = 'https://smartcaptcha.yandexcloud.net/captcha.js';
                     script.defer = true;
-                    document.body.appendChild(script);
+                    document.{$where}.appendChild(script);
                     window.IS_CDN_INCLUDED = false;
 
                     script.onload = function() {
@@ -496,8 +504,14 @@ class YandexCaptcha {
                 }
             </script>
         ";
+
         self::$IS_CDN_INCLUDED = true;
-    
+
+        if ($PARAMS['return'] === true)
+            return $result;
+        else
+            echo $result;
+
         return true;
     }
 
@@ -544,10 +558,11 @@ class YandexCaptcha {
                 <script type='text/javascript' defer>
                     document.addEventListener('DOMContentLoaded', function() {
                         if (window.IS_CDN_INCLUDED !== undefined) {
-                            var check_CDN = setInterval(function() {
+                            let check_CDN = setInterval(function() {
                                 if (window.IS_CDN_INCLUDED == true) {
                                     clearInterval(check_CDN);
-                                    var captcha_container = document.getElementById('{$container_id}');
+
+                                    let captcha_container = document.getElementById('{$container_id}');
                                     captcha_container.setAttribute('is_invalid', '');
                                     captcha_container.removeAttribute('is_valid');
 
@@ -571,6 +586,16 @@ class YandexCaptcha {
                                             {$onExpired_JS}
                                         }
                                     });
+                                    
+                                    if (!{$is_invisible})
+                                        new MutationObserver((mutations, observer) => {
+                                            mutations.forEach(mutation => {
+                                                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                                                    captcha_container.removeAttribute('style');
+                                                }
+                                            });
+                                        }).observe(captcha_container, {attributes: true, attributeFilter: ['style']});
+
                                 }
                             }, 100);
                         }
@@ -612,7 +637,7 @@ class YandexCaptcha {
         if ($code_response === 200 && $result->status === "ok")
             return true;
         
-        if (self::$THROW_ERRORS) 
+        if (self::$THROW_ERRORS)
             throw new \Exception("Captcha verification failed. $curl_response");
         else
             return false;
