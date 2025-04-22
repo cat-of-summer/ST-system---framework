@@ -114,6 +114,60 @@ class Markup {
                         [['href' => ['string', true]]],
                         false, false
                     ]
+                ],
+                '@ContactPoint' => [
+                    'telephone' => [
+                        [[['string']]]
+                    ],
+                    'contactType' => [
+                        [[['string']]]
+                    ],
+                ],
+                '@Organization' => [
+                    'name' => [
+                        [[['string']]],
+                        true
+                    ],
+                    'url' => [
+                        [[['url']]]
+                    ],
+                    'logo' => [
+                        [[
+                            'src' => ['url'], 
+                            'alt' => ['string', false]
+                        ]]
+                    ],
+                    'image' => [
+                        [[
+                            'src' => ['url'], 
+                            'alt' => ['string', false]
+                        ]]
+                    ],
+                    'description' => [
+                        [[['string']]]
+                    ],
+                    'contactPoint' => [
+                        [['@ContactPoint']],
+                    ],
+                    'address' => [
+                        [
+                            ['@PostalAddress'], 
+                            [['string']]
+                        ],
+                        false, true
+                    ],
+                ],
+                '@MedicalProcedure' => [
+                    'name' => [
+                        [[['string']]],
+                        true
+                    ],
+                    'url' => [
+                        [[['url']]]
+                    ],
+                    'description' => [
+                        [[['string']]]
+                    ],
                 ]
             ],
         ],

