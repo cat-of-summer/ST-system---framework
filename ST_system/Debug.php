@@ -8,7 +8,7 @@ public static $DateTimeFormat = 'd-m-Y H:i:s';
 public static $DateTimeFileFormat = 'd-m-Y~H-i-s';
 public static $default_dir_path = 'logs';
 public static $default_file_name = 'log.html';
-public static $dump_method = 'var_dump'; //'var_dump', 'print_r', 'var_export'
+public static $dump_method = 'print_r'; //'var_dump', 'print_r', 'var_export'
 
 private static $dump_call_counter = [];
 
@@ -28,9 +28,6 @@ private static function get_output($content, $add_tree_backtrace) {
             break;
     }
     $output = ob_get_clean();
-
-    if (self::$dump_method == 'var_dump')
-        $output = preg_replace('/^.*?:\d+:(<\/small>)?\n?/s', '', $output, 1);
     
     $DateTime = new \DateTime();
     $DateTime->setTimestamp((int)$timestamp_value);
