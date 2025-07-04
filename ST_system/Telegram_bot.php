@@ -68,6 +68,15 @@ class Telegram_bot {
         return $this->send_request('sendMessage', $params);
     }
 
+    public function delete_message(string $chat_id, string $message_id) {
+        $params = [
+            'chat_id'    => $chat_id,
+            'message_id' => $message_id,
+        ];
+
+        return $this->send_request('deleteMessage', $params);
+    }
+
     public function get_updates(array $params = []) {
         $params = self::prepare_params([
             'offset' => [null, fn($v) => is_int($v)],

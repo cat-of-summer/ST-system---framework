@@ -2,12 +2,15 @@
 
 namespace ST_system;
 
-class ST_telegraph_publisher {
+class Telegraph_publisher {
 
-    private static $access_token_path = '/logs/';
+    private static $POINT = 'https://api.telegra.ph';
+
+    private static $access_token_path = '/local/php_interface/';
     private static $request_params = [
         'create_account' => ['short_name', 'author_name', 'author_url'],
-        'create_page' => ['title', 'content', 'author_name', 'author_url', 'return_content']
+        'create_page' => ['title', 'content', 'author_name', 'author_url', 'return_content'],
+        'edit_page' => ['title', 'content', 'path', 'return_content']
     ];
 
     private static array $nodes_map = [
@@ -39,6 +42,21 @@ class ST_telegraph_publisher {
 
     private $author_name;
     private $author_url;
+
+    private function send_request(string $method, array $query = [], string $send_method = 'GET') {
+        $response = $send_method == 'GET'
+            ? @file_get_contents(self::$POINT.'/'.$method.'?'.http_build_query($query))
+            : @file_get_contents(self::$POINT.'/'.$method, false, stream_context_create($query));
+
+        if ($response === false)
+            throw new \RuntimeException('Ошибка запроса к API Telegra.ph');
+
+        $response_data = @json_decode($response, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !$response_data['ok'])
+            throw new \Exception("Telegraph $method error: " . ($response_data['error'] ?? 'unknown'));
+
+        return $response_data;
+    }
 
     public function __construct(array $PARAMS) {
         
@@ -87,15 +105,7 @@ class ST_telegraph_publisher {
                 throw new \InvalidArgumentException('Передан некорректный параметр запроса create_account: '.$key);
         });
 
-        $response = @file_get_contents('https://api.telegra.ph/createAccount?'.http_build_query($PARAMS));
-        if ($response === false)
-            throw new \RuntimeException('Ошибка запроса к API Telegra.ph');
-
-        $data = @json_decode($response, true);
-        if (json_last_error() !== JSON_ERROR_NONE || !$data['ok'])
-            throw new \Exception("Telegraph create_account error: " . ($data['error'] ?? 'unknown'));
-        
-        return $data;
+        return $this->send_request('createAccount', $PARAMS);
     }
 
     private function normalize_content($content) {
@@ -126,7 +136,7 @@ class ST_telegraph_publisher {
         return $trimmed;
     }
 
-   private function parse_nodes_recursive(\DOMNodeList $nodes): array {
+    private function parse_nodes_recursive(\DOMNodeList $nodes): array {
         $result = [];
 
         foreach ($nodes as $node) {
@@ -176,21 +186,23 @@ class ST_telegraph_publisher {
             // 5) Дети (кроме img)
             if ($tag !== 'img') {
                 $children = $this->parse_nodes_recursive($node->childNodes);
-                if ($children) {
+                if ($children)
                     $item['children'] = $children;
-                }
+                
             }
 
             // 6) Атрибуты
             $attrs = [];
-            if ($node->hasAttribute('href')) {
+            if ($node->hasAttribute('href'))
                 $attrs['href'] = $this->normalize_url($node->getAttribute('href'));
-            }
-            if ($node->hasAttribute('src')) {
+            
+            if ($node->hasAttribute('src'))
                 $attrs['src'] = $this->normalize_url($node->getAttribute('src'));
-            }
+            
             if ($tag === 'img') {
-                $attrs['alt'] = $node->getAttribute('alt') ?: '';
+                if ($node->hasAttribute('alt'))
+                    $attrs['alt'] = $node->getAttribute('alt');
+
                 if ($node->hasAttribute('srcset')) {
                     $fixed = [];
                     foreach (explode(',', $node->getAttribute('srcset')) as $part) {
@@ -201,16 +213,14 @@ class ST_telegraph_publisher {
                     $attrs['srcset'] = implode(', ', $fixed);
                 }
             }
-            if ($attrs) {
+            if ($attrs)
                 $item['attrs'] = $attrs;
-            }
-
+            
             $result[] = $item;
         }
 
         return $result;
     }
-
 
     public function create_page(array $PARAMS) {
 
@@ -223,7 +233,7 @@ class ST_telegraph_publisher {
             switch (true) {
                 case is_bool($param):
                     break;
-                case $key = 'content':
+                case $key == 'content':
                     break;
                 default:
                     $param = htmlspecialchars($param, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -249,16 +259,47 @@ class ST_telegraph_publisher {
             ]
         ];
 
-        $response = @file_get_contents('https://api.telegra.ph/createPage', false, stream_context_create($options));
-        if ($response === false)
-            throw new \RuntimeException('Ошибка запроса к API Telegra.ph');
+        return $this->send_request('createPage', $options, 'POST');
+    }
 
-        $data = @json_decode($response, true);
+    public function edit_page(array $PARAMS) {
+        $PARAMS['return_content'] = isset($PARAMS['return_content']) ? (bool)$PARAMS['return_content'] : false;
 
-        if (json_last_error() !== JSON_ERROR_NONE || !$data['ok'])
-            throw new \RuntimeException('Telegraph create_page error: ' . ($data['error'] ?? 'unknown'));
-        
-        return $data;
+        $PARAMS = array_intersect_key($PARAMS, array_flip(self::$request_params['edit_page']));
+        array_walk($PARAMS, function (&$param, $key) {
+            switch (true) {
+                case is_bool($param):
+                    break;
+                case $key == 'content':
+                    break;
+                default:
+                    $param = htmlspecialchars($param, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+                    if (!$param)
+                        throw new \InvalidArgumentException('Передан некорректный параметр запроса edit_page: '.$key);
+                    break;
+            }
+        });
+
+        $options = [
+            'http' => [
+                'method'  => 'POST',
+                'header'  => "Content-Type: application/x-www-form-urlencoded\r\n",
+                'content' => http_build_query(array_merge([
+                    'access_token'  => $this->access_token,
+                    'path'          => $PARAMS['path'],
+                    'return_content'=> $PARAMS['return_content'],
+                ],
+                !isset($PARAMS['title']) ? [] : [
+                    'title'         => $PARAMS['title'],
+                ],
+                !isset($PARAMS['content']) ? [] : [
+                    'content'       => json_encode($this->normalize_content($PARAMS['content']), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ])),
+            ]
+        ];
+
+        return $this->send_request('editPage', $options, 'POST');
     }
 
 }
