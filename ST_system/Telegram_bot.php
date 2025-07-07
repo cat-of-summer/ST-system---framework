@@ -77,6 +77,22 @@ class Telegram_bot {
         return $this->send_request('deleteMessage', $params);
     }
 
+    public function edit_message(string $chat_id, string $message_id, string $text, array $params = []) {
+
+        $params = [...self::prepare_params([
+            'parse_mode' => [null, fn($v) => in_array($v, [null, 'HTML', 'Markdown', 'MarkdownV2'])],
+            'disable_web_page_preview' => [false, fn($v) => is_bool($v)],
+            'reply_to_message_id' => [null, fn($v) => is_null($v) || is_int($v)],
+            'reply_markup' => [null, fn($v) => is_array($v)],
+        ], $params), ...[
+            'chat_id' => $chat_id,
+            'message_id' => $message_id,
+            'text' => $text
+        ]];
+
+        return $this->send_request('editMessageText', $params);
+    }
+
     public function get_updates(array $params = []) {
         $params = self::prepare_params([
             'offset' => [null, fn($v) => is_int($v)],
