@@ -6,6 +6,24 @@ class Telegraph_publisher {
 
     private static $POINT = 'https://api.telegra.ph';
 
+    public static const ERROR_CODES = [
+        'SHORT_NAME_REQUIRED'      => 1,
+        'SHORT_NAME_INVALID'       => 2,
+        'AUTHOR_NAME_INVALID'      => 3,
+        'AUTHOR_URL_INVALID'       => 4,
+        'ACCESS_TOKEN_REQUIRED'    => 5,
+        'ACCESS_TOKEN_INVALID'     => 6,
+        'PATH_REQUIRED'            => 7,
+        'PAGE_NOT_FOUND'           => 8,
+        'ACCESS_DENIED'            => 9,
+        'TITLE_REQUIRED'           => 10,
+        'TITLE_TOO_LONG'           => 11,
+        'CONTENT_REQUIRED'         => 12,
+        'CONTENT_INVALID'          => 13,
+        'CONTENT_TOO_LONG'         => 14,
+        'RETURN_CONTENT_INVALID'   => 15,
+    ];
+
     private static $access_token_path = '/local/php_interface/';
     private static $request_params = [
         'create_account' => ['short_name', 'author_name', 'author_url'],
@@ -52,9 +70,15 @@ class Telegraph_publisher {
             throw new \RuntimeException('Ошибка запроса к API Telegra.ph');
 
         $response_data = @json_decode($response, true);
-        if (json_last_error() !== JSON_ERROR_NONE || !$response_data['ok'])
-            throw new \Exception("Telegraph $method error: " . ($response_data['error'] ?? 'unknown'));
 
+        if (json_last_error() !== JSON_ERROR_NONE) 
+            throw new \RuntimeException('Ошибка декодирования ответа');
+
+        if (!$response_data['ok']) {
+            $error_code = $data['error'] ?? null;
+            throw new \RuntimeException("Telegraph {$method} error: {$error_code}", isset(self::ERROR_CODES[$error_code]) ? self::ERROR_CODES[$error_code] : 0);
+        }
+        
         return $response_data;
     }
 
