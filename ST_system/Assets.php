@@ -95,7 +95,7 @@ class Assets {
                 $svg_attrs = array_merge(array_combine($parsed[1], $parsed[2]), $attr);
 
                 $new_attrs = implode(' ', array_map(
-                    fn($k, $v) => sprintf('%s="%s"', $k, esc_attr($v)),
+                    fn($k, $v) => sprintf('%s="%s"', $k, $v),
                     array_keys($svg_attrs),
                     $svg_attrs
                 )) . ' ';

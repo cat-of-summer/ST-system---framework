@@ -5,7 +5,7 @@ namespace ST_system;
 class Telegram_bot {
     private static $POINT = 'https://api.telegram.org/bot';
 
-    public static const ERROR_CODES = [
+    public const ERROR_CODES = [
         'Unauthorized'                                        => 1,
         'Bad Request: chat not found'                         => 2,
         'Forbidden: bot was blocked by the user'              => 3,
@@ -17,6 +17,7 @@ class Telegram_bot {
         'Bad Request: message to delete not found'            => 9,
         'Bad Request: message to edit not found'              => 10,
         'Internal Server Error'                               => 11,
+		'Bad Request: message is not modified'                => 12,
     ];
 
     private static array $nodes_map = [
@@ -57,6 +58,7 @@ class Telegram_bot {
     
         return $result;
     }
+    
     private $token;
     private $base_url;
     private $command_handlers = [];
