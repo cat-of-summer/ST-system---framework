@@ -8,7 +8,7 @@ public static $DateTimeFormat = 'd-m-Y H:i:s';
 public static $DateTimeFileFormat = 'd-m-Y~H-i-s';
 public static $default_dir_path = 'logs';
 public static $default_file_name = 'log.html';
-public static $dump_method = 'print_r'; //'var_dump', 'print_r', 'var_export'
+public static $dump_method = 'json_encode'; //'var_dump', 'print_r', 'var_export', 'json_encode'
 
 private static $dump_call_counter = [];
 
@@ -23,8 +23,10 @@ private static function get_output($content, $add_tree_backtrace) {
         case 'var_export':
             var_export($content);
             break;
-        default:
+        case 'var_dump':
             var_dump($content);
+        default:
+            print json_encode($content, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             break;
     }
     $output = ob_get_clean();
@@ -96,6 +98,25 @@ public static function dump_here($content, $PARAMS = []) {
 
     if ($to_print) 
         print $output;
+    
+    return $output;
+}
+
+public static function dump_to_console($content, $PARAMS = []) {
+    /*
+        [
+            'print' => true,
+            'add_backtrace' => false
+        ]
+    */
+
+    $to_print = isset($PARAMS['print']) ? (bool)$PARAMS['print'] : true;
+    $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
+
+    $output = self::get_output($content, $add_tree_backtrace_to_content);
+
+    if ($to_print) 
+        print "<script>console.log('{$output}')</script>";
     
     return $output;
 }
