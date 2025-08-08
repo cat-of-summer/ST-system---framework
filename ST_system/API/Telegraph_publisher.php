@@ -6,7 +6,7 @@ class Telegraph_publisher {
 
     private static $POINT = 'https://api.telegra.ph';
 
-    public static const ERROR_CODES = [
+    public const ERROR_CODES = [
         'SHORT_NAME_REQUIRED'      => 1,
         'SHORT_NAME_INVALID'       => 2,
         'AUTHOR_NAME_INVALID'      => 3,

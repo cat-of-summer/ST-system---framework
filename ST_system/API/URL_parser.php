@@ -1,6 +1,6 @@
 <?php
 
-namespace ST_system;
+namespace ST_system\API;
 
 class URL_parser {
 
