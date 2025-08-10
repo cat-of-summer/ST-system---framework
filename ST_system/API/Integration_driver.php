@@ -24,10 +24,10 @@ abstract class Integration_driver {
             call_user_func_array($listener, $params);
     }
 
-    final protected static function prepare_params($config, &$input) {
+    final protected static function prepare_params(array $config, &$input, $on_prepare = null) {
 
         $is_scalar = !is_array($input);
-        $values   = $is_scalar ? [$input] : $input;
+        $values   = $is_scalar ? [0 => $input] : $input;
         $rules    = $is_scalar ? [0 => $config] : $config;
         $result   = [];
 
@@ -36,20 +36,26 @@ abstract class Integration_driver {
 
             $val = $values[$key] ?? $default;
 
-            if (is_callable($rule) && !call_user_func($rule, $val))
+            if (is_callable($rule) && !call_user_func($rule, $val, $result))
                 $val = $default;
             
             if ($val instanceof \Throwable)
                 throw $val;
+
+            if ($val === null)
+                continue;
             
-            if (is_callable($convert))
-                $val = call_user_func($convert, $val, $result);
-            
+            if (is_callable($convert) && ($v = call_user_func($convert, $val, $result)))
+                $val = $v;
+                        
             $result[$key] = $val;
         }
 
         $input = $is_scalar ? $result[0] : $result;
 
+        if (is_callable($on_prepare) && ($v = call_user_func($on_prepare, $input)))
+            $input = $v;
+        
         return $input;
     }
 
@@ -194,11 +200,11 @@ abstract class Integration_driver {
         return $response_data;
     }
 
-    final public function call_method(string $method, array $params = []) {
+    final public function call(string $method, array $params = []) {
         if (!isset($this->methods_map[$method]))
             throw new \Exception("Метод '{$method}' не зарегистрирован в ".get_called_class());
 
-        $this->trigger('before_call_method', $method, $params);
+        $this->trigger('before_call', $method, $params);
         
         if (is_callable($this->methods_map[$method]))
             return call_user_func($this->methods_map[$method], $params);
@@ -207,7 +213,7 @@ abstract class Integration_driver {
 
         self::prepare_params($config['params'], $params);
 
-        $this->trigger('call_method', $method, $params);
+        $this->trigger('call', $method, $params);
 
         [$request_url, $point] = $this->build_url($method, $config['point']);
 

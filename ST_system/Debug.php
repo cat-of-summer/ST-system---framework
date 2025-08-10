@@ -25,6 +25,7 @@ private static function get_output($content, $add_tree_backtrace) {
             break;
         case 'var_dump':
             var_dump($content);
+            break;
         default:
             print json_encode($content, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             break;
@@ -81,6 +82,21 @@ public static function get_backtrace($PARAMS = []) {
     }
 
     return $result;
+}
+
+public static function dump_throw($content, $PARAMS = []) {
+    /*
+        [
+            'add_backtrace' => false
+        ]
+    */
+
+    $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
+
+    $output = self::get_output($content, $add_tree_backtrace_to_content);
+
+    throw new \Exception($output);
+    exit;
 }
 
 public static function dump_here($content, $PARAMS = []) {

@@ -38,14 +38,14 @@ final class VK_bot extends Integration_driver {
             $params['v'] = static::API_VERSION;
         });
 
-        $this->on('call_method', function($method, &$params) {
+        $this->on('call', function($method, &$params) {
             if (!$this->access_token)
                 throw new \Exception("Для доступа методу '{$method}' необходим авторизационный токен!");
             
             $params['access_token'] = $this->access_token;
         });
 
-        $this->on('call_method', function($method) {
+        $this->on('call', function($method) {
             $meta = $this->method_config($method)['meta'] ?? [];
             $array_diff = array_diff($meta['scope'], $this->scope);
 

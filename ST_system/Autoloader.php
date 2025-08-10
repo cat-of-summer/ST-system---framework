@@ -15,7 +15,7 @@ final class Autoloader {
 
     private function __construct(string $base_dir) {
 
-        if (strpos($base_dir, '/') != 0)
+        if ((strpos($base_dir, '/') !== 0))
             $base_dir = $_SERVER['DOCUMENT_ROOT'].'/'.$base_dir;
 
         $this->base_dir = $base_dir;

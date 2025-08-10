@@ -13,40 +13,58 @@ trait Has_commands {
         array_walk($commands, fn($handler, $command) => $this->set_command($command, $handler));
     }
 
-    abstract protected function handle_response($response): string;
+    abstract protected function handle_response($response): array;
+    abstract protected function handle_updates(): array;
 
-    final public function handle_input($response, array $PARAMS = []) {
-        $command_line = $this->handle_response($response);
+    final protected function handle_input($response) {
+        $args = $this->handle_response($response);
 
-        if (!$command_line) return false;
+        $command_line = $args[0];
+        unset($args[0]);
+ 
+        if (trim($command_line) == '') return false;
 
-        preg_match_all("/('[^']*'|\"[^\"]*\"|\S+)/", $command_line, $matches);
-        $parts = $matches[0];
+        if (str_starts_with($command_line, '/')) {
+            preg_match_all("/('[^']*'|\"[^\"]*\"|\S+)/", $command_line, $matches);
 
-        $command = ltrim(array_shift($parts), '/');
+            $command_line = array_shift($matches[0]);
 
-        $line_params = [];
+            $current = null;
+            foreach ($matches[0] as $part)
+                if (str_starts_with($part, '-')) {
+                    $current = ltrim($part, '-');
 
-        $current = null;
-        foreach ($parts as $part)
-            if (str_starts_with($part, '-')) {
-                $current = ltrim($part, '-');
+                    if (!isset($args[$current]))
+                        $args[$current] = null;
 
-                if (!isset($line_params[$current]))
-                    $line_params[$current] = null;
+                } elseif ($current !== null) {
+                    if ($args[$current] === null)
+                        $args[$current] = $part;
+                    elseif (is_array($args[$current]))
+                        $args[$current][] = $part;
+                    else
+                        $args[$current] = [$args[$current], $part];
+                }
 
-            } elseif ($current !== null) {
-                if ($line_params[$current] === null)
-                    $line_params[$current] = $part;
-                elseif (is_array($line_params[$current]))
-                    $line_params[$current][] = $part;
-                else
-                    $line_params[$current] = [$line_params[$current], $part];
-            }
-        
-        return isset($this->command_handlers[$command])
-            ? call_user_func($this->command_handlers[$command], array_merge($PARAMS, $line_params), $response)
+        }
+                
+        return isset($this->command_handlers[$command_line])
+            ? call_user_func($this->command_handlers[$command_line], $args, $response)
             : false;
+    }
+
+    final public function daemon(int $time_limit = 300) {
+        if ($time_limit > 0) {
+            set_time_limit($time_limit);
+            $end_time = time() + $time_limit;
+        } else {
+            set_time_limit(0);
+            $end_time = null;
+        }
+        
+        while ($end_time === null || time() < $end_time)
+            foreach ($this->handle_updates() as $update)
+                $this->handle_input($update);
     }
     
 }
