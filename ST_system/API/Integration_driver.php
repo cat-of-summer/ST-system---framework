@@ -1,13 +1,13 @@
 <?php
 
-namespace ST_system;
+namespace ST_system\API;
 
-abstract class API_driver {
+abstract class Integration_driver {
 
     protected const ENABLE_TOKEN_CACHE = false;
     protected const TOKENS_DIR = '/';
 
-    protected const DEFAULT_POINT = null;
+    protected const DEFAULT_POINT = '';
         
     private array $listeners = [];
     private array $methods_map = [];
@@ -16,7 +16,7 @@ abstract class API_driver {
         $this->listeners[$event][] = $listener;
     }
 
-    final private function trigger(string $event, &...$params) {
+    private function trigger(string $event, &...$params) {
         if (empty($this->listeners[$event]))
             return false;
 
@@ -24,28 +24,39 @@ abstract class API_driver {
             call_user_func_array($listener, $params);
     }
 
-    final protected static function prepare_params($config, &$input) {
+    final protected static function prepare_params(array $config, &$input, $on_prepare = null) {
+
         $is_scalar = !is_array($input);
-        $values   = $is_scalar ? [$input] : $input;
+        $values   = $is_scalar ? [0 => $input] : $input;
         $rules    = $is_scalar ? [0 => $config] : $config;
         $result   = [];
 
-        foreach ($rules as $key => [$default, $rule, $convert]) {
+        foreach ($rules as $key => $rule) {
+            [$default, $rule, $convert] = array_pad($rule, 3, null);
+
             $val = $values[$key] ?? $default;
 
-            if (is_callable($rule) && !$rule($val))
+            if (is_callable($rule) && !call_user_func($rule, $val, $result))
                 $val = $default;
             
             if ($val instanceof \Throwable)
                 throw $val;
+
+            if ($val === null)
+                continue;
             
-            if (is_callable($convert))
-                $val = $convert($val);
-            
+            if (is_callable($convert) && ($v = call_user_func($convert, $val, $result)))
+                $val = $v;
+                        
             $result[$key] = $val;
         }
 
         $input = $is_scalar ? $result[0] : $result;
+
+        if (is_callable($on_prepare) && ($v = call_user_func($on_prepare, $input)))
+            $input = $v;
+        
+        return $input;
     }
 
     protected function __init() {}
@@ -103,10 +114,10 @@ abstract class API_driver {
     }
 
     final protected function method_config(string $method) {
-        return $this->methods_map[$method] ?? null;
+        return $this->methods_map[$method] ?? [];
     }
 
-    final public function register_method(string $method, $config) {
+    final public function register_method(string $method, $config = []) {
         if (isset($this->methods_map[$method]))
             throw new \Exception("Метод '{$method}' уже зарегистрирован в ".get_called_class());
 
@@ -119,7 +130,7 @@ abstract class API_driver {
                 break;
             case is_array($config):
                 self::prepare_params([
-                    'point' => [static::DEFAULT_POINT, fn($value) => filter_var($value, FILTER_VALIDATE_URL)],
+                    'point' => [static::DEFAULT_POINT, fn($value) => !empty($value) && filter_var($value, FILTER_VALIDATE_URL)],
                     'method' => ['GET', fn($value) => in_array(strtoupper($value), ['GET', 'POST']), fn($value) => strtoupper($value)],
                     'params' => [[], fn($value) => is_array($value)],
                     'meta' => [[]],
@@ -174,7 +185,7 @@ abstract class API_driver {
             ? [$matches[1], substr($request_url, strlen($matches[1]))]
             : ['', $request_url];
 
-        return $p.preg_replace('#/{2,}#', '/', explode('?', $u, 2)[0]);
+        return [$p.preg_replace('#/{2,}#', '/', explode('?', $u, 2)[0]), $point];
     }
 
     final protected function execute_curl($curl) {
@@ -189,12 +200,12 @@ abstract class API_driver {
         return $response_data;
     }
 
-    final public function call_method(string $method, array $params = []) {
+    final public function call(string $method, array $params = []) {
         if (!isset($this->methods_map[$method]))
             throw new \Exception("Метод '{$method}' не зарегистрирован в ".get_called_class());
 
-        $this->trigger('before_call_method', $method, $params);
-
+        $this->trigger('before_call', $method, $params);
+        
         if (is_callable($this->methods_map[$method]))
             return call_user_func($this->methods_map[$method], $params);
         
@@ -202,11 +213,11 @@ abstract class API_driver {
 
         self::prepare_params($config['params'], $params);
 
-        $this->trigger('call_method', $method, $params);
+        $this->trigger('call', $method, $params);
 
-        $request_url = $this->build_url($method, $config['point']);
+        [$request_url, $point] = $this->build_url($method, $config['point']);
 
-        $this->trigger('build_url', $request_url, $method, $params);
+        $this->trigger('build_url', $request_url, $point, $method, $params);
     
         $curl = $this->curl_init($request_url, $config['method'], $params);
 

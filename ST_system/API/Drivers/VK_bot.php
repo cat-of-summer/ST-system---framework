@@ -1,10 +1,10 @@
 <?php
 
-namespace ST_system;
+namespace ST_system\API\Drivers;
 
-class VK_bot extends API_driver {
+use \ST_system\API\Integration_driver;
 
-    protected const ENABLE_TOKEN_CACHE = true;
+final class VK_bot extends Integration_driver {
 
     protected const DEFAULT_POINT = 'https://api.vk.com/method';
     protected const OAUTH_POINT = 'https://oauth.vk.com';
@@ -38,14 +38,14 @@ class VK_bot extends API_driver {
             $params['v'] = static::API_VERSION;
         });
 
-        $this->on('call_method', function($method, &$params) {
+        $this->on('call', function($method, &$params) {
             if (!$this->access_token)
                 throw new \Exception("Для доступа методу '{$method}' необходим авторизационный токен!");
             
             $params['access_token'] = $this->access_token;
         });
 
-        $this->on('call_method', function($method) {
+        $this->on('call', function($method) {
             $meta = $this->method_config($method)['meta'] ?? [];
             $array_diff = array_diff($meta['scope'], $this->scope);
 
@@ -55,8 +55,8 @@ class VK_bot extends API_driver {
 
         $this->register_method('authorize', function ($params) {
 
-            $request_url = $this->build_url('authorize', static::OAUTH_POINT);
-
+            $request_url = $this->build_url('authorize', static::OAUTH_POINT)[0];
+            
             self::prepare_params([
                 'redirect_uri' => [null, fn($value) => is_string($value) && !empty($value)],
                 'scope' => [[], fn($value) => is_array($value)],
@@ -91,7 +91,7 @@ class VK_bot extends API_driver {
             } else {
                 switch ($this->auth_method) {
                     case 'code':                  
-                        $request_url = $this->build_url('access_token', static::OAUTH_POINT);
+                        $request_url = $this->build_url('access_token', static::OAUTH_POINT)[0];
 
                         self::prepare_params([
                             'code' => [new \Exception("Некорректный код авторизации!"), fn($value) => is_string($value) && !empty($value)],
@@ -116,12 +116,10 @@ class VK_bot extends API_driver {
 
                         break;
                     case 'token':
+                    default:
                         $result = $params;
 
                         break;
-                    default:
-                        throw new \Exception("Неизвестный метод авторизации: {$this->auth_method}");
-
                 }
 
                 self::prepare_params([
@@ -203,4 +201,5 @@ class VK_bot extends API_driver {
         
     }
 
+    
 }
