@@ -4,13 +4,20 @@ namespace ST_system;
 
 class Access {
         
-        private static $DefaultPasswordName = 'pass';
-        private static $ExistingCORSTransmissionMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+        private const config = [
+            'password_name' => 'pass',
+            'request_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
+        ];
+
+        private static $block_password = [
+            'name' => null,
+            'value' => null
+        ];
         
-        public static function set_password($PARAMS = []) {
+        public static function page_access($PARAMS = []) {
             /*
                 [
-                    'name' => self::$DefaultPasswordName,
+                    'name' => self::config['password_name'],
                     'value' => date('dm'),
                     'onFail' => function () {
                         header("Location: /");
@@ -22,7 +29,7 @@ class Access {
                 ]
             */
     
-            $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::$DefaultPasswordName;
+            $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config['password_name'];
             $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm');
             $onFail_func = (isset($PARAMS['onFail']) && is_callable($PARAMS['onFail'])) 
                 ? $PARAMS['onFail'] 
@@ -43,7 +50,41 @@ class Access {
                 return call_user_func($onSuccess_func);
     
         }
-    
+
+        public static function call(callable $f, array $PARAMS = []) {
+            $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config['password_name'];
+            $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm');
+
+            if (isset($_REQUEST[$password_name]) && ($_REQUEST[$password_name] == $password_value))
+                return call_user_func($f);
+        }
+
+        public static function start_block(array $PARAMS = []) {
+            /*
+                [
+                    'name' => self::config['password_name'],
+                    'value' => date('dm'),
+                ]
+            */
+
+            self::$block_password = [
+                'name' => isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config['password_name'],
+                'value' => isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm')
+            ];
+
+            ob_start();
+        }
+
+        public static function end_block() {
+
+            if (!self::$block_password['name'] || !self::$block_password['value']) return;
+
+            $content = ob_get_clean();
+
+            if (isset($_REQUEST[self::$block_password['name']]) && ($_REQUEST[self::$block_password['name']] == self::$block_password['value']))
+                echo $content;
+        }
+
         public static function throw_403() {
             header("HTTP/1.1 403 Forbidden");
             header("Content-Type: text/plain");
@@ -90,7 +131,7 @@ class Access {
                 [
                     'allowed_origins' => ['*'], //Например: https://example.com, https://sub.example.com, http://localhost, http://127.0.0.1
                     'forbidden_origins' => [], 
-                    'methods' => self::$ExistingCORSTransmissionMethods,
+                    'methods' => self::config['request_methods'],
                     'headers' => ['Content-Type', 'Authorization', 'X-Requested-With']
                 ]
             */
@@ -104,8 +145,8 @@ class Access {
                 : [];
     
             $allowed_methods = (isset($PARAMS['methods']) && is_array($PARAMS['methods'])) 
-                ? array_intersect(array_map('strtoupper', $PARAMS['methods']), self::$ExistingCORSTransmissionMethods)
-                : self::$ExistingCORSTransmissionMethods;
+                ? array_intersect(array_map('strtoupper', $PARAMS['methods']), self::config['request_methods'])
+                : self::config['request_methods'];
     
             $allowed_headers = (isset($PARAMS['headers']) && is_array($PARAMS['headers'])) 
                 ? array_map('htmlspecialchars', $PARAMS['headers']) 
@@ -139,42 +180,4 @@ class Access {
             header("Access-Control-Allow-Headers: " . implode(", ", $allowed_headers));
         }
 
-        public static function logger($system, ...$params) {
-
-            $systems = [
-                'bitrix' => [
-                    'initialization' => function() {
-                        require_once $_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_before.php";
-                    },
-                    'login' => function() use ($params) {
-                        $GLOBALS['USER']->Authorize(!empty($params[0]) && is_int($params[0]) ? $params[0] : 1);
-                        LocalRedirect("/bitrix/admin/");
-                    },
-                    'throw_404' => function() {
-                        define('ERROR_404', 'Y');
-                        \CHTTP::SetStatus('404 Not Found');
-                        if (file_exists($_SERVER['DOCUMENT_ROOT'].'/404.php')) {
-                            require $_SERVER['DOCUMENT_ROOT'].'/404.php';
-                            exit;
-                        }
-                    }
-                ]
-            ];
-
-            if (!isset($systems[$system]) || !isset($systems[$system]['login'])) self::throw_404();
-
-            if (isset($systems[$system]['initialization'])) call_user_func($systems[$system]['initialization']);
-
-            self::set_password([
-                'onFail' => function () use ($systems, $system) {
-                    if (isset($systems[$system]['throw_404'])) call_user_func($systems[$system]['throw_404']);
-                    self::throw_404();
-                }
-            ]);
-
-            call_user_func($systems[$system]['login']);
-
-            header("Location: /");
-            exit;
-        }
     }
