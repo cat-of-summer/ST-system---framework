@@ -13,7 +13,7 @@ class Router {
     private $params = [
         'apply_once' => false,
         'strict_mode' => false,
-        'REST_point' => '/',
+        'point' => '/',
         'methods' => []
     ];
  
@@ -93,7 +93,7 @@ class Router {
         if (!$this->params['strict_mode'])
             $pattern = '/?'.rtrim(ltrim($pattern, '/'), '/').'/?';
 
-        $regexp = str_replace('//', '/', '#'.($this->params['strict_mode'] ? "^{$this->params['REST_point']}" : '').preg_replace_callback('#\\\\\{(\w+)\\\\\}#', function ($matches) use (&$url_params) {
+        $regexp = str_replace('//', '/', '#'.($this->params['strict_mode'] ? "^{$this->params['point']}" : '').preg_replace_callback('#\\\\\{(\w+)\\\\\}#', function ($matches) use (&$url_params) {
             $url_params[] = $matches[1];
             return "(?P<{$matches[1]}>[^/]+)";
         }, $pattern).($this->params['strict_mode'] ? '$' : '').'#');
