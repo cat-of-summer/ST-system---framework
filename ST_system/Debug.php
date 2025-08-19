@@ -179,16 +179,17 @@ class Debug {
 
         if (!is_dir($dir_path)) mkdir($dir_path, 0777, true);
 
-        isset(self::$dump_call_counter[$full_path])
-            ? self::$dump_call_counter[$full_path]
-            : self::$dump_call_counter[$full_path] = 1;
+    if (self::$dump_call_counter[$full_path])
+        self::$dump_call_counter[$full_path]++;
+    else
+        self::$dump_call_counter[$full_path] = 1;
 
         $need_to_append_current_file = (self::$dump_call_counter[$full_path] == 1) 
             ? (file_exists($full_path) && $need_to_append_files) 
             : $merge_dumps_in_one_file;
 
-        return file_put_contents($full_path, $output, !$need_to_append_current_file ?: FILE_APPEND);
-    }
+    return file_put_contents($full_path, $output, !$need_to_append_current_file ?: FILE_APPEND);
+}
 
     public static function dump_to_email($content, $PARAMS = []) {
         /*
