@@ -147,11 +147,121 @@ class Assets {
         return filter_var($path_or_uri, FILTER_VALIDATE_URL);
     }
 
-    final public static function find_resources(string $input, array $PARAMS = []) {
+    final public function __construct(string $path_or_uri, string $buffer = '') {
+
+        if (self::is_uri($path_or_uri)) {
+            $this->resource = $path_or_uri;
+            $this->is_uri = true;
+        } else {
+            $this->resource = rtrim(realpath(self::full_path($path_or_uri)), '/');
+            $this->is_uri = false;
+        }
+        
+        $this->buffer = $buffer != '' ? $buffer : self::current_buffer();
+    }
+
+    final public function __call($name, $arguments) {
+        self::$instance = $this;
+
+        $arguments = array_pad($arguments, 3, null);
+        switch ($name) {
+            case 'add_string':                
+                if (!is_array($arguments[0]))
+                    $arguments[0] = [$arguments[0]];
+                break;
+            case 'add_css':
+            case 'add_js':
+            case 'add_font':
+            case 'resources':
+                if (!is_array($arguments[0]))
+                    $arguments[0] = [$arguments[0]];
+
+                $files = [];
+                foreach ($arguments[0] as $string)
+                    $files = array_merge($files, self::_resources(self::$instance->resource.'/'.ltrim($string, '/')));
+
+                break;
+        }
+
+        switch ($name) {
+            case 'resources':
+                return $files;
+            case 'sprite':
+                return call_user_func([self::class, "_{$name}"], $arguments[0], $arguments[1] ?? [], $arguments[2] != '' ? self::$instance->resource.'/'.ltrim($arguments[2], '/') : self::$instance->resource);
+            case 'svg':
+                if (self::$instance->is_uri)
+                    throw new \Exception("SVG можно взять лишь у локального ресурса.");
+                return call_user_func([self::class, "_{$name}"], self::$instance->resource.'/'.ltrim($arguments[0], '/'), $arguments[1] ?? [], $arguments[2] ?? false);
+            case 'add_css':
+            case 'add_js':
+            case 'add_font':
+                foreach ($files as $file)
+                    call_user_func([self::class, "_{$name}"], $file, $arguments[1] ?? [], self::$instance->buffer ?? $arguments[2] ?? self::current_buffer());
+    
+                return self::$instance;
+            case 'add_string':
+                foreach ($arguments[0] as $string)             
+                    call_user_func([self::class, "_{$name}"], $string, self::$instance->buffer ?? $arguments[1] ?? self::current_buffer());
+                
+                return self::$instance;
+                
+            default: throw new \Error("Call to undefined method " . __CLASS__ . "::{$name}()");
+        }
+    }
+
+    final public static function __callStatic($name, $arguments) {
+        self::$instance = null;
+
+        $arguments = array_pad($arguments, 3, null);
+        switch ($name) {
+            case 'add_string':                
+                if (!is_array($arguments[0]))
+                    $arguments[0] = [$arguments[0]];
+                break;
+            case 'add_css':
+            case 'add_js':
+            case 'add_font':
+            case 'resources':
+                if (!is_array($arguments[0]))
+                    $arguments[0] = [$arguments[0]];
+
+                $files = [];
+                foreach ($arguments[0] as $string)
+                    $files = array_merge($files, self::_resources($string));
+
+                break;
+        }
+
+        switch ($name) {
+            case 'resources':
+                return $files;
+            case 'sprite':
+                return call_user_func([self::class, "_{$name}"], $arguments[0], $arguments[1], $arguments[2]);
+            case 'svg':
+                return call_user_func([self::class, "_{$name}"], $arguments[0], $arguments[1] ?? [], $arguments[2] ?? false);
+            case 'add_css':
+            case 'add_js':
+            case 'add_font':
+                foreach ($files as $file)
+                    call_user_func([self::class, "_{$name}"], $file, $arguments[1] ?? [], $arguments[2] ?? self::current_buffer());
+    
+                return self::$instance;
+            case 'add_string':
+                foreach ($arguments[0] as $string)             
+                    call_user_func([self::class, "_{$name}"], $string, $arguments[1] ?? self::current_buffer());
+                
+                return self::$instance;
+                
+            default: throw new \Error("Call to undefined static method " . __CLASS__ . "::{$name}()");
+        }
+    }
+
+    private static function _resources(string $input, array $PARAMS = []) {
 
         $max_files = isset($PARAMS['max_files']) ? (int)$PARAMS['max_files'] : 50;
         $follow_symbolic_links = isset($PARAMS['follow_symbolic_links']) ? (bool)$PARAMS['follow_symbolic_links'] : false;
         $exclude_hidden_files = isset($PARAMS['exclude_hidden_files']) ? (bool)$PARAMS['exclude_hidden_files'] : true;
+        $return_relative_path = isset($PARAMS['return_relative_path']) ? (bool)$PARAMS['return_relative_path'] : true;
         
         if ((self::$instance && self::$instance->is_uri) || (!self::$instance && self::is_uri($input)))
             return [$input];
@@ -164,10 +274,10 @@ class Assets {
                     $files = [];
                     foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($input)) as $file)
                         if ($file->isFile() && in_array(pathinfo($file->getFilename(), PATHINFO_EXTENSION), array_keys(self::config['extensions_map'])))
-                            $files[] = substr($file->getPathname(), strlen($_SERVER['DOCUMENT_ROOT']));
+                            $files[] = $return_relative_path ? substr($file->getPathname(), strlen($_SERVER['DOCUMENT_ROOT'])) : $file->getPathname();
                     return $files;
                 } else
-                    return [substr($input, strlen($_SERVER['DOCUMENT_ROOT']))];
+                    return [$return_relative_path ? substr($input, strlen($_SERVER['DOCUMENT_ROOT'])) : $input];
             }
 
             return [];
@@ -188,7 +298,6 @@ class Assets {
         if (!is_dir($start_dir) || !is_readable($start_dir))
             throw new \InvalidArgumentException("Start directory '{$start_dir}' does not exist or is not readable.");
         
-
         $pattern = str_replace('\\', '/', $input);
 
         $delimiter = '#';
@@ -224,7 +333,7 @@ class Assets {
 
             if ($fileinfo->isFile()) {
                 if (@preg_match($pattern, $fileinfo->getPathname()) === 1) {
-                    $results[] = substr($fileinfo->getRealPath(), strlen($_SERVER['DOCUMENT_ROOT']));
+                    $results[] = $return_relative_path ? substr($fileinfo->getRealPath(), strlen($_SERVER['DOCUMENT_ROOT'])) : $fileinfo->getRealPath();
                     if ($max_files > 0 && count($results) >= $max_files)
                         break;
                 }
@@ -232,110 +341,6 @@ class Assets {
         }
 
         return $results;
-    }
-
-    final public function __construct(string $path_or_uri, string $buffer = '') {
-
-        if (self::is_uri($path_or_uri)) {
-            $this->resource = $path_or_uri;
-            $this->is_uri = true;
-        } else {
-            $path = realpath(self::full_path($path_or_uri));
-
-            $this->resource = is_dir($path)
-                ? rtrim($path, DIRECTORY_SEPARATOR)
-                : dirname($path);
-
-            $this->is_uri = false;
-        }
-        
-        $this->buffer = $buffer != '' ? $buffer : self::current_buffer();
-    }
-
-    final public function __call($name, $arguments) {
-        self::$instance = $this;
-
-        $arguments = array_pad($arguments, 3, null);
-        switch ($name) {
-            case 'add_string':                
-                if (!is_array($arguments[0]))
-                    $arguments[0] = [$arguments[0]];
-                break;
-            case 'add_css':
-            case 'add_js':
-            case 'add_font':
-                if (!is_array($arguments[0]))
-                    $arguments[0] = [$arguments[0]];
-
-                $files = [];
-                foreach ($arguments[0] as $string)
-                    $files = array_merge($files, self::find_resources(self::$instance->resource.'/'.ltrim($string, '/')));
-
-                break;
-        }
-
-        switch ($name) {
-            case 'svg':
-                if (self::$instance->is_uri)
-                    throw new \Exception("SVG можно взять лишь у локального ресурса.");
-                return call_user_func([self::class, "_{$name}"], self::$instance->resource.'/'.ltrim($arguments[0], '/'), $arguments[1] ?? []);
-            case 'add_css':
-            case 'add_js':
-            case 'add_font':
-                foreach ($files as $file)
-                    call_user_func([self::class, "_{$name}"], $file, $arguments[1] ?? [], self::$instance->buffer ?? $arguments[2] ?? self::current_buffer());
-    
-                return self::$instance;
-            case 'add_string':
-                foreach ($arguments[0] as $string)             
-                    call_user_func([self::class, "_{$name}"], $string, self::$instance->buffer ?? $arguments[1] ?? self::current_buffer());
-                
-                return self::$instance;
-                
-            default: throw new \Error("Call to undefined method " . __CLASS__ . "::{$name}()");
-        }
-    }
-
-    final public static function __callStatic($name, $arguments) {
-        self::$instance = null;
-
-        $arguments = array_pad($arguments, 3, null);
-        switch ($name) {
-            case 'add_string':                
-                if (!is_array($arguments[0]))
-                    $arguments[0] = [$arguments[0]];
-                break;
-            case 'add_css':
-            case 'add_js':
-            case 'add_font':
-                if (!is_array($arguments[0]))
-                    $arguments[0] = [$arguments[0]];
-
-                $files = [];
-                foreach ($arguments[0] as $string)
-                    $files = array_merge($files, self::find_resources($string));
-
-                break;
-        }
-
-        switch ($name) {
-            case 'svg':
-                return call_user_func([self::class, "_{$name}"], $arguments[0], $arguments[1] ?? [], $arguments[2] ?? self::current_buffer());
-            case 'add_css':
-            case 'add_js':
-            case 'add_font':
-                foreach ($files as $file)
-                    call_user_func([self::class, "_{$name}"], $file, $arguments[1] ?? [], $arguments[2] ?? self::current_buffer());
-    
-                return self::$instance;
-            case 'add_string':
-                foreach ($arguments[0] as $string)             
-                    call_user_func([self::class, "_{$name}"], $string, $arguments[1] ?? self::current_buffer());
-                
-                return self::$instance;
-                
-            default: throw new \Error("Call to undefined static method " . __CLASS__ . "::{$name}()");
-        }
     }
 
     private static function _add_css(string $href, array $attributes = [], string $buffer = '') {
@@ -410,11 +415,17 @@ class Assets {
         );
     }
 
-    private static function _svg(string $path, array $attributes = []) {
+    private static function _svg(string $path, array $attributes = [], bool $return_path = false) {
         static $counter = 0;
+
+        if (pathinfo($path, PATHINFO_EXTENSION) === '')
+            $path .= '.svg';
 
         if (!file_exists($path))
             throw new \Exception("SVG file not found: " . $path);
+
+        if ($return_path)
+            return substr($path, strlen($_SERVER['DOCUMENT_ROOT']));
         
         $svg = @file_get_contents($path);
         if ($svg === false)
@@ -483,6 +494,17 @@ class Assets {
 
             return $svg;
         }
+    }
+
+    private static function _sprite(string $icon_id, array $attributes = [], string $path) {
+        if (!file_exists($path))
+            throw new \Exception("SVG file not found: " . $path);
+
+        $attr_str = '';
+        foreach ($attributes as $k => $v)
+            $attr_str .= sprintf(' %s="%s"', $k, $v);
+        
+        return sprintf('<svg %s><use xlink:href="%s"></use></svg>', $attr_str, rtrim(substr($path, strlen($_SERVER['DOCUMENT_ROOT'])), '/').'#'.$icon_id);
     }
 
 }
