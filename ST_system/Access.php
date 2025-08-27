@@ -14,7 +14,7 @@ class Access {
             'value' => null
         ];
         
-        public static function page_access($PARAMS = []) {
+        public static function request_access($PARAMS = []) {
             /*
                 [
                     'name' => self::config['password_name'],
@@ -49,6 +49,29 @@ class Access {
             else
                 return call_user_func($onSuccess_func);
     
+        }
+
+        public static function http_access(array $PARAMS = []) {
+            /*
+                [
+                    'login' => self::config['password_name'],
+                    'password' => date('dm'),
+                ]
+            */
+
+            $login = isset($PARAMS['login']) ? htmlspecialchars($PARAMS['login']) : self::config['password_name'];
+            $password = isset($PARAMS['password']) ? htmlspecialchars($PARAMS['password']) : date('dm');
+            
+            if (
+                !isset($_SERVER['PHP_AUTH_USER']) ||
+                !isset($_SERVER['PHP_AUTH_PW']) ||
+                $_SERVER['PHP_AUTH_USER'] !== $login ||
+                $_SERVER['PHP_AUTH_PW'] !== $password
+            ) {
+                header('WWW-Authenticate: Basic realm="Restricted Area"');
+                header('HTTP/1.0 401 Unauthorized');
+                exit;
+            }
         }
 
         public static function call(callable $f, array $PARAMS = []) {
