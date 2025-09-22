@@ -11,8 +11,9 @@ abstract class Integration_driver {
         
     private array $listeners = [];
     private array $methods_map = [];
+    private array $rules_map = [];
 
-    final public function on(string $event, callable $listener) {
+    final protected function on(string $event, callable $listener) {
         $this->listeners[$event][] = $listener;
     }
 
@@ -24,19 +25,33 @@ abstract class Integration_driver {
             call_user_func_array($listener, $params);
     }
 
-    final protected static function prepare_params(array $config, &$input, $on_prepare = null) {
+    final public static function create(...$params) {
+        return new static(...$params);
+    }
+
+    final protected function prepare_params(array $config, &$input, $on_prepare = null) {
 
         $is_scalar = !is_array($input);
         $values   = $is_scalar ? [0 => $input] : $input;
         $rules    = $is_scalar ? [0 => $config] : $config;
         $result   = [];
 
-        foreach ($rules as $key => $rule) {
-            [$default, $rule, $convert] = array_pad($rule, 3, null);
+        foreach ($rules as $key => $rule_config) {
+
+            if (is_string($rule_config))
+                $rule_config = $this->rule($rule_config);
+            
+            $default = $rule_config['default'] ?? $rule_config[0] ?? null;
+            $rule = $rule_config['rule'] ?? $rule_config[1] ?? null;
+            $before = $rule_config['before'] ?? $rule_config[2] ?? null;
+            $after = $rule_config['after'] ?? $rule_config[3] ?? null;
 
             $val = $values[$key] ?? $default;
 
-            if (is_callable($rule) && !call_user_func($rule, $val, $result))
+            if (is_callable($before))
+                $val = $before($val, $key, $result);
+
+            if (is_callable($rule) && !$rule($val, $key, $result))
                 $val = $default;
             
             if ($val instanceof \Throwable)
@@ -44,18 +59,18 @@ abstract class Integration_driver {
 
             if ($val === null)
                 continue;
-            
-            if (is_callable($convert) && ($v = call_user_func($convert, $val, $result)))
-                $val = $v;
-                        
+
+            if (is_callable($after))
+                $val = $after($val, $key, $result);
+                                                
             $result[$key] = $val;
         }
 
         $input = $is_scalar ? $result[0] : $result;
 
-        if (is_callable($on_prepare) && ($v = call_user_func($on_prepare, $input)))
+        if (is_callable($on_prepare) && ($v = $on_prepare($input)))
             $input = $v;
-        
+
         return $input;
     }
 
@@ -66,14 +81,11 @@ abstract class Integration_driver {
 
         $this->trigger('__construct', ...$args);
 
-        if (empty(static::DEFAULT_POINT) || !filter_var(static::DEFAULT_POINT, FILTER_VALIDATE_URL))
-            throw new \Exception("Не задана точка API для ".get_called_class());
-
         if (static::ENABLE_TOKEN_CACHE && !is_dir(static::TOKENS_DIR))
             throw new \Exception("Не удалось найти директорию для токенов: ".static::TOKENS_DIR);
     }
 
-    final public function save_token(string $token, array $params = []) {
+    final protected function save_token(string $token, array $params = []) {
         if (!static::ENABLE_TOKEN_CACHE) 
             return null;
 
@@ -89,7 +101,7 @@ abstract class Integration_driver {
         ]));
     }
 
-    final public function load_token(array $params = []) {
+    final protected function load_token(array $params = []) {
         if (!static::ENABLE_TOKEN_CACHE) 
             return null;
 
@@ -113,26 +125,22 @@ abstract class Integration_driver {
         return $data['token'];
     }
 
-    final protected function method_config(string $method) {
-        return $this->methods_map[$method] ?? [];
-    }
-
-    final public function register_method(string $method, $config = []) {
+    final protected function register_method(string $method, $config = []): self {
         if (isset($this->methods_map[$method]))
             throw new \Exception("Метод '{$method}' уже зарегистрирован в ".get_called_class());
 
-        if (!is_array($config) && !is_callable($config)) {
+        if (!is_array($config) && !is_callable($config))
             throw new \Exception("Конфигурация метода '{$method}' должна быть массивом или функцией в ".get_called_class());
-        }
-
+        
         switch (true) {
             case is_callable($config):
                 break;
             case is_array($config):
-                self::prepare_params([
+                $this->prepare_params([
                     'point' => [static::DEFAULT_POINT, fn($value) => !empty($value) && filter_var($value, FILTER_VALIDATE_URL)],
                     'method' => ['GET', fn($value) => in_array(strtoupper($value), ['GET', 'POST']), fn($value) => strtoupper($value)],
                     'params' => [[], fn($value) => is_array($value)],
+                    'on_prepare' => [false, fn($value) => is_callable($value)],
                     'meta' => [[]],
                 ], $config);
                 break;
@@ -141,10 +149,61 @@ abstract class Integration_driver {
         }
 
         $this->methods_map[$method] = $config;
+
+        return $this;
     }
 
-    final public function register_methods_map(array $methods) {
+    final protected function unregister_method(string $method): self {
+        unset($this->methods_map[$method]);
+
+        return $this;
+    }
+
+    final protected function register_methods_map(array $methods): self {
         array_walk($methods, fn($config, $method) => $this->register_method($method, $config));
+
+        return $this;
+    }
+
+    final protected function unregister_methods_map(array $methods): self {
+        array_walk($methods, fn($method) => $this->unregister_method($method));
+
+        return $this;
+    }
+
+    final protected function register_rule(string $rule, array $config) {
+        if (isset($this->rules_map[$rule]))
+            throw new \Exception("Правило '{$rule}' уже зарегистрировано в ".get_called_class());
+
+        $this->rules_map[$rule] = $config;
+    }
+
+    final protected function register_rules_map(array $rules) {
+        array_walk($rules, fn($config, $rule) => $this->register_rule($rule, $config));
+    }
+
+    final protected function rule(string $rule) {
+
+        if (!isset($this->rules_map[$rule]))
+            throw new \Exception("Переданное правило '{$rule}' не зарегистрировано в ".get_called_class());
+
+        $rule_config = $this->rules_map[$rule];
+
+        $default = $rule_config['default'] ?? $rule_config[0] ?? null;
+        $rule = $rule_config['rule'] ?? $rule_config[1] ?? null;
+        $before = $rule_config['before'] ?? $rule_config[2] ?? null;
+        $after = $rule_config['after'] ?? $rule_config[3] ?? null;
+
+        return [
+            2 => $before,
+            'before' => $before,
+            3 => $after,
+            'after' => $after,
+            0 => $default,
+            'default' => $default,
+            1 => $rule,
+            'rule' => $rule,
+        ];
     }
 
     final protected function curl_init($request_url, $request_method, array $params = []) {
@@ -207,17 +266,20 @@ abstract class Integration_driver {
         $this->trigger('before_call', $method, $params);
         
         if (is_callable($this->methods_map[$method]))
-            return call_user_func($this->methods_map[$method], $params);
+            return $this->methods_map[$method]($params);
         
         $config = $this->methods_map[$method];
 
-        self::prepare_params($config['params'], $params);
+        $this->prepare_params($config['params'], $params, $config['on_prepare']);
 
         $this->trigger('call', $method, $params);
 
         [$request_url, $point] = $this->build_url($method, $config['point']);
 
-        $this->trigger('build_url', $request_url, $point, $method, $params);
+        $this->trigger('build_url', $request_url, $method, $params);
+
+        if (!filter_var($request_url, FILTER_VALIDATE_URL))
+            throw new \Exception("Задан некорректный путь для API: '{$request_url}' в ".get_called_class());
     
         $curl = $this->curl_init($request_url, $config['method'], $params);
 
@@ -242,6 +304,16 @@ abstract class Integration_driver {
             
             return $response_data['response'];
         }
+    }
+
+    public function __get(string $name) {
+        switch ($name) {
+            case 'methods_map':
+            case 'rules_map':
+                return $this->$name;
+        }
+
+        trigger_error(sprintf('Undefined property: %s::$%s', static::class, $name), E_USER_NOTICE);
     }
 
 }

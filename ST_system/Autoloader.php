@@ -10,11 +10,11 @@ final class Autoloader {
         if (trim($base_dir) == '')
             throw new \Exception("Некорректный путь к директории для автозагрузчика!");
     
-        if ((strpos($base_dir, '/') !== 0))
-            $base_dir = $_SERVER['DOCUMENT_ROOT'].'/'.$base_dir;
-
+        if ((strpos($base_dir, DIRECTORY_SEPARATOR) !== 0))
+            $base_dir = $_SERVER['DOCUMENT_ROOT'].DIRECTORY_SEPARATOR.$base_dir;
+        
         spl_autoload_register(function(string $class_name) use ($base_dir) {
-            $file = str_replace('//', '/', $base_dir.'/'.str_replace('\\', '/', $class_name).'.php');
+            $file = str_replace('//', DIRECTORY_SEPARATOR, $base_dir.DIRECTORY_SEPARATOR.str_replace('\\', DIRECTORY_SEPARATOR, $class_name).'.php');
 
             if (file_exists($file))
                 require_once $file;
@@ -24,8 +24,8 @@ final class Autoloader {
     private static function register_class(string $class_name, string $file_path) {
         static $autoload_registered  = false;
 
-        if ((strpos($file_path, '/') !== 0))
-            $file_path = $_SERVER['DOCUMENT_ROOT'].'/'.$file_path;
+        if ((strpos($file_path, DIRECTORY_SEPARATOR) !== 0))
+            $file_path = $_SERVER['DOCUMENT_ROOT'].DIRECTORY_SEPARATOR.$file_path;
 
         if (!$autoload_registered) {
             spl_autoload_register(function(string $class) {
@@ -35,26 +35,22 @@ final class Autoloader {
             $autoload_registered  = true;
         }
         
-        self::$class_map[$class_name] = str_replace('//', '/', $file_path);
+        self::$class_map[$class_name] = str_replace('//', DIRECTORY_SEPARATOR, $file_path);
     }
-
-    // private static function register_function(string $fn_name, $file_path_or_callable) {
-
-    //     if ((strpos($file_path_or_callable, '/') !== 0)) {
-    //         $file_path_or_callable = $_SERVER['DOCUMENT_ROOT'].'/'.$file_path_or_callable;
-    //     }
-
-    //     self::$function_map[$fn_name] = preg_replace('#/+#','/',$file_path_or_callable);
-    // }
 
     private string $base_dir;
 
+    private static function prepare_path(string $base_dir):string {
+        if (strpos($base_dir, '~') === 0)
+            $base_dir = $_SERVER['DOCUMENT_ROOT'].DIRECTORY_SEPARATOR.trim($base_dir, DIRECTORY_SEPARATOR.'~');
+        elseif (strpos($base_dir, DIRECTORY_SEPARATOR) !== 0)
+            $base_dir = __DIR__.DIRECTORY_SEPARATOR.trim($base_dir, DIRECTORY_SEPARATOR);
+
+        return $base_dir;
+    }
+
     public function __construct(string $base_dir) {
-
-        if ((strpos($base_dir, '/') !== 0))
-            $base_dir = $_SERVER['DOCUMENT_ROOT'].'/'.$base_dir;
-
-        $this->base_dir = $base_dir;
+        $this->base_dir = self::prepare_path($base_dir);
     }
 
     public static function __callStatic(string $name, array $args) {
@@ -83,11 +79,9 @@ final class Autoloader {
                 return;
         }
 
+        $file = self::prepare_path($file);
         if (pathinfo($file, PATHINFO_EXTENSION) === '')
             $file .= '.php';
-
-        if ((strpos($file, '~') === 0))
-            $file = $_SERVER['DOCUMENT_ROOT'].'/'.ltrim($file, '~/');
         
         switch ($name) {
             case 'require':
@@ -107,9 +101,9 @@ final class Autoloader {
 
         switch ($name) {
             case 'PSR_4':
-                return self::PSR_4(rtrim($this->base_dir, '/').'/'.ltrim($args[0], '/'));
+                return self::PSR_4(rtrim($this->base_dir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.ltrim($args[0], DIRECTORY_SEPARATOR));
             case 'register_class':
-                return self::register_class($args[0], rtrim($this->base_dir, '/').'/'.ltrim($args[1], '/'));
+                return self::register_class($args[0], rtrim($this->base_dir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.ltrim($args[1], DIRECTORY_SEPARATOR));
         }
 
         $file = reset($args) ?? '';
@@ -127,10 +121,13 @@ final class Autoloader {
             case 'require_once':
             case 'include':
             case 'include_once':
-                return self::__callStatic($name, [rtrim($this->base_dir, '/').'/'.ltrim($file, '/')]);
+                return self::__callStatic($name, [rtrim($this->base_dir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.ltrim($file, DIRECTORY_SEPARATOR)]);
         }
 
         throw new \Error("Call to undefined method " . __CLASS__ . "::{$name}()");
     }
 
+    public static function dir(string $base_dir): self {
+        return new self($base_dir);
+    }
 }

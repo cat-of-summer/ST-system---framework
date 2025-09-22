@@ -13,7 +13,7 @@ class Debug {
     private static $dump_call_counter = [];
     private static array $timers = [];
 
-    private static function get_output($content, $add_tree_backtrace) {
+    private static function get_output($content, $add_tree_backtrace, $wrap = true) {
         $timestamp_value = microtime(true);
         
         ob_start();
@@ -39,7 +39,7 @@ class Debug {
         $timestamp = $DateTime->format(self::$DateTimeFormat).strstr((string)$timestamp_value, '.', false);
         $backtrace = $add_tree_backtrace ? self::get_backtrace(['skip_start' => 1]) : self::get_backtrace(['skip_start' => 1, 'chain' => false]) ;
 
-        return '<pre>'.PHP_EOL.$timestamp.PHP_EOL.$backtrace.$output.PHP_EOL.'</pre>';
+        return ($wrap ? '<pre>'.PHP_EOL : '').$timestamp.PHP_EOL.$backtrace.$output.($wrap ? PHP_EOL.'</pre>' : '');
     }
 
     public static function get_backtrace($PARAMS = []) {
@@ -130,10 +130,10 @@ class Debug {
         $to_print = isset($PARAMS['print']) ? (bool)$PARAMS['print'] : true;
         $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
 
-        $output = self::get_output($content, $add_tree_backtrace_to_content);
+        $output = self::get_output($content, $add_tree_backtrace_to_content, false);
 
         if ($to_print) 
-            print "<script>console.log('{$output}')</script>";
+            print "<script>console.log(`{$output}`)</script>";
         
         return $output;
     }
