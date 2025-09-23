@@ -1,4 +1,4 @@
-<?
+<?php
 
 namespace ST_system;
 
