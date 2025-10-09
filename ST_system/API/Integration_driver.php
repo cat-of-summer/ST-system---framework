@@ -4,11 +4,11 @@ namespace ST_system\API;
 
 abstract class Integration_driver {
 
-    protected const ENABLE_TOKEN_CACHE = false;
-    protected const TOKENS_DIR = '/';
-
     protected const DEFAULT_POINT = '';
-        
+    protected const CACHE_DIRECTORY = '';
+    
+    private static $CACHE_DIRECTORY = null;
+
     private array $listeners = [];
     private array $methods_map = [];
     private array $rules_map = [];
@@ -25,7 +25,7 @@ abstract class Integration_driver {
             call_user_func_array($listener, $params);
     }
 
-    final public static function create(...$params) {
+    final public static function create(...$params): self {
         return new static(...$params);
     }
 
@@ -81,48 +81,19 @@ abstract class Integration_driver {
 
         $this->trigger('__construct', ...$args);
 
-        if (static::ENABLE_TOKEN_CACHE && !is_dir(static::TOKENS_DIR))
-            throw new \Exception("Не удалось найти директорию для токенов: ".static::TOKENS_DIR);
-    }
+        if (static::$CACHE_DIRECTORY === null && is_string(static::CACHE_DIRECTORY) && static::CACHE_DIRECTORY != '') {
+            if (strpos(static::CACHE_DIRECTORY, '~') === 0)
+                static::$CACHE_DIRECTORY = $_SERVER['DOCUMENT_ROOT'].DIRECTORY_SEPARATOR.trim(static::CACHE_DIRECTORY, DIRECTORY_SEPARATOR.'~');
+            elseif (strpos(static::CACHE_DIRECTORY, DIRECTORY_SEPARATOR) !== 0)
+                static::$CACHE_DIRECTORY = __DIR__.DIRECTORY_SEPARATOR.trim(static::CACHE_DIRECTORY, DIRECTORY_SEPARATOR);
 
-    final protected function save_token(string $token, array $params = []) {
-        if (!static::ENABLE_TOKEN_CACHE) 
-            return null;
+            if (!is_dir(static::$CACHE_DIRECTORY)) {
+                mkdir(static::$CACHE_DIRECTORY, 0775, true);
 
-        $params['expires_in'] = isset($params['expires_in']) ? (int)$params['expires_in'] : -1;
-        $params['token_name'] = isset($params['token_name']) ? (string)$params['token_name'] : 'default';
-
-        $file_path = str_replace('//', '/', static::TOKENS_DIR.'/'.md5(json_encode(array_diff_key($params, array_flip(['expires_in', 'token_name'])))).'.'.$params['token_name']);
-
-        file_put_contents($file_path, json_encode([
-            'token' => $token,
-            'expires_in' => $params['expires_in'],
-            'created_at' => time(),
-        ]));
-    }
-
-    final protected function load_token(array $params = []) {
-        if (!static::ENABLE_TOKEN_CACHE) 
-            return null;
-
-        $params['token_name'] = isset($params['token_name']) ? (string)$params['token_name'] : 'default';
-
-        $file_path = str_replace('//', '/', static::TOKENS_DIR.'/'.md5(json_encode(array_diff_key($params, array_flip(['expires_in', 'token_name'])))).'.'.$params['token_name']);
-
-        if (!file_exists($file_path))
-            return null;
-
-        $data = @json_decode(file_get_contents($file_path), true);
-
-        if (json_last_error() !== JSON_ERROR_NONE)
-            throw new \Exception("Ошибка при декодировании токена: '".json_last_error_msg()."' в ".get_called_class());
-
-        if (isset($data['expires_in']) && $data['expires_in'] > -1 && (time() - $data['created_at']) > $data['expires_in']) {
-            unlink($file_path);
-            return false;
+                if (!is_dir(static::$CACHE_DIRECTORY))
+                    static::$CACHE_DIRECTORY = '';
+            }
         }
-
-        return $data['token'];
     }
 
     final protected function register_method(string $method, $config = []): self {
@@ -141,6 +112,7 @@ abstract class Integration_driver {
                     'method' => ['GET', fn($value) => in_array(strtoupper($value), ['GET', 'POST']), fn($value) => strtoupper($value)],
                     'params' => [[], fn($value) => is_array($value)],
                     'on_prepare' => [false, fn($value) => is_callable($value)],
+                    'cache_ttl' => [0, fn($value) => is_int($value)],
                     'meta' => [[]],
                 ], $config);
                 break;
@@ -283,7 +255,48 @@ abstract class Integration_driver {
     
         $curl = $this->curl_init($request_url, $config['method'], $params);
 
-        $response_data = $this->execute_curl($curl);
+
+        if ($config['cache_ttl'] > 0 && !empty(static::$CACHE_DIRECTORY)) {
+            $cache_path = rtrim(static::$CACHE_DIRECTORY, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.md5($request_url.'|'.json_encode($params)).'.json';
+
+            $lock = fopen($cache_path.'.lock', 'c');
+            if ($lock === false) throw new \RuntimeException("Cannot open lock file {$cache_path}.lock");
+            flock($lock, LOCK_EX);
+
+            if (
+                is_file($cache_path) && 
+                is_readable($cache_path)
+            ) {
+                $meta = @json_decode(@file_get_contents($cache_path), true) ?: [];
+
+                if ($meta['cache_expires_in'] ?? 0 > time())
+                    $response_data = $meta['response_data'];
+            }
+
+            flock($lock, LOCK_UN);
+            fclose($lock);
+            @unlink($cache_path.'.lock');
+        }
+
+        if (empty($response_data))
+            $response_data = $this->execute_curl($curl);
+
+        if ($cache_path) {
+            $lock = fopen($cache_path.'.lock', 'c');
+            if ($lock === false) throw new \RuntimeException("Cannot open lock file {$cache_path}.lock");
+            flock($lock, LOCK_EX);
+
+            $meta = [
+                'cache_expires_in' => time() + $config['cache_ttl'],
+                'response_data' => $response_data
+            ];
+
+            @file_put_contents($cache_path, json_encode($meta));
+
+            flock($lock, LOCK_UN);
+            fclose($lock);
+            @unlink($cache_path.'.lock');
+        }
 
         if ($response_data['error']) {
 
