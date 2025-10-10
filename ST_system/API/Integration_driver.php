@@ -77,10 +77,6 @@ abstract class Integration_driver {
     protected function __init() {}
 
     final public function __construct(...$args) {
-        $this->__init();
-
-        $this->trigger('__construct', ...$args);
-
         if (static::$CACHE_DIRECTORY === null && is_string(static::CACHE_DIRECTORY) && static::CACHE_DIRECTORY != '') {
             if (strpos(static::CACHE_DIRECTORY, '~') === 0)
                 static::$CACHE_DIRECTORY = $_SERVER['DOCUMENT_ROOT'].DIRECTORY_SEPARATOR.trim(static::CACHE_DIRECTORY, DIRECTORY_SEPARATOR.'~');
@@ -94,6 +90,9 @@ abstract class Integration_driver {
                     static::$CACHE_DIRECTORY = '';
             }
         }
+
+        $this->__init();
+        $this->trigger('__construct', ...$args);
     }
 
     final protected function register_method(string $method, $config = []): self {
@@ -255,7 +254,6 @@ abstract class Integration_driver {
     
         $curl = $this->curl_init($request_url, $config['method'], $params);
 
-
         if ($config['cache_ttl'] > 0 && !empty(static::$CACHE_DIRECTORY)) {
             $cache_path = rtrim(static::$CACHE_DIRECTORY, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.md5($request_url.'|'.json_encode($params)).'.json';
 
@@ -269,8 +267,10 @@ abstract class Integration_driver {
             ) {
                 $meta = @json_decode(@file_get_contents($cache_path), true) ?: [];
 
-                if ($meta['cache_expires_in'] ?? 0 > time())
+                if (($meta['cache_expires_in'] ?? 0) > time()) {
+                    $use_cache = true;
                     $response_data = $meta['response_data'];
+                }
             }
 
             flock($lock, LOCK_UN);
@@ -281,7 +281,7 @@ abstract class Integration_driver {
         if (empty($response_data))
             $response_data = $this->execute_curl($curl);
 
-        if ($cache_path) {
+        if ($cache_path && !$use_cache) {
             $lock = fopen($cache_path.'.lock', 'c');
             if ($lock === false) throw new \RuntimeException("Cannot open lock file {$cache_path}.lock");
             flock($lock, LOCK_EX);
