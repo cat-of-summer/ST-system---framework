@@ -18,12 +18,16 @@ class Request {
     protected function __init():void {}
     protected function rules():array {return [];}
 
-    final public function __construct($route, string $request_url, array $url_params) {
+    final public function __construct($route = null, string $request_url = '', array $query_params = []) {
+
+        $this->uri = $request_url ?: $_SERVER['REQUEST_URI'] ?? '/';
+        $this->method = isset($_POST['_method']) ? $_POST['_method'] : $_SERVER['REQUEST_METHOD'];
+
+        if ($route && !in_array($this->method, $route->methods ?? []))
+            throw new \Exception("Method {$this->method} is not allowed!", 403);
+
         $raw_input = @json_decode(@file_get_contents('php://input'), true);
         $_POST = array_merge($_POST, is_array($raw_input) ? $raw_input : []);
-
-        $this->method = isset($_POST['_method']) ? $_POST['_method'] : $_SERVER['REQUEST_METHOD'];
-        $this->uri = $request_url;
 
         if (!in_array($this->method, $route->methods))
             throw new \Exception("Method {$this->method} is not allowed!", 403);
@@ -32,7 +36,7 @@ class Request {
         $this->post = $_POST;
         $this->data = array_merge($_GET, $_POST);
 
-        $this->query = $url_params;
+        $this->query = $query_params;
         $this->files = $_FILES;
 
         foreach ($_SERVER as $name => $value)
