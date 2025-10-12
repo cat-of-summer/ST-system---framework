@@ -2,7 +2,11 @@
 
 namespace ST_system\API;
 
+use ST_system\Traits\Validatable_params;
+
 abstract class Integration_driver {
+
+    use Validatable_params;
 
     protected const DEFAULT_POINT = '';
     protected const CACHE_DIRECTORY = '';
@@ -11,7 +15,6 @@ abstract class Integration_driver {
 
     private array $listeners = [];
     private array $methods_map = [];
-    private array $rules_map = [];
 
     final protected function on(string $event, callable $listener) {
         $this->listeners[$event][] = $listener;
@@ -27,54 +30,6 @@ abstract class Integration_driver {
 
     final public static function create(...$params): self {
         return new static(...$params);
-    }
-
-    final protected function prepare_params(array $config, &$input, $on_prepare = null) {
-
-        $is_scalar = !is_array($input);
-        $values   = $is_scalar ? [0 => $input] : $input;
-        $rules    = $is_scalar ? [0 => $config] : $config;
-        $result   = [];
-
-        foreach ($rules as $key => $rule_config) {
-
-            if (is_string($rule_config))
-                $rule_config = $this->rule($rule_config);
-            
-            $default = ($default = $rule_config['default'] ?? $rule_config[0] ?? null) && is_callable($default) 
-                ? $default($key, $result) 
-                : $default;
-
-            $rule = $rule_config['rule'] ?? $rule_config[1] ?? null;
-            $before = $rule_config['before'] ?? $rule_config[2] ?? null;
-            $after = $rule_config['after'] ?? $rule_config[3] ?? null;
-
-            $value = $values[$key] ?? $default;
-
-            if (is_callable($before))
-                $value = $before($value, $key, $result);
-
-            if (is_callable($rule) && !$rule($value, $key, $result))
-                $value = $default;
-            
-            if ($value instanceof \Throwable)
-                throw $value;
-
-            if ($value === null)
-                continue;
-
-            if (is_callable($after))
-                $value = $after($value, $key, $result);
-                                                
-            $result[$key] = $value;
-        }
-
-        $input = $is_scalar ? $result[0] : $result;
-
-        if (is_callable($on_prepare) && ($v = $on_prepare($input)))
-            $input = $v;
-
-        return $input;
     }
 
     protected function __init() {}
@@ -109,7 +64,7 @@ abstract class Integration_driver {
             case is_callable($config):
                 break;
             case is_array($config):
-                $this->prepare_params([
+                static::prepare_params([
                     'point' => [static::DEFAULT_POINT, fn($value) => !empty($value) && filter_var($value, FILTER_VALIDATE_URL)],
                     'method' => ['GET', fn($value) => in_array(strtoupper($value), ['GET', 'POST']), fn($value) => strtoupper($value)],
                     'params' => [[], fn($value) => is_array($value)],
@@ -143,41 +98,6 @@ abstract class Integration_driver {
         array_walk($methods, fn($method) => $this->unregister_method($method));
 
         return $this;
-    }
-
-    final protected function register_rule(string $rule, array $config) {
-        if (isset($this->rules_map[$rule]))
-            throw new \Exception("Правило '{$rule}' уже зарегистрировано в ".get_called_class());
-
-        $this->rules_map[$rule] = $config;
-    }
-
-    final protected function register_rules_map(array $rules) {
-        array_walk($rules, fn($config, $rule) => $this->register_rule($rule, $config));
-    }
-
-    final protected function rule(string $rule) {
-
-        if (!isset($this->rules_map[$rule]))
-            throw new \Exception("Переданное правило '{$rule}' не зарегистрировано в ".get_called_class());
-
-        $rule_config = $this->rules_map[$rule];
-
-        $default = $rule_config['default'] ?? $rule_config[0] ?? null;
-        $rule = $rule_config['rule'] ?? $rule_config[1] ?? null;
-        $before = $rule_config['before'] ?? $rule_config[2] ?? null;
-        $after = $rule_config['after'] ?? $rule_config[3] ?? null;
-
-        return [
-            2 => $before,
-            'before' => $before,
-            3 => $after,
-            'after' => $after,
-            0 => $default,
-            'default' => $default,
-            1 => $rule,
-            'rule' => $rule,
-        ];
     }
 
     final protected function curl_init($request_url, $request_method, array $params = []) {
@@ -246,7 +166,7 @@ abstract class Integration_driver {
         
         $config = $this->methods_map[$method];
 
-        $this->prepare_params($config['params'], $params, $config['on_prepare']);
+        static::prepare_params($config['params'], $params, $config['on_prepare']);
 
         $this->trigger('call', $method, $params);
 
@@ -324,8 +244,9 @@ abstract class Integration_driver {
     public function __get(string $name) {
         switch ($name) {
             case 'methods_map':
-            case 'rules_map':
                 return $this->$name;
+            case 'rules_map':
+                return static::$rules_map;
         }
 
         trigger_error(sprintf('Undefined property: %s::$%s', static::class, $name), E_USER_NOTICE);

@@ -15,7 +15,7 @@ final class RentalCRM extends Integration_driver {
         ]);
 
         $this->on('__construct', function(array $PARAMS = []) {
-            $this->SETTINGS = $this->prepare_params([
+            $this->SETTINGS = static::prepare_params([
                 'subdomain' => [new \Exception("Задан некорректный субдомен"), 'string'],
                 'api_key' => [null, 'string'],
             ], $PARAMS, function (&$params) {
@@ -40,7 +40,7 @@ final class RentalCRM extends Integration_driver {
             'orders' => [
                 'method' => 'GET',
                 'params' => [
-                    'filter' => [null, fn($v) => is_array($v), fn($v) => $this->prepare_params([
+                    'filter' => [null, fn($v) => is_array($v), fn($v) => static::prepare_params([
                         'ids' => [null, fn($v) => is_array($v) && count($v) == count(array_filter($v, 'is_int'))],
                     ], $v)],
                 ]
@@ -49,7 +49,7 @@ final class RentalCRM extends Integration_driver {
                 'method' => 'POST',
                 'params' => [
                     'site' => 'string',
-                    'order' => [new \Exception("Не передан order"), fn($v) => is_array($v), fn($v) => $this->prepare_params([
+                    'order' => [new \Exception("Не передан order"), fn($v) => is_array($v), fn($v) => static::prepare_params([
                         'customer' => [null, fn($v) => is_array($v) && array_intersect(['externalId','id','browserId'], array_keys($v))],
                         'customerComment' => 'string'
                     ], $v)]
@@ -61,7 +61,7 @@ final class RentalCRM extends Integration_driver {
             'customers' => [
                 'method' => 'GET',
                 'params' => [
-                    'filter' => [null, fn($v) => is_array($v), fn($v) => $this->prepare_params([
+                    'filter' => [null, fn($v) => is_array($v), fn($v) => static::prepare_params([
                         'name' => 'string',
                     ], $v)],
                 ],
@@ -70,12 +70,12 @@ final class RentalCRM extends Integration_driver {
                 'method' => 'POST',
                 'params' => [
                     'site' => 'string',
-                    'customer' => [new \Exception("Не передан customer"), fn($v) => is_array($v), fn($v) => $this->prepare_params([
+                    'customer' => [new \Exception("Не передан customer"), fn($v) => is_array($v), fn($v) => static::prepare_params([
                         'firstName' => 'string',
                         'lastName' => 'string',
                         'patronymic' => 'string',
                         'email' => [null, fn($v) => filter_var($v, FILTER_VALIDATE_EMAIL)],
-                        'phones' => [null, fn($v) => is_array($v), fn($v) => array_map(fn($phone) => $this->prepare_params([
+                        'phones' => [null, fn($v) => is_array($v), fn($v) => array_map(fn($phone) => static::prepare_params([
                             'number' => [new \Exception("Не передан номер телефона"), fn($v) => is_string($v)],
                         ], $phone), $v)],
                         'tags' => [null, fn($v) => is_array($v) && count($v) == count(array_filter($v, 'is_string'))],
@@ -98,7 +98,7 @@ final class RentalCRM extends Integration_driver {
                 'method' => 'POST',
                 'params' => [
                     'site' => 'string',
-                    'task' => [new \Exception("Не передан task"), fn($v) => is_array($v), fn($v) => $this->prepare_params([
+                    'task' => [new \Exception("Не передан task"), fn($v) => is_array($v), fn($v) => static::prepare_params([
                         'customer' => [null, fn($v) => is_array($v) && array_intersect(['externalId','id'], array_keys($v))],
                         'order' => [null, fn($v) => is_array($v) && array_intersect(['externalId','id','number'], array_keys($v))],
                         'performerId' => [new \Exception("Не передан performerId"), fn($v) => is_int($v)],
