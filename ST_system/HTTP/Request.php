@@ -2,62 +2,136 @@
 
 namespace ST_system\HTTP;
 
-use ST_system\Main;
+use ST_system\Traits\Validatable_params;
 
 class Request {
 
-    private $method;
-    private $uri;
+    use Validatable_params;
+
     private $data = [];
-    private $headers = [];
-    private $get = [];
-    private $post = [];
-    private $files = [];
-    private $query = [];
 
-    protected function __init():void {}
-    protected function rules():array {return [];}
+    protected function __init(): void {}
+    protected function __validate(): array { return []; }
 
-    final public function __construct($route = null, string $request_url = '', array $query_params = []) {
+    final public static function fetch(): self { return new static(); }
+    final private function __construct() {
+        static::register_rules_map([
+            'string' => [null, fn($v) => is_string($v), fn($v) => htmlspecialchars($v)],
+            '*string' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть строкой!"), fn($v) => is_string($v), fn($v) => htmlspecialchars($v)],
+            'int' => [null, fn($v) => is_int($v)],
+            '*int' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть числом!"), fn($v) => is_int($v)],
+            'email' => [null, fn($v) => filter_var($v, FILTER_VALIDATE_EMAIL)],
+            '*email' => [fn($k) => new \Exception("Переданный параметр {$k} не является электронной почтой!"), fn($v) => filter_var($v, FILTER_VALIDATE_EMAIL)],
+            'file' => [null, fn($v) => is_array($v) && is_file($v['tmp_name'])],
+            'file_array' => [[], fn($v) => is_array($v), 'after' => fn($v) => array_values(array_filter($v, fn($f) => is_array($f) && is_file($f['tmp_name'] ?? '')))],
+        ]);
 
-        $this->uri = $request_url ?: $_SERVER['REQUEST_URI'] ?? '/';
-        $this->method = isset($_POST['_method']) ? $_POST['_method'] : $_SERVER['REQUEST_METHOD'];
-
-        if ($route && !in_array($this->method, $route->methods ?? []))
-            throw new \Exception("Method {$this->method} is not allowed!", 403);
-
-        $raw_input = @json_decode(@file_get_contents('php://input'), true);
-        $_POST = array_merge($_POST, is_array($raw_input) ? $raw_input : []);
-
-        if (!in_array($this->method, $route->methods))
-            throw new \Exception("Method {$this->method} is not allowed!", 403);
-
-        $this->get = $_GET;
-        $this->post = $_POST;
-        $this->data = array_merge($_GET, $_POST);
-
-        $this->query = $query_params;
-        $this->files = $_FILES;
-
-        foreach ($_SERVER as $name => $value)
-            if (str_starts_with($name, 'HTTP_'))
-                $this->headers[str_replace(' ', '-', ucwords(str_replace('_', ' ', substr($name, 5))))] = $value;
-                    
-        Main::prepare_params($this->rules(), $this->data);
+        if (!empty($this->__validate()))
+            $this->validate($this->__validate());
 
         $this->__init();
     }
 
-    final public function __call(string $name, array $arguments) {
-        if (property_exists($this, $name)) {
-            $key = $arguments[0] ?? '';
+    final private function pattern(string $route_template, bool $strict_mode = true): self {
+        $this->data['query_keys'] = [];
 
-            return $key !== '' && is_array($this->$name)
-                ? ($this->$name[$key] ?? null)
-                : $this->$name;
-        }
-        
-        throw new \Exception("Method {$name} not found");
+        if ($strict_mode)
+            $route_template = preg_quote($route_template, '#');
+
+        $this->data['route_template'] = str_replace('//', '/', "#^".preg_replace_callback($strict_mode ? '#\\\\\{(\w+)\\\\\}#' : '#\\{(\w+)\\}#', function ($matches) {
+            $this->data['query_keys'][] = $matches[1];
+            return "(?P<{$matches[1]}>[^/]+)";
+        }, $route_template).'$#');
+
+        return $this;
     }
 
+    final private function validate(array $params) {
+        $this->data();
+
+        static::prepare_params_links($params, $this->data['data']);
+
+        foreach (['get', 'post', 'query', 'files'] as $key)
+            foreach ($this->data[$key] as $k => $v)
+                if ($v === null) {
+                    unset($this->data[$key][$k]);
+                    unset($this->data['data'][$k]);
+                }
+        
+        return $this;
+    }
+
+    final public function __call(string $name, array $arguments) {
+        if (method_exists($this, $name) && (substr($name, 0, 1) != '_'))
+            return $this->$name(...$arguments);
+
+        if (!isset($this->data[$name]))
+            switch ($name) {
+                case 'uri': $this->data['uri'] = $_SERVER['REQUEST_URI'] ?? '/'; break;
+                case 'host': $this->data['host'] = $_SERVER['HTTP_HOST']; break;
+                case 'port': $this->data['port'] = $_SERVER['SERVER_PORT']; break;
+                case 'scheme': $this->data['scheme'] = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http"; break;                
+                case 'url': $this->data['url'] = "{$this->scheme()}://{$this->host()}{$this->uri()}";
+                case 'method': $this->data['method'] = $this->post('_method') ?: $_SERVER['REQUEST_METHOD'];
+                case 'headers':
+                    foreach ($_SERVER as $param_name => $param_value)
+                        if (substr($param_name, 0, 5) == 'HTTP_')
+                            $this->data['headers'][str_replace(' ', '-', ucwords(str_replace('_', ' ', substr($param_name, 5))))] = $param_value;
+                    break;
+                case 'get': $this->data['get'] = $_GET; break;
+                case 'post': $this->data['post'] = array_merge($_POST, @json_decode(@file_get_contents('php://input'), true) ?? []); break;
+                case 'query':
+                    $this->data['query'] = (!empty($this->data['query_keys']) && preg_match($this->data['route_template'], $this->uri(), $matches))
+                        ? array_intersect_key($matches, array_flip($this->data['query_keys']))
+                        : [];
+                    break;
+                case 'files':
+                    foreach ($_FILES as $field => $file) {
+                        foreach ($file['name'] as $i => $filename) {
+                            if ($file['error'][$i] !== UPLOAD_ERR_OK)
+                                continue;
+                                            
+                            $this->data['files'][$field][] = [
+                                'name'       => $filename,
+                                'tmp_name'   => $file['tmp_name'][$i],
+                                'type'       => $file['type'][$i],
+                                'size'       => $file['size'][$i],
+                                'extenstion' => strtolower(pathinfo($filename, PATHINFO_EXTENSION))
+                            ];
+                        }
+                        if (count($this->data['files'][$field]) == 1)
+                            $this->data['files'][$field] = reset($this->data['files'][$field]);
+                    }
+                    break;
+                case 'data':
+                    $this->get(); $this->post(); $this->query(); $this->files();
+        
+                    $this->data['data'] = [];
+                    foreach (['get', 'post', 'query', 'files'] as $key)
+                        foreach ($this->data[$key] as $k => &$v)
+                            $this->data['data'][$k] = &$v;
+                    unset($v);
+                    break;
+                default:
+                    throw new \Exception("Method {$name} not found");
+            }
+
+        $key = $arguments[0] ?? '';
+
+        return $key !== '' && is_array($this->data[$name])
+            ? ($this->data[$name][$key] ?? null)
+            : $this->data[$name];
+    }
+
+    final public static function __callStatic(string $name, array $arguments) {
+        if (method_exists(static::class, $name))
+            return static::fetch()->$name(...$arguments);
+
+        $key = $arguments[0] ?? '';
+        $value = static::fetch()->$name();
+
+        return $key !== '' && is_array($value)
+            ? ($value[$key] ?? null)
+            : $value;
+    }
 }

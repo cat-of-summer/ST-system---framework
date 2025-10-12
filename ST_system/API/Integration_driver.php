@@ -41,29 +41,32 @@ abstract class Integration_driver {
             if (is_string($rule_config))
                 $rule_config = $this->rule($rule_config);
             
-            $default = $rule_config['default'] ?? $rule_config[0] ?? null;
+            $default = ($default = $rule_config['default'] ?? $rule_config[0] ?? null) && is_callable($default) 
+                ? $default($key, $result) 
+                : $default;
+
             $rule = $rule_config['rule'] ?? $rule_config[1] ?? null;
             $before = $rule_config['before'] ?? $rule_config[2] ?? null;
             $after = $rule_config['after'] ?? $rule_config[3] ?? null;
 
-            $val = $values[$key] ?? $default;
+            $value = $values[$key] ?? $default;
 
             if (is_callable($before))
-                $val = $before($val, $key, $result);
+                $value = $before($value, $key, $result);
 
-            if (is_callable($rule) && !$rule($val, $key, $result))
-                $val = $default;
+            if (is_callable($rule) && !$rule($value, $key, $result))
+                $value = $default;
             
-            if ($val instanceof \Throwable)
-                throw $val;
+            if ($value instanceof \Throwable)
+                throw $value;
 
-            if ($val === null)
+            if ($value === null)
                 continue;
 
             if (is_callable($after))
-                $val = $after($val, $key, $result);
+                $value = $after($value, $key, $result);
                                                 
-            $result[$key] = $val;
+            $result[$key] = $value;
         }
 
         $input = $is_scalar ? $result[0] : $result;
@@ -178,9 +181,11 @@ abstract class Integration_driver {
     }
 
     final protected function curl_init($request_url, $request_method, array $params = []) {
+        $this->trigger('before_curl_init', $request_url, $request_method, $params);
+
         $curl = curl_init();
 
-        $this->trigger('before_curl_init', $request_url, $request_method, $params);
+        $this->trigger('curl_init', $request_url, $request_method, $curl);
 
         switch ($request_method) {
             case 'GET':
@@ -267,10 +272,8 @@ abstract class Integration_driver {
             ) {
                 $meta = @json_decode(@file_get_contents($cache_path), true) ?: [];
 
-                if (($meta['cache_expires_in'] ?? 0) > time()) {
-                    $use_cache = true;
-                    $response_data = $meta['response_data'];
-                }
+                if ($meta['cache_expires_in'] ?? 0 > time())
+                    $cached_data = $meta['response_data'];
             }
 
             flock($lock, LOCK_UN);
@@ -278,10 +281,11 @@ abstract class Integration_driver {
             @unlink($cache_path.'.lock');
         }
 
-        if (empty($response_data))
-            $response_data = $this->execute_curl($curl);
+        $response_data = empty($cached_data)
+            ? $this->execute_curl($curl)
+            : $cached_data;
 
-        if ($cache_path && !$use_cache) {
+        if ($cache_path && empty($cached_data)) {
             $lock = fopen($cache_path.'.lock', 'c');
             if ($lock === false) throw new \RuntimeException("Cannot open lock file {$cache_path}.lock");
             flock($lock, LOCK_EX);
@@ -299,13 +303,11 @@ abstract class Integration_driver {
         }
 
         if ($response_data['error']) {
-
             if ($this->trigger('curl_error', $method, $params, $response_data) === false)
                 throw new \Exception("Ошибка при запросе к API: '{$response_data['error']}' в ".get_called_class());
 
             return false;
         } else {
-
             if ($this->trigger('prepare_response', $method, $params, $response_data) === false) {
                 $response_data['response'] = @json_decode($response_data['response'], true);
 

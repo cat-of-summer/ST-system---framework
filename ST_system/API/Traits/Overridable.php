@@ -25,12 +25,4 @@ trait Overridable {
 
         return $this;
     }
-
-    final public function p_prepare_params(array $config, &$input, $on_prepare = null) {
-        return $this->prepare_params($config, $input, $on_prepare);
-    }
-
-    final public function p_rule(string $rule) {
-        return $this->rule($rule);
-    }
 }

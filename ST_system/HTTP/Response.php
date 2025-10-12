@@ -2,7 +2,7 @@
 
 namespace ST_system\HTTP;
 
-class Response {
+final class Response {
     private $status = 200;
     private $headers = [];
 
@@ -10,13 +10,15 @@ class Response {
     private $stream_callback = null;
     private $file_path = null;
 
-    public function __construct() {}
-
-    final public static function create(...$args): self {
-        return new static(...$args);    
+    public static function __callStatic(string $name, array $arguments) {
+        return  (new static)->$name(...$arguments);
+    }
+    
+    public function __call(string $name, array $arguments) {
+        return $this->{$name}(...$arguments);
     }
 
-    final public function header(string $key, string $value): self {
+    private function header(string $key, string $value): self {
         $parts = preg_split('/[\\-_ ]+/', $key);
         $parts = array_map(function ($p) {
             return ucfirst(strtolower($p));
@@ -26,25 +28,25 @@ class Response {
         return $this;
     }
 
-    final public function headers(array $headers): self {
+    private function headers(array $headers): self {
         array_walk($headers, fn($value, $key) => $this->header($key, $value));
 
         return $this;
     }
 
-    final public function status(int $code): self {
+    private function status(int $code): self {
         $this->status = $code;
         return $this;
     }
 
-    final public function redirect(string $url, int $status = 302): self {
+    private function redirect(string $url, int $status = 302): self {
         $this->status($status);
         $this->header('Location', $url);
 
         return $this;
     }
 
-    final public function html(string $html, int $status = 200): self {
+    private function html(string $html, int $status = 200): self {
         $this->status($status);
         $this->header('Content-Type', 'text/html; charset=UTF-8');
 
@@ -53,7 +55,7 @@ class Response {
         return $this;
     }
 
-    final public function json($data, int $status = 200, int $json_options = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES): self {
+    private function json($data, int $status = 200, int $json_options = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES): self {
         $this->status($status);
         $this->header('Content-Type', 'application/json; charset=UTF-8');
 
@@ -67,7 +69,7 @@ class Response {
         return $this;
     }
 
-    final public function file(string $full_path, string $file_name = '', bool $download = false): self {
+    private function file(string $full_path, string $file_name = '', bool $download = false): self {
         if (!is_file($full_path) || !is_readable($full_path))
             throw new \InvalidArgumentException("File not found or not readable: {$full_path}");
         
@@ -105,25 +107,25 @@ class Response {
         return $this;
     }
 
-    final public function download(string $full_path, string $file_name = ''): self {
+    private function download(string $full_path, string $file_name = ''): self {
         return $this->file($full_path, $file_name, true);
     }
 
-    final public function stream(callable $callback, int $status = 200): self {
+    private function stream(callable $callback, int $status = 200): self {
         $this->stream_callback = $callback;
         $this->status($status);
 
         return $this;
     }
 
-    final public function stream_download(callable $callback, string $file_name, int $status = 200): self {
+    private function stream_download(callable $callback, string $file_name, int $status = 200): self {
         $this->header('Content-Type', 'application/octet-stream');
         $this->header('Content-Disposition', 'attachment; filename="'.str_replace('"', "'", $file_name).'"');
 
         return $this->stream($callback, $status);
     }
 
-    final public function send(): void {
+    public function send(): void {
         if (headers_sent($file, $line))
             throw new \RuntimeException("Cannot send response, headers already sent in {$file}:{$line}");
         
@@ -154,7 +156,7 @@ class Response {
             fclose($fp);
         } else
             echo $this->content;
-
+            
         exit;
     }
 }
