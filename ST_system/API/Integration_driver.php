@@ -231,7 +231,9 @@ abstract class Integration_driver {
                     'raw_data' => $raw_data
                 ];
                 
-                if ($this->trigger('save_cache', $method, $params, $raw_data, $meta) === false)
+                $this->trigger('save_cache', $method, $params, $raw_data, $meta);
+
+                if (!empty($meta))
                     @file_put_contents($cache_path, json_encode($meta));
                 
                 flock($lock, LOCK_UN);
