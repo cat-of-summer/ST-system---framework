@@ -192,7 +192,7 @@ abstract class Integration_driver {
             ) {
                 $meta = @json_decode(@file_get_contents($cache_path), true) ?: [];
 
-                if ($meta['cache_expires_in'] ?? 0 > time())
+                if (($meta['cache_expires_in'] ?? 0) > time())
                     $cached_data = $meta['response_data'];
             }
 
