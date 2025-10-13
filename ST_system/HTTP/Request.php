@@ -19,6 +19,8 @@ class Request {
             'string' => [null, fn($v) => is_string($v), fn($v) => htmlspecialchars($v)],
             '*string' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть строкой!"), fn($v) => is_string($v), fn($v) => htmlspecialchars($v)],
             'int' => [null, fn($v) => is_int($v)],
+            'bool' => [null, 'after' => fn($v) => (bool)$v],
+            '*bool' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть булевым значением!"), fn($v) => !is_null($v),'after' => fn($v) => (bool)$v],
             '*int' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть числом!"), fn($v) => is_int($v)],
             'email' => [null, fn($v) => filter_var($v, FILTER_VALIDATE_EMAIL)],
             '*email' => [fn($k) => new \Exception("Переданный параметр {$k} не является электронной почтой!"), fn($v) => filter_var($v, FILTER_VALIDATE_EMAIL)],
@@ -86,12 +88,14 @@ class Request {
                         : [];
                     break;
                 case 'files':
+                    $this->data['files'] = [];
                     foreach ($_FILES as $field => $file) {
+                        $this->data['files'][$field] = [];
                         foreach ($file['name'] as $i => $filename) {
                             if ($file['error'][$i] !== UPLOAD_ERR_OK)
                                 continue;
                                             
-                            $this->data['files'][$field][] = [
+                             $this->data['files'][$field][] = [
                                 'name'       => $filename,
                                 'tmp_name'   => $file['tmp_name'][$i],
                                 'type'       => $file['type'][$i],
@@ -99,8 +103,6 @@ class Request {
                                 'extenstion' => strtolower(pathinfo($filename, PATHINFO_EXTENSION))
                             ];
                         }
-                        if (count($this->data['files'][$field]) == 1)
-                            $this->data['files'][$field] = reset($this->data['files'][$field]);
                     }
                     break;
                 case 'data':
