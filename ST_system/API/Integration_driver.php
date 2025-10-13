@@ -193,7 +193,7 @@ abstract class Integration_driver {
                 $meta = @json_decode(@file_get_contents($cache_path), true) ?: [];
 
                 if (($meta['cache_expires_in'] ?? 0) > time())
-                    $cached_data = $meta['response_data'];
+                    $cached_data = $meta['raw_data'];
             }
 
             flock($lock, LOCK_UN);
@@ -201,43 +201,45 @@ abstract class Integration_driver {
             @unlink($cache_path.'.lock');
         }
 
-        $response_data = empty($cached_data)
+        $raw_data = empty($cached_data)
             ? $this->execute_curl($curl)
             : $cached_data;
 
-        if ($cache_path && empty($cached_data)) {
-            $lock = fopen($cache_path.'.lock', 'c');
-            if ($lock === false) throw new \RuntimeException("Cannot open lock file {$cache_path}.lock");
-            flock($lock, LOCK_EX);
-
-            $meta = [
-                'cache_expires_in' => time() + $config['cache_ttl'],
-                'response_data' => $response_data
-            ];
-
-            @file_put_contents($cache_path, json_encode($meta));
-
-            flock($lock, LOCK_UN);
-            fclose($lock);
-            @unlink($cache_path.'.lock');
-        }
-
-        if ($response_data['error']) {
-            if ($this->trigger('curl_error', $method, $params, $response_data) === false)
-                throw new \Exception("Ошибка при запросе к API: '{$response_data['error']}' в ".get_called_class());
+        if ($raw_data['error']) {
+            if ($this->trigger('curl_error', $method, $params, $raw_data) === false)
+                throw new \Exception("Ошибка при запросе к API: '{$raw_data['error']}' в ".get_called_class());
 
             return false;
         } else {
-            if ($this->trigger('prepare_response', $method, $params, $response_data) === false) {
-                $response_data['response'] = @json_decode($response_data['response'], true);
+            if ($this->trigger('prepare_response', $method, $params, $raw_data) === false) {
+                $response = @json_decode($raw_data['response'], true);
 
                 if (json_last_error() !== JSON_ERROR_NONE) 
                     throw new \Exception("Ошибка при декодировании ответа: '".json_last_error_msg()."' в ".get_called_class());
+            } else
+                $response = $raw_data['response'];
+
+            $this->trigger('response', $method, $params, $response);
+            
+            if ($cache_path && empty($cached_data)) {
+                $lock = fopen($cache_path.'.lock', 'c');
+                if ($lock === false) throw new \RuntimeException("Cannot open lock file {$cache_path}.lock");
+                flock($lock, LOCK_EX);
+
+                $meta = [
+                    'cache_expires_in' => time() + $config['cache_ttl'],
+                    'raw_data' => $raw_data
+                ];
+                
+                if ($this->trigger('save_cache', $method, $params, $raw_data, $meta) === false)
+                    @file_put_contents($cache_path, json_encode($meta));
+                
+                flock($lock, LOCK_UN);
+                fclose($lock);
+                @unlink($cache_path.'.lock');
             }
 
-            $this->trigger('response', $method, $params, $response_data);
-            
-            return $response_data['response'];
+            return $response;
         }
     }
 
