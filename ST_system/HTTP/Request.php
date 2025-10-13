@@ -14,7 +14,7 @@ class Request {
     protected function __validate(): array { return []; }
 
     final public static function fetch(): self { return new static(); }
-    final private function __construct() {
+    private function __construct() {
         static::register_rules_map([
             'string' => [null, fn($v) => is_string($v), fn($v) => htmlspecialchars($v)],
             '*string' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть строкой!"), fn($v) => is_string($v), fn($v) => htmlspecialchars($v)],
@@ -32,7 +32,7 @@ class Request {
         $this->__init();
     }
 
-    final private function pattern(string $route_template, bool $strict_mode = true): self {
+    private function pattern(string $route_template, bool $strict_mode = true): self {
         $this->data['query_keys'] = [];
 
         if ($strict_mode)
@@ -46,7 +46,7 @@ class Request {
         return $this;
     }
 
-    final private function validate(array $params) {
+    private function validate(array $params) {
         $this->data();
 
         static::prepare_params_links($params, $this->data['data']);
