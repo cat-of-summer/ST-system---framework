@@ -69,7 +69,7 @@ class Request {
 
         if (!isset($this->data[$name]))
             switch ($name) {
-                case 'uri': $this->data['uri'] = $_SERVER['REQUEST_URI'] ?? '/'; break;
+                case 'uri': $this->data['uri'] = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH); break;
                 case 'host': $this->data['host'] = $_SERVER['HTTP_HOST']; break;
                 case 'port': $this->data['port'] = $_SERVER['SERVER_PORT']; break;
                 case 'scheme': $this->data['scheme'] = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http"; break;                
