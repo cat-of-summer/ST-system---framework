@@ -39,12 +39,12 @@ final class Bitrix24 extends Integration_driver {
             }],
             'string' => [null, fn($v) => is_string($v)],
             'bool' => [null, fn($v) => is_bool($v) || in_array($v, ['Y', 'N']), fn($v) => is_bool($v) ? ($v ? 'Y' : 'N') : $v],
-            'crm_multifield' => [null, fn($v) => is_array($v), fn($v) => $this->prepare_params([
+            'crm_multifield' => [null, fn($v) => is_array($v), fn($v) => array_map(fn($i) => $this->prepare_params([
                 'ID' => [null, fn($v) => is_int($v)],
                 'TYPE_ID' => [null, fn($v) => is_string($v) && in_array($v, ['PHONE', 'EMAIL', 'WEB', 'IM', 'LINK'])],
                 'VALUE' => [new \Exception("Не передан VALUE"), fn($v) => is_string($v)],
                 'VALUE_TYPE' => [new \Exception("Не передан VALUE_TYPE"), fn($v) => is_string($v) && in_array($v, ['WORK', 'MOBILE', 'FAX', 'HOME', 'PAGER', 'MAILING', 'OTHER', 'FACEBOOK', 'VK', 'LIVEJOURNAL', 'TWITTER', 'TELEGRAM', 'SKYPE', 'VIBER', 'INSTAGRAM', 'BITRIX24', 'OPENLINE', 'IMOL', 'ICQ', 'MSN', 'JABBER'])],
-            ], $v)]
+            ], $i), $v)]
         ]);
 
         $this->register_methods_map([
