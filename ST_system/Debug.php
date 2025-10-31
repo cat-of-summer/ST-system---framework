@@ -2,55 +2,36 @@
 
 namespace ST_system;
 
-class Debug {
+final class Debug {
+    private static $CONFIG = [
+        'timestamp_format_output' => 'd-m-Y H:i:s',
+        'timestamp_format_file' => 'd-m-Y~H-i-s',
+        'dir' => '~logs',
+        'file' => 'log.html',
+        'output_type' => 'json_encode'
+    ];
 
-    public static $DateTimeFormat = 'd-m-Y H:i:s';
-    public static $DateTimeFileFormat = 'd-m-Y~H-i-s';
-    public static $default_dir_path = 'logs';
-    public static $default_file_name = 'log.html';
-    public static $dump_method = 'json_encode'; //'var_dump', 'print_r', 'var_export', 'json_encode'
-
-    private static $dump_call_counter = [];
+    private static array $dumper_counter = [];
     private static array $timers = [];
 
-    private static function get_output($content, $add_tree_backtrace, $wrap = true) {
-        $timestamp_value = microtime(true);
-        
-        ob_start();
-        switch (self::$dump_method) {
-            case 'print_r':
-                print_r($content);
-                break;
-            case 'var_export':
-                var_export($content);
-                break;
-            case 'var_dump':
-                var_dump($content);
-                break;
-            default:
-                print json_encode($content, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                break;
-        }
-        $output = ob_get_clean();
-        
-        $DateTime = new \DateTime();
-        $DateTime->setTimestamp((int)$timestamp_value);
-        
-        $timestamp = $DateTime->format(self::$DateTimeFormat).strstr((string)$timestamp_value, '.', false);
-        $backtrace = $add_tree_backtrace ? self::get_backtrace(['skip_start' => 1]) : self::get_backtrace(['skip_start' => 1, 'chain' => false]) ;
-
-        return ($wrap ? '<pre>'.PHP_EOL : '').$timestamp.PHP_EOL.$backtrace.$output.($wrap ? PHP_EOL.'</pre>' : '');
+    public static function set_config(array $config = []): void {
+        static::$CONFIG = array_merge(static::$CONFIG, $config);
     }
 
-    public static function get_backtrace($PARAMS = []) {
-        /*
-            [
-                'chain' => true,
-                'skip_start' => 0,
-                'skip_end' => 0
-            ]
-        */
+    public static function timestamp(string $format = '') {
+        $timestamp = function_exists('hrtime')
+            ? hrtime(true) / 1e9
+            : microtime(true);
 
+        if ($format != '') {
+            $DateTime = (new \DateTime())->setTimestamp((int)$timestamp);
+            $timestamp = $DateTime->format($format).strstr((string)$timestamp, '.', false);
+        }
+
+        return $timestamp;
+    }
+
+    public static function backtrace(array $config = []): string {
         $get_trace_func = function($trace) {
             $call = isset($trace['class'])
                 ? "{$trace['class']}{$trace['type']}{$trace['function']}()"
@@ -59,187 +40,53 @@ class Debug {
             $file = isset($trace['file']) ? $trace['file'] : '[internal function]';
             $line = isset($trace['line']) ? $trace['line'] : '[unknown line]';
 
-            return "{$call} in {$file} on line {$line}.".PHP_EOL;
+            return "{$call} in {$file} on line {$line}.\n";
         };
 
-        $chain = isset($PARAMS['chain']) ? (bool)$PARAMS['chain'] : true;
-        $skip_start = isset($PARAMS['skip_start']) ? (int)$PARAMS['skip_start'] + 1 : 1;
-        $skip_end = isset($PARAMS['skip_end']) ? (int)$PARAMS['skip_end'] : 0;
+        $config = [
+            'chain' => true,
+            'skip_start' => 0,
+            'skip_end' => 0,
+            ...$config
+        ];
 
-        if ($chain) {
+        $result = "";
+        if ($config['chain']) {
             $full_backtrace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT);
 
-            $result = "";
-            for ($level = $skip_start; $level < count($full_backtrace) - $skip_end; $level++) {
-                $indent = str_repeat("    ", $level - $skip_start).'↘ ';
-
-                $result .= $indent.$get_trace_func($full_backtrace[$level]);
-            }
-
-        } else {
-            $last_caller = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT)[2];
-
-            $result = $get_trace_func($last_caller);
-        }
-
+            for ($level = $config['skip_start'] + 1; $level < count($full_backtrace) - $config['skip_end']; $level++)
+                $result .= str_repeat("    ", $level - $config['skip_start'] - 1).'↘ '.$get_trace_func($full_backtrace[$level]);
+        } else
+            $result = $get_trace_func(debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT)[2]);
+        
         return $result;
     }
 
-    public static function dump_throw($content, $PARAMS = []) {
-        /*
-            [
-                'add_backtrace' => false
-            ]
-        */
-
-        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
-
-        $output = self::get_output($content, $add_tree_backtrace_to_content);
-
-        throw new \Exception($output);
-        exit;
+    public static function start(string $name = 'default'): void {
+        static::$timers[$name] = static::timestamp();
     }
 
-    public static function dump_here($content, $PARAMS = []) {
-        /*
-            [
-                'print' => true,
-                'add_backtrace' => false
-            ]
-        */
-
-        $to_print = isset($PARAMS['print']) ? (bool)$PARAMS['print'] : true;
-        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
-
-        $output = self::get_output($content, $add_tree_backtrace_to_content);
-
-        if ($to_print) 
-            print $output;
-        
-        return $output;
-    }
-
-    public static function dump_to_console($content, $PARAMS = []) {
-        /*
-            [
-                'print' => true,
-                'add_backtrace' => false
-            ]
-        */
-
-        $to_print = isset($PARAMS['print']) ? (bool)$PARAMS['print'] : true;
-        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
-
-        $output = self::get_output($content, $add_tree_backtrace_to_content, false);
-
-        if ($to_print) 
-            print "<script>console.log(`{$output}`)</script>";
-        
-        return $output;
-    }
-
-    public static function dump_to_file($content, $PARAMS = []) {
-        /*
-            [
-                'file_name' => self::$default_file_name, //log.txt, log, log.html
-                'dir_path' => self::$default_dir_path,
-                'merge_dumps' => true,
-                'add_backtrace' => false,
-                'add_timestamp' => false,
-                'append' => false,
-            ]
-        */
-
-        $prepare_file_name_func = function ($file_name, $add_timestamp) {
-            $last_slash_position = strrpos($file_name, '/');
-            $last_dot_position = strrpos($file_name, '.', $last_slash_position);
-
-            if (!$last_dot_position)
-                $file_name .= '.html';
-
-            if ($add_timestamp) {
-                $last_dot_position = strrpos($file_name, '.', $last_slash_position);
-                $file_name = substr_replace($file_name, '_'. date(self::$DateTimeFileFormat).'.', $last_dot_position, 1);
-            }
-
-            return $file_name;
-        };
-
-        $file_name_from_dir_path = isset($PARAMS['file_name']) ? htmlspecialchars($PARAMS['file_name']) : self::$default_file_name;
-        $dir_path_from_document_root = isset($PARAMS['dir_path']) ? htmlspecialchars($PARAMS['dir_path']) : self::$default_dir_path;
-        $merge_dumps_in_one_file = isset($PARAMS['merge_dumps']) ? (bool)$PARAMS['merge_dumps'] : true;
-        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
-        $add_timestamp_to_name = isset($PARAMS['add_timestamp']) ? (bool)$PARAMS['add_timestamp'] : false;
-        $need_to_append_files = isset($PARAMS['append']) ? (bool)$PARAMS['append'] : false;
-
-        $output = self::get_output($content, $add_tree_backtrace_to_content);
-        $file_name = $prepare_file_name_func($file_name_from_dir_path, $add_timestamp_to_name);
-        $dir_path = $_SERVER["DOCUMENT_ROOT"].'/'.$dir_path_from_document_root;
-        $full_path = str_replace('//', '/', $dir_path.'/'.$file_name);
-
-        if (!is_dir($dir_path)) mkdir($dir_path, 0777, true);
-
-    if (self::$dump_call_counter[$full_path])
-        self::$dump_call_counter[$full_path]++;
-    else
-        self::$dump_call_counter[$full_path] = 1;
-
-        $need_to_append_current_file = (self::$dump_call_counter[$full_path] == 1) 
-            ? (file_exists($full_path) && $need_to_append_files) 
-            : $merge_dumps_in_one_file;
-
-    return file_put_contents($full_path, $output, !$need_to_append_current_file ?: FILE_APPEND);
-}
-
-    public static function dump_to_email($content, $PARAMS = []) {
-        /*
-            [
-                'to' => null,
-                'subject' => 'dump_to_email_log',
-                'add_backtrace' => false
-            ]
-        */
-
-        $email_to = isset($PARAMS['to']) ? htmlspecialchars($PARAMS['to']) : null;
-        $subject = isset($PARAMS['subject']) ? htmlspecialchars($PARAMS['subject']) : 'dump_to_email_log';
-        $add_tree_backtrace_to_content = isset($PARAMS['add_backtrace']) ? (bool)$PARAMS['add_backtrace'] : false;
-
-        $output = self::get_output($content, $add_tree_backtrace_to_content);
-
-        return mail($email_to, $subject, $output);
-    }
-
-    public static function start_timer(string $name = 'default') {
-        
-        self::$timers[$name] = function_exists('hrtime')
-            ? hrtime(true)
-            : microtime(true);
-    }
-
-    public static function end_timer(string $name = 'default') {
-        if (!isset(self::$timers[$name]))
+    public static function finish(string $name = 'default'): float {
+        if (!isset(static::$timers[$name]))
             throw new \InvalidArgumentException("Timer '$name' was not started.");
         
-        $result = function_exists('hrtime')
-            ? (hrtime(true) - self::$timers[$name]) / 1e9
-            : microtime(true) - self::$timers[$name];
+        $result = static::timestamp() - static::$timers[$name];
 
-        unset(self::$timers[$name]);
+        unset(static::$timers[$name]);
 
         return $result;
     }
 
-    public static function benchmark(callable $job, int $iterations = 10, int $warmup = 0) {
+    public static function benchmark(callable $job, int $iterations = 10, int $warmup = 0): array {
         for ($w = 0; $w < $warmup; $w++)
             $job();
         
+        $timer = substr(str_shuffle('0123456789abcdefghijklmnopqrstuvwxyz'), 0, 8);
         $durations = [];
         for ($i = 0; $i < $iterations; $i++) {
-            self::start_timer("default#{$i}");
+            self::start("{$timer}#{$i}");
                 $job();
-            $sec = self::end_timer("default#{$i}");
-
-            $durations[] = $sec;
+            $durations[] = self::finish("{$timer}#{$i}");
         }
 
         $total = array_sum($durations);
@@ -268,6 +115,116 @@ class Debug {
             'total' => $total,
             'unit' => 's',
         ];
+    }
+
+    private array $config = [];
+
+    private function get_output($content): string {
+        $this->config = [
+            'backtrace' => false,
+            'pre' => true,
+            ...$this->config
+        ];
+
+        $dumpers = [
+            'print_r' => fn($c) => print_r($c, true),
+            'var_export' => fn($c) => var_export($c, true),
+            'var_dump' => fn($c) => var_dump($c),
+            'json_encode' => fn($c) => json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        ];
+
+        $dumper = $dumpers[$this->config['output_type'] ?? 'json_encode'] ?? $dumpers['json_encode'];
+
+        ob_start();
+        echo $dumper($content);
+        $output = ob_get_clean();
+
+        $inner = sprintf("%s\n%s\n%s",
+            static::timestamp($this->config['timestamp_format_output']), 
+            $this->config['backtrace']
+                ? static::backtrace()
+                : static::backtrace(['chain' => false]),
+            $output
+        );
+
+        return $this->config['pre']
+            ? sprintf("<pre>\n%s\n</pre>", $inner)
+            : $inner;
+    }
+
+    private function __construct(array $config = []) {
+        $this->config = [
+            ...static::$CONFIG,
+            ...$config
+        ];
+
+        if (strpos($this->config['dir'], '~') === 0)
+            $this->config['dir'] = $_SERVER['DOCUMENT_ROOT'].DIRECTORY_SEPARATOR.trim($this->config['dir'], DIRECTORY_SEPARATOR.'~');
+        elseif (strpos($this->config['dir'], DIRECTORY_SEPARATOR) !== 0)
+            $this->config['dir'] = __DIR__.DIRECTORY_SEPARATOR.trim($this->config['dir'], DIRECTORY_SEPARATOR);
+
+        $this->config['file'] = trim($this->config['file'], DIRECTORY_SEPARATOR);
+    }
+
+    private function throw($content): void {
+        throw new \Exception(
+            static::get_output($content)
+        );
+    }
+
+    private function here($content): void {
+        echo static::get_output($content);
+    }
+
+    private function to_console($content): void {
+        echo '<script>console.log(`'.static::get_output($content).'`)</script>';
+    }
+
+    private function to_email($content): bool {
+        $this->config = [
+            'to' => null,
+            'subject' => 'dump_to_email_log',
+            ...$this->config
+        ];
+
+        return mail($this->config['to'], $this->config['subject'], static::get_output($content));
+    }
+
+    private function to_file($content) {
+        $this->config = [
+            'timestamp' => false,
+            'merge' => true,
+            'append' => false,
+            ...$this->config
+        ];
+
+        if (!is_dir($this->config['dir'])) mkdir($this->config['dir'], 0777, true);
+
+        $info = pathinfo($this->config['file']);
+        $ext = $info['extension'] ?? 'html';
+        $base = $info['filename'];
+
+        if ($this->config['timestamp'])
+            $base .= '_'.static::timestamp($this->config['timestamp_format_file']);
+        
+        $path = $this->config['dir'].DIRECTORY_SEPARATOR.$base.'.'.$ext;
+
+        static::$dumper_counter[$path] = (static::$dumper_counter[$path] ?? 0) + 1;
+
+        return file_put_contents($path, static::get_output($content), (
+            (self::$dumper_counter[$path] ?? 0) === 1
+                ? ($this->config['append'] && file_exists($path))
+                : $this->config['merge']
+            ) ? FILE_APPEND : 0
+        );
+    }
+
+    public static function __callStatic(string $name, array $arguments) {
+        $instance = new static($arguments[1] ?? []);
+         if (method_exists($instance, $name))
+            return $instance->$name($arguments[0] ?? null);
+
+        throw new \BadMethodCallException("Method {$name} not found in ".static::class);
     }
 
 }
