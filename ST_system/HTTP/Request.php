@@ -2,11 +2,11 @@
 
 namespace ST_system\HTTP;
 
-use ST_system\Traits\Validatable_params;
+use ST_system\Traits\HasValidatableParams;
 
 class Request {
 
-    use Validatable_params;
+    use HasValidatableParams;
 
     private static $instance;
 

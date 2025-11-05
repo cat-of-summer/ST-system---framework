@@ -2,11 +2,11 @@
 
 namespace ST_system\API;
 
-use ST_system\Traits\Validatable_params;
+use ST_system\Traits\HasValidatableParams;
 
 abstract class Integration_driver {
 
-    use Validatable_params;
+    use HasValidatableParams;
 
     protected const DEFAULT_POINT = '';
     protected const CACHE_DIRECTORY = '';

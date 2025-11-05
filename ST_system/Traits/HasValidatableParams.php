@@ -2,7 +2,7 @@
 
 namespace ST_system\Traits;
 
-trait Validatable_params {
+trait HasValidatableParams {
 
     protected static array $rules_map = [];
 
