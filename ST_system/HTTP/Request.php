@@ -8,25 +8,55 @@ class Request {
 
     use Validatable_params;
 
+    private static $instance;
+
+    final public static function fetch(array $query_params = []): self {
+        static::$instance = new static($query_params);
+
+        return static::$instance;
+    }
+
+    final public static function __callStatic(string $name, array $arguments) {
+        if (!static::$instance)
+            static::fetch();
+
+        if (method_exists(static::class, $name))
+            return static::$instance->$name(...$arguments);
+
+        $key = $arguments[0] ?? '';
+        $value = static::$instance->$name();
+
+        return $key !== '' && is_array($value)
+            ? ($value[$key] ?? null)
+            : $value;
+    }
+
     private $data = [];
 
     protected function __init(): void {}
     protected function __validate(): array { return []; }
 
-    final public static function fetch(): self { return new static(); }
-    private function __construct() {
+    private function __construct(array $query_params = []) {
         static::register_rules_map([
+            'mixed' => [null],
+            '*mixed' => [fn($k) => new \Exception("Переданный параметр {$k} не должен быть пуст!"), fn($v) => !empty($v)],
             'string' => [null, fn($v) => is_string($v), fn($v) => htmlspecialchars($v)],
             '*string' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть строкой!"), fn($v) => is_string($v), fn($v) => htmlspecialchars($v)],
-            'int' => [null, fn($v) => is_int($v)],
             'bool' => [null, 'after' => fn($v) => (bool)$v],
-            '*bool' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть булевым значением!"), fn($v) => !is_null($v),'after' => fn($v) => (bool)$v],
-            '*int' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть числом!"), fn($v) => is_int($v)],
+            '*bool' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть булевым значением!"), fn($v) => !is_null($v), 'after' => fn($v) => (bool)$v],
+            'int' => [null, fn($v) => is_int($v), fn($v) => (int)$v],
+            '*int' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть числом!"), fn($v) => is_int($v), fn($v) => (int)$v],
             'email' => [null, fn($v) => filter_var($v, FILTER_VALIDATE_EMAIL)],
             '*email' => [fn($k) => new \Exception("Переданный параметр {$k} не является электронной почтой!"), fn($v) => filter_var($v, FILTER_VALIDATE_EMAIL)],
-            'file' => [null, fn($v) => is_array($v) && is_file($v['tmp_name'])],
-            'file_array' => [[], fn($v) => is_array($v), 'after' => fn($v) => array_values(array_filter($v, fn($f) => is_array($f) && is_file($f['tmp_name'] ?? '')))],
+            'array' => [null, fn($v) => is_array($v)],
+            '*array' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть массивом!"), fn($v) => is_array($v)],
+            'files' => [null, fn($v) => !empty($v)],
+            '*files' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть файлом!"), fn($v) => !empty($v)],
+            'files--images' => [[], fn($v) => is_array($v), 'after' => fn($v) => array_values(array_filter($v, fn($f) => in_array($f['extenstion'], ['png', 'jpg', 'webp'])))],
+            'files--documents' => [[], fn($v) => is_array($v), 'after' => fn($v) => array_values(array_filter($v, fn($f) => in_array($f['extenstion'], ['doc', 'docx', 'odt', 'pdf'])))],
         ]);
+
+        $this->data['query'] = $query_params;
 
         if (!empty($this->__validate()))
             $this->validate($this->__validate());
@@ -36,7 +66,7 @@ class Request {
 
     private function pattern(string $route_template, bool $strict_mode = true): self {
         $this->data['query_keys'] = [];
-
+        
         if ($strict_mode)
             $route_template = preg_quote($route_template, '#');
 
@@ -44,6 +74,8 @@ class Request {
             $this->data['query_keys'][] = $matches[1];
             return "(?P<{$matches[1]}>[^/]+)";
         }, $route_template).'$#');
+
+        unset($this->data['query']);
 
         return $this;
     }
@@ -55,11 +87,18 @@ class Request {
 
         foreach (['get', 'post', 'query', 'files'] as $key)
             foreach ($this->data[$key] as $k => $v)
-                if ($v === null) {
+                if ($v == null) {
                     unset($this->data[$key][$k]);
                     unset($this->data['data'][$k]);
                 }
         
+        return $this;
+    }
+
+    private function filter(array $params) {
+        $this->data();
+
+        //Тоже самое что validate, но не удаляет неиспользованные ключи
         return $this;
     }
 
@@ -72,47 +111,62 @@ class Request {
                 case 'uri': $this->data['uri'] = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH); break;
                 case 'host': $this->data['host'] = $_SERVER['HTTP_HOST']; break;
                 case 'port': $this->data['port'] = $_SERVER['SERVER_PORT']; break;
-                case 'scheme': $this->data['scheme'] = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http"; break;                
-                case 'url': $this->data['url'] = "{$this->scheme()}://{$this->host()}{$this->uri()}";
-                case 'method': $this->data['method'] = $this->post('_method') ?: $_SERVER['REQUEST_METHOD'];
+                case 'scheme': $this->data['scheme'] = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http"; break;     
+                case 'origin': $this->data['origin'] = "{$this->scheme()}://{$this->host()}"; break;
+                case 'url': $this->data['url'] = "{$this->origin()}{$this->uri()}"; break;
+                case 'method': $this->data['method'] = $this->post('_method') ?: $_SERVER['REQUEST_METHOD']; break;
                 case 'headers':
                     foreach ($_SERVER as $param_name => $param_value)
                         if (substr($param_name, 0, 5) == 'HTTP_')
                             $this->data['headers'][str_replace(' ', '-', ucwords(str_replace('_', ' ', substr($param_name, 5))))] = $param_value;
                     break;
-                case 'get': $this->data['get'] = $_GET; break;
-                case 'post': $this->data['post'] = array_merge($_POST, @json_decode(@file_get_contents('php://input'), true) ?? []); break;
-                case 'query':
-                    $this->data['query'] = (!empty($this->data['query_keys']) && preg_match($this->data['route_template'], $this->uri(), $matches))
+                case '_get': $this->data['_get'] = $_GET; break;
+                case 'get': $this->data['get'] = $this->_get(); break;
+                case '_post': $this->data['_post'] = array_merge($_POST, @json_decode(@file_get_contents('php://input'), true) ?? []); break;
+                case 'post': $this->data['post'] = $this->_post(); break;
+                case '_query':
+                    $this->data['_query'] = (!empty($this->data['query_keys']) && preg_match($this->data['route_template'], $this->uri(), $matches))
                         ? array_intersect_key($matches, array_flip($this->data['query_keys']))
                         : [];
                     break;
-                case 'files':
-                    $this->data['files'] = [];
+                case 'query': $this->data['query'] = $this->_query(); break;
+                case '_files':
+                    $this->data['_files'] = [];
                     foreach ($_FILES as $field => $file) {
-                        $this->data['files'][$field] = [];
-                        foreach ($file['name'] as $i => $filename) {
-                            if ($file['error'][$i] !== UPLOAD_ERR_OK)
+                        $this->data['_files'][$field] = [];
+
+                        foreach (is_array($file['name']) ? $file['name'] : [$file['name']] as $i => $filename) {
+                            if (is_array($file['error']) ? $file['error'][$i] : $file['error'] !== UPLOAD_ERR_OK)
                                 continue;
-                                            
-                             $this->data['files'][$field][] = [
+                            
+                            $this->data['_files'][$field][] = [
                                 'name'       => $filename,
-                                'tmp_name'   => $file['tmp_name'][$i],
-                                'type'       => $file['type'][$i],
-                                'size'       => $file['size'][$i],
+                                'tmp_name'   => is_array($file['tmp_name']) ? $file['tmp_name'][$i] : $file['tmp_name'],
+                                'type'       => is_array($file['type']) ? $file['type'][$i] : $file['type'],
+                                'size'       => is_array($file['size']) ? $file['size'][$i] : $file['size'],
                                 'extenstion' => strtolower(pathinfo($filename, PATHINFO_EXTENSION))
                             ];
                         }
                     }
                     break;
+                case 'files': $this->data['files'] = $this->_files(); break;
+                case '_data':
+                    $this->data['_data'] = array_merge(
+                        $this->_get(),
+                        $this->_post(),
+                        $this->_query(),
+                        $this->_files()
+                    );
+                    break;
                 case 'data':
                     $this->get(); $this->post(); $this->query(); $this->files();
-        
+
                     $this->data['data'] = [];
                     foreach (['get', 'post', 'query', 'files'] as $key)
                         foreach ($this->data[$key] as $k => &$v)
                             $this->data['data'][$k] = &$v;
                     unset($v);
+        
                     break;
                 default:
                     throw new \Exception("Method {$name} not found");
@@ -125,15 +179,4 @@ class Request {
             : $this->data[$name];
     }
 
-    final public static function __callStatic(string $name, array $arguments) {
-        if (method_exists(static::class, $name))
-            return static::fetch()->$name(...$arguments);
-
-        $key = $arguments[0] ?? '';
-        $value = static::fetch()->$name();
-
-        return $key !== '' && is_array($value)
-            ? ($value[$key] ?? null)
-            : $value;
-    }
 }

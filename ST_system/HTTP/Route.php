@@ -9,6 +9,7 @@ final class Route {
 
     private $prefix = '';
     private $middlewares = [];
+    private $request;
 
     private function __construct(string $prefix = '', array $middlewares = []) {
         if ($prefix != '')
@@ -59,6 +60,13 @@ final class Route {
         return $parent;
     }
 
+    public static function request(string $classname): self {
+        $parent = self::current();
+        $parent->request = $classname;
+
+        return $parent;
+    }
+
     private static function add_route(array $methods, string $uri, $controller, array $PARAMS = []): void {
         $base = self::current();
         $strict_mode = isset($PARAMS['strict_mode']) ? (bool)$PARAMS['strict_mode'] : true;
@@ -71,10 +79,12 @@ final class Route {
             if ($uri === $full && array_intersect($r->methods, $methods))
                 throw new \RuntimeException("Duplicate route: {$full}");
 
-        self::$routes[$full] = (object)[
+        self::$routes[] = (object)[
+            'pattern'     => $full,
             'methods'     => $methods,
             'controller'  => $controller,
             'middlewares' => $base->middlewares,
+            'request'     => $base->request,
             'strict_mode' => $strict_mode,
         ];
     }

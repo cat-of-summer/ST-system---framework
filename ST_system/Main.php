@@ -54,32 +54,4 @@ final class Main {
     
         return $array1;
     }
-
-    public static function prepare_params(array $config, array &$data): array {
-
-        $result = [];
-        foreach ($config as $key => $rule) {
-            [$default, $rule, $convert] = array_pad($rule, 3, null);
-
-            $val = $data[$key] ?? $default;
-
-            if (is_callable($rule) && !call_user_func($rule, $val, $result))
-                $val = $default;
-            
-            if ($val instanceof \Throwable)
-                throw $val;
-
-            if ($val === null)
-                continue;
-            
-            if (is_callable($convert) && ($v = call_user_func($convert, $val, $result)))
-                $val = $v;
-                        
-            $result[$key] = $val;
-        }
-        
-        $data = $result;
-
-        return $data;
-    }
 }

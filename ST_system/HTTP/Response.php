@@ -46,6 +46,15 @@ final class Response {
         return $this;
     }
 
+    private function text(string $text, int $status = 200): self {
+        $this->status($status);
+        $this->header('Content-Type', 'text/plain; charset=UTF-8');
+
+        $this->content = $text;
+
+        return $this;
+    }
+
     private function html(string $html, int $status = 200): self {
         $this->status($status);
         $this->header('Content-Type', 'text/html; charset=UTF-8');

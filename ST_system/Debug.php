@@ -54,10 +54,10 @@ final class Debug {
         if ($config['chain']) {
             $full_backtrace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT);
 
-            for ($level = $config['skip_start'] + 1; $level < count($full_backtrace) - $config['skip_end']; $level++)
-                $result .= str_repeat("    ", $level - $config['skip_start'] - 1).'↘ '.$get_trace_func($full_backtrace[$level]);
+            for ($level = $config['skip_start'] + 2; $level < count($full_backtrace) - $config['skip_end']; $level++)
+                $result .= str_repeat("    ", $level - $config['skip_start'] - 2).'↘ '.$get_trace_func($full_backtrace[$level]);
         } else
-            $result = $get_trace_func(debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT)[2]);
+            $result = $get_trace_func(debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT)[3]);
         
         return $result;
     }
@@ -149,7 +149,7 @@ final class Debug {
 
         return $this->config['pre']
             ? sprintf("<pre>\n%s\n</pre>", $inner)
-            : $inner;
+            : "{$inner}\n";
     }
 
     private function __construct(array $config = []) {
