@@ -4,16 +4,17 @@ namespace ST_system;
 
 final class Main {
 
-    public static function get_timestamp($format = null) { //"d-m-Y H:i:s"
-        $microtime = microtime(true);
+    public static function timestamp(string $format = '') {
+        $timestamp = function_exists('hrtime')
+            ? hrtime(true) / 1e9
+            : microtime(true);
 
-        if ($format === null)
-            return $microtime;
+        if ($format != '') {
+            $DateTime = (new \DateTime())->setTimestamp((int)$timestamp);
+            $timestamp = $DateTime->format($format).strstr((string)$timestamp, '.', false);
+        }
 
-        $DateTime = new \DateTime();
-        $DateTime->setTimestamp((int)$microtime);
-
-        return $DateTime->format($format);
+        return $timestamp;
     }
 
     public static function plural_form($n, $forms) { //(1, ["яблоко", "яблока", "яблок"]);

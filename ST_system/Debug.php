@@ -2,6 +2,8 @@
 
 namespace ST_system;
 
+use ST_system\Main;
+
 final class Debug {
     private static $CONFIG = [
         'timestamp_format_output' => 'd-m-Y H:i:s',
@@ -16,19 +18,6 @@ final class Debug {
 
     public static function set_config(array $config = []): void {
         static::$CONFIG = array_merge(static::$CONFIG, $config);
-    }
-
-    public static function timestamp(string $format = '') {
-        $timestamp = function_exists('hrtime')
-            ? hrtime(true) / 1e9
-            : microtime(true);
-
-        if ($format != '') {
-            $DateTime = (new \DateTime())->setTimestamp((int)$timestamp);
-            $timestamp = $DateTime->format($format).strstr((string)$timestamp, '.', false);
-        }
-
-        return $timestamp;
     }
 
     public static function backtrace(array $config = []): string {
@@ -63,14 +52,14 @@ final class Debug {
     }
 
     public static function start(string $name = 'default'): void {
-        static::$timers[$name] = static::timestamp();
+        static::$timers[$name] = Main::timestamp();
     }
 
     public static function finish(string $name = 'default'): float {
         if (!isset(static::$timers[$name]))
             throw new \InvalidArgumentException("Timer '$name' was not started.");
         
-        $result = static::timestamp() - static::$timers[$name];
+        $result = Main::timestamp() - static::$timers[$name];
 
         unset(static::$timers[$name]);
 
@@ -140,7 +129,7 @@ final class Debug {
         $output = ob_get_clean();
 
         $inner = sprintf("%s\n%s\n%s",
-            static::timestamp($this->config['timestamp_format_output']), 
+            Main::timestamp($this->config['timestamp_format_output']), 
             $this->config['backtrace']
                 ? static::backtrace()
                 : static::backtrace(['chain' => false]),
@@ -205,7 +194,7 @@ final class Debug {
         $base = $info['filename'];
 
         if ($this->config['timestamp'])
-            $base .= '_'.static::timestamp($this->config['timestamp_format_file']);
+            $base .= '_'.Main::timestamp($this->config['timestamp_format_file']);
         
         $path = $this->config['dir'].DIRECTORY_SEPARATOR.$base.'.'.$ext;
 
