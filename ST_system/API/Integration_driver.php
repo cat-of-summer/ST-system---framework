@@ -99,7 +99,7 @@ abstract class Integration_driver {
             'content_type' => ['application/x-www-form-urlencoded', fn($v) => is_string($v)],
             'method' => ['GET', fn($v) => in_array(strtoupper($v), ['GET', 'POST']), fn($v) => strtoupper($v)],
             'params' => [[], fn($v) => is_array($v)],
-            'on_prepare' => [null, fn($v) => is_callable($v)],
+            'on_prepare' => [false, fn($v) => is_callable($v)],
             'cache_ttl' => [0, fn($v) => is_int($v)],
             'meta' => [[]],
         ], $config);
@@ -303,7 +303,7 @@ abstract class Integration_driver {
 
             $this->trigger('response', $method, $params, $response);
             
-            if ($cache_path && empty($cached_data)) {
+            if (isset($cache_path) && empty($cached_data)) {
                 $lock = fopen($cache_path.'.lock', 'c');
                 if ($lock === false) throw new \RuntimeException("Cannot open lock file {$cache_path}.lock");
                 flock($lock, LOCK_EX);
