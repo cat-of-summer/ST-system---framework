@@ -4,7 +4,7 @@ namespace ST_system\API;
 
 use ST_system\Traits\HasValidatableParams;
 
-abstract class Integration_driver {
+abstract class IntegrationDriver {
 
     use HasValidatableParams;
 
@@ -64,6 +64,8 @@ abstract class Integration_driver {
             '*email' => [fn($k) => new \Exception("Переданный параметр {$k} не является электронной почтой!"), fn($v) => filter_var($v, FILTER_VALIDATE_EMAIL)],
             'url' => [null, fn($v) => is_string($v) && filter_var($v, FILTER_VALIDATE_URL)],
             '*url' => [fn($k) => new \Exception("Переданный параметр {$k} не является корректным URL!"), fn($v) => is_string($v) && filter_var($v, FILTER_VALIDATE_URL)],
+            'secure_url' => [null, fn($v) => is_string($v) && filter_var($v, FILTER_VALIDATE_URL) && stripos($v, 'https://') === 0],
+            '*secure_url' => [fn($k) => new \Exception("Переданный параметр {$k} не является корректным URL с HTTPS!"), fn($v) => is_string($v) && filter_var($v, FILTER_VALIDATE_URL) && stripos($v, 'https://') === 0],
         ]);
 
         $this->__init();
@@ -251,7 +253,7 @@ abstract class Integration_driver {
 
         [$request_url, $point] = $this->build_url($method, $config['point']);
 
-        $this->trigger('build_url', $request_url, $method, $params);
+        $this->trigger('build_url', $request_url, $point, $method, $params);
 
         if (!filter_var($request_url, FILTER_VALIDATE_URL))
             throw new \Exception("Задан некорректный путь для API: '{$request_url}' в ".get_called_class());

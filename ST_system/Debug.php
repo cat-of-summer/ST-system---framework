@@ -3,9 +3,13 @@
 namespace ST_system;
 
 use ST_system\Main;
+use ST_system\Traits\HasConfig;
 
 final class Debug {
-    private static $CONFIG = [
+
+    use HasConfig;
+
+    protected static array $CONFIG = [
         'timestamp_format_output' => 'd-m-Y H:i:s',
         'timestamp_format_file' => 'd-m-Y~H-i-s',
         'dir' => '~logs',
@@ -15,10 +19,6 @@ final class Debug {
 
     private static array $dumper_counter = [];
     private static array $timers = [];
-
-    public static function set_config(array $config = []): void {
-        static::$CONFIG = array_merge(static::$CONFIG, $config);
-    }
 
     public static function backtrace(array $config = []): string {
         $get_trace_func = function($trace) {
@@ -143,7 +143,7 @@ final class Debug {
 
     private function __construct(array $config = []) {
         $this->config = [
-            ...static::$CONFIG,
+            ...static::config(),
             ...$config
         ];
 

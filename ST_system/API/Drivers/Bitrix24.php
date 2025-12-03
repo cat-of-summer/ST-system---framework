@@ -2,10 +2,10 @@
 
 namespace ST_system\API\Drivers;
 
-use \ST_system\API\Integration_driver;
+use \ST_system\API\IntegrationDriver;
 use \ST_system\API\Traits\Overridable;
 
-final class Bitrix24 extends Integration_driver {
+final class Bitrix24 extends IntegrationDriver {
     use Overridable;
 
     private $SETTINGS = [];

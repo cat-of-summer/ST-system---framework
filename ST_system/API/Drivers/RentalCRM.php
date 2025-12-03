@@ -2,9 +2,9 @@
 
 namespace ST_system\API\Drivers;
 
-use \ST_system\API\Integration_driver;
+use \ST_system\API\IntegrationDriver;
 
-final class RentalCRM extends Integration_driver {
+final class RentalCRM extends IntegrationDriver {
     private $SETTINGS = [];
 
     protected function __init() {

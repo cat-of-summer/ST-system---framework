@@ -1,8 +1,8 @@
 <?php
 
-namespace ST_system\API\Traits;
+namespace ST_system\API\Drivers\Traits;
 
-trait HTML_parser {
+trait HasHTMLRules {
 
     private static $void_elements = [
         "area",

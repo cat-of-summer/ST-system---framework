@@ -2,9 +2,9 @@
 
 namespace ST_system\API\Drivers;
 
-use \ST_system\API\Integration_driver;
+use \ST_system\API\IntegrationDriver;
 
-final class SmartCaptcha extends Integration_driver {
+final class SmartCaptcha extends IntegrationDriver {
 
     protected const DEFAULT_POINT = 'https://smartcaptcha.yandexcloud.net/';
 

@@ -4,7 +4,7 @@ namespace ST_system\Traits;
 
 trait HasValidatableParams {
 
-    protected static array $rules_map = [];
+    protected static array $RULES = [];
 
     final public static function prepare_params(array $config, &$input, $on_prepare = null) {
 
@@ -120,8 +120,8 @@ trait HasValidatableParams {
     }
 
     final public static function register_rule(string $rule, array $config): void {
-        if (!isset(static::$rules_map[$rule]))
-            static::$rules_map[$rule] = $config;
+        if (!isset(static::$RULES[$rule]))
+            static::$RULES[$rule] = $config;
     }
 
     final public static function register_rules_map(array $rules): void {
@@ -129,10 +129,10 @@ trait HasValidatableParams {
     }
 
     final public static function rule(string $rule): array {
-        if (!isset(static::$rules_map[$rule]))
+        if (!isset(static::$RULES[$rule]))
             return [];
 
-        $rule_config = static::$rules_map[$rule];
+        $rule_config = static::$RULES[$rule];
 
         $default = $rule_config['default'] ?? $rule_config[0] ?? null;
         $rule = $rule_config['rule'] ?? $rule_config[1] ?? null;
@@ -140,14 +140,14 @@ trait HasValidatableParams {
         $after = $rule_config['after'] ?? $rule_config[3] ?? null;
 
         return [
-            2 => $before,
-            'before' => $before,
-            3 => $after,
-            'after' => $after,
-            0 => $default,
+            $default,
+            $rule,
+            $before,
+            $after,
             'default' => $default,
-            1 => $rule,
             'rule' => $rule,
+            'before' => $before,
+            'after' => $after,
         ];
     }
 

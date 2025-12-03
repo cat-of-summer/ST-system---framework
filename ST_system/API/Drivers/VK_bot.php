@@ -2,9 +2,9 @@
 
 namespace ST_system\API\Drivers;
 
-use \ST_system\API\Integration_driver;
+use \ST_system\API\IntegrationDriver;
 
-final class VK_bot extends Integration_driver {
+final class VK_bot extends IntegrationDriver {
 
     protected const DEFAULT_POINT = 'https://api.vk.com/method';
     protected const OAUTH_POINT = 'https://oauth.vk.com';

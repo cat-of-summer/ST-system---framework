@@ -2,9 +2,9 @@
 
 namespace ST_system\API\Drivers;
 
-use \ST_system\API\Integration_driver;
+use \ST_system\API\IntegrationDriver;
 
-final class Isdayoff extends Integration_driver {
+final class Isdayoff extends IntegrationDriver {
 
     protected const DEFAULT_POINT = 'https://isdayoff.ru/api/';
 

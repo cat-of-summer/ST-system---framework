@@ -2,9 +2,9 @@
 
 namespace ST_system\API\Drivers;
 
-use \ST_system\API\Integration_driver;
+use \ST_system\API\IntegrationDriver;
 
-final class Sdek extends Integration_driver {
+final class Sdek extends IntegrationDriver {
 
     protected const DEFAULT_POINT = 'https://api.cdek.ru/v2/';
     protected const CACHE_DIRECTORY = '~/bitrix/cache/';
