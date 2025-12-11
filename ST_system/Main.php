@@ -5,16 +5,15 @@ namespace ST_system;
 final class Main {
 
     public static function timestamp(string $format = '') {
-        $timestamp = function_exists('hrtime')
-            ? hrtime(true) / 1e9
-            : microtime(true);
+        $now = time();
+        $ts  = function_exists('hrtime') ? hrtime(true) / 1e9 : microtime(true);
 
-        if ($format != '') {
-            $DateTime = (new \DateTime())->setTimestamp((int)$timestamp);
-            $timestamp = $DateTime->format($format).strstr((string)$timestamp, '.', false);
+        if ($format) {
+            $dt = (new \DateTime())->setTimestamp($now);
+            $ts = $dt->format($format) . substr((string)$ts, strpos((string)$ts, '.'));
         }
 
-        return $timestamp;
+        return $ts;
     }
 
     public static function plural_form($n, $forms) { //(1, ["яблоко", "яблока", "яблок"]);
