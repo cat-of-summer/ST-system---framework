@@ -537,7 +537,7 @@ final class File {
     public function purgeCache(): static {
         if (!$this->isUri()) return $this;
 
-        $dir = static::config('cache_dir').'/'.md5($this->uri->getPathname());
+        $dir = static::config('cache_dir').'/'.md5($this->getPathname());
 
         if (!is_dir($dir)) return $this;
 
