@@ -552,3 +552,289 @@ class Assets {
     }
 
 }
+
+use ST_system\Traits\HasConfig;
+use ST_system\Storage\File;
+
+final class Assets {
+
+    use HasConfig;
+
+    protected static array $CONFIG = [
+        'default_buffer' => 'head',
+        'bufferization' => true
+    ];
+
+    private static $buffers = [];
+    private static $stack = [];
+
+    private static function current_buffer() {
+        return end(self::$stack) ?: static::config('default_buffer');
+    }
+
+    private static function ensure_buffer(string $name) {
+        if (!isset(self::$buffers[$name])) {
+            self::$buffers[$name] = [
+                'content' => '',
+                'started' => false,
+                'seen' => [],
+            ];
+        }
+    }
+
+    private static function unpack_buffer(string $name) {
+        self::ensure_buffer($name);
+        $content = self::$buffers[$name]['content'];
+
+        self::$buffers[$name]['content'] = '';
+        return $content;
+    }
+
+    public static function mount(string $name) {            
+        self::ensure_buffer($name);
+
+        if (self::$buffers[$name]['started'])
+            throw new \RuntimeException("Buffer '{$name}' already started.");
+
+        self::$buffers[$name]['started'] = true;
+        array_push(self::$stack, $name);
+    
+        if (static::config('bufferization')) {
+            echo self::unpack_buffer($name);
+
+            ob_start();
+        } else {
+            echo '<!-- '.__CLASS__.'::mount("'.$name.'") -->';
+        }
+    }
+
+    public static function render_html(string $html) {
+        if (static::config('bufferization'))
+            return;
+
+        foreach (self::$buffers as $name => ['content' => &$content, 'started' => &$started]) {
+            $html = str_replace('<!-- '.__CLASS__.'::mount("'.$name.'") -->', $content, $html);
+            $started = false;
+            $content = '';
+        }
+
+        return $html;
+    }
+
+    public static function render(string $buffer) {
+
+        if (!static::config('bufferization')) {
+            array_pop(self::$stack);
+            return;
+        }
+            
+        if (!in_array($buffer, self::$stack)) {
+
+            if (isset(self::$buffers[$buffer]))
+                echo self::unpack_buffer($buffer);
+            
+            return;
+        }
+
+        if ($buffer != self::current_buffer())
+            throw new \RuntimeException("Buffer mismatch: trying to end '{$buffer}', but top active is '".self::current_buffer()."'. Use LIFO order.");
+        
+        self::$buffers[$buffer]['content'] .= ob_get_clean();
+
+        array_pop(self::$stack);
+    
+        self::$buffers[$buffer]['started'] = false;
+        
+        echo self::unpack_buffer($buffer);
+    }
+
+    private static function store_asset(string $html, string $buffer) {
+        self::ensure_buffer($buffer);
+
+        $key = md5($html);
+        if (isset(self::$buffers[$buffer]['seen'][$key]))
+            return;
+        
+        self::$buffers[$buffer]['seen'][$key] = true;
+
+        self::$buffers[$buffer]['content'] = self::$buffers[$buffer]['content'].$html;
+    }
+
+    private File $file;
+    private string $buffer;
+
+    public function __construct(string $path, string $buffer = '') {
+        $this->file = File::make($path);
+        
+        $this->buffer = $buffer != '' ? $buffer : self::current_buffer();
+    }
+
+    public static function add_resource() {
+        
+    }
+
+    private static function _add_css(string $href, array $attributes = [], string $buffer = '') {
+        self::ensure_buffer($buffer);
+
+        $attributes['rel']  = 'stylesheet';
+        $attributes['href'] = $href;
+
+        self::store_asset("<link ".implode(' ', array_map(fn($k,$v) => $k.'="'.htmlspecialchars($v, ENT_QUOTES|ENT_SUBSTITUTE).'"', array_keys($attributes), $attributes)).">\n", $buffer);
+    }
+
+    private static function _add_js(string $src, array $attributes = [], string $buffer = '') {
+        self::ensure_buffer($buffer);
+
+        $attributes['type'] = $attributes['type'] ?? 'text/javascript';
+        $attributes['src']  = $src;
+        
+        self::store_asset("<script ".implode(' ', array_map(fn($k,$v) => $k.'="'.htmlspecialchars($v, ENT_QUOTES|ENT_SUBSTITUTE).'"', array_keys($attributes), $attributes))."></script>\n", $buffer);
+    }
+
+    private static function _add_string(string $string, string $buffer = '') {
+        self::ensure_buffer($buffer);
+
+        self::store_asset($string."\n", $buffer);
+    }
+
+    private static function _add_font(string $src, array $attributes = [], string $buffer = '') {
+        self::ensure_buffer($buffer);
+
+        $is_uri = self::is_uri($src);
+
+        $file_name = $is_uri
+            ? pathinfo(parse_url($src, PHP_URL_PATH), PATHINFO_FILENAME)
+            : pathinfo($src, PATHINFO_FILENAME);
+        $file_extension = pathinfo($src, PATHINFO_EXTENSION);
+
+        if (!isset($PARAMS['font-weight'])) {
+            $weight = static::config('fonts')['weights_map']['regular'];
+            foreach (static::config('fonts')['weights_map'] as $key => $w)
+                if (stripos($file_name, $key) !== false) {
+                    $weight = $w; 
+                    break; 
+                }
+        } else $weight = $PARAMS['font-weight'];
+
+        if (!isset($PARAMS['font-style'])) {
+            $style = 'normal';
+            foreach (static::config('fonts')['styles_map'] as $key => $s)
+                if (stripos($file_name, $key) !== false) {
+                    $style = $s; 
+                    break; 
+                }
+        } else $style = $PARAMS['font-style'];
+
+        $format = isset($PARAMS['format']) ? $PARAMS['format'] : (isset(static::config('extensions_map')[$file_extension]) ? static::config('extensions_map')[$file_extension] : $file_extension);
+        $font_family = isset($PARAMS['font-family']) ? $PARAMS['font-family'] : trim(preg_replace( '/(?<!^)(?=[A-Z])/', ' ', preg_match('/^[A-Za-z]+/', $file_name, $matches) ? $matches[0] : $file_name));
+        $src = isset($PARAMS['src']) ? $PARAMS['src'] : $src;
+        $display = isset($PARAMS['font-display']) ? $PARAMS['font-display'] : 'swap';
+
+        self::store_asset(<<<HTML
+            <style>
+                @font-face {
+                        font-family: '{$font_family}';
+                        src: url('{$src}') format('{$format}');
+                        font-weight: {$weight};
+                        font-style: {$style};
+                        font-display: {$display};
+                    }
+            </style>
+            HTML, 
+            $buffer
+        );
+    }
+
+    private static function _svg(string $path, array $attributes = [], bool $return_path = false) {
+        static $counter = 0;
+
+        if (pathinfo($path, PATHINFO_EXTENSION) === '')
+            $path .= '.svg';
+
+        if (!file_exists($path))
+            throw new \Exception("SVG file not found: " . $path);
+
+        if ($return_path)
+            return substr($path, strlen($_SERVER['DOCUMENT_ROOT']));
+        
+        $svg = @file_get_contents($path);
+        if ($svg === false)
+            throw new \Exception("Failed to read SVG file: " . $path);
+        
+        $counter++;
+        $suffix = '_'.$counter;
+
+        if (class_exists('DOMDocument')) {
+            $dom = new \DOMDocument();
+
+            libxml_use_internal_errors(true);
+
+            $dom->loadXML($svg, LIBXML_NOWARNING | LIBXML_NOERROR);
+
+            $xpath = new \DOMXPath($dom);
+            foreach ($xpath->query('//*[@id]') as $el) {
+                $oldId = $el->getAttribute('id');
+                $newId = $oldId . $suffix;
+                $el->setAttribute('id', $newId);
+
+                foreach ($xpath->query('//*[@*]') as $refEl)
+                    foreach ($refEl->attributes as $attr) {
+                        $refEl->setAttribute(
+                            $attr->name,
+                            preg_replace('/url\(#' . preg_quote($oldId, '/') . '\)/', 'url(#' . $newId . ')', $attr->value)
+                        );
+                    }
+            }
+
+            if (!empty($attributes) && $dom->documentElement)
+                foreach ($attributes as $k => $v)
+                    $dom->documentElement->setAttribute($k, $v);
+        
+            return $dom->saveXML($dom->documentElement);
+        } else {
+            $svg = preg_replace(
+                '/\bid\s*=\s*(["\']?)([^"\'>\s]+)\1/',
+                'id="$2' . $suffix . '"',
+                $svg
+            );
+
+            $svg = preg_replace(
+                '/url\(#([^)]+)\)/',
+                'url(#$1' . $suffix . ')',
+                $svg
+            );
+
+            if (!empty($attributes) && preg_match('/<svg\b([^>]*)>/i', $svg, $matches)) {
+                $existingAttrs = $matches[1];
+
+                foreach ($attributes as $k => $v) {
+                    $attrPattern = '/\b' . preg_quote($k, '/') . '\s*=\s*["\'][^"\']*["\']/';
+                    $attrValue   = sprintf('%s="%s"', $k, htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE));
+
+                    if (preg_match($attrPattern, $existingAttrs))
+                        $existingAttrs = preg_replace($attrPattern, $attrValue, $existingAttrs);
+                    else
+                        $existingAttrs .= ' ' . $attrValue;
+                }
+
+                $existingAttrs = ltrim($existingAttrs) ? ' ' . ltrim($existingAttrs) : '';
+
+                $svg = preg_replace('/<svg\b[^>]*>/i', '<svg' . $existingAttrs . '>', $svg);
+            }
+
+            return $svg;
+        }
+    }
+
+    private static function _sprite(string $icon_id, array $attributes = [], string $path) {
+        if (!file_exists($path))
+            throw new \Exception("SVG file not found: " . $path);
+
+        $attr_str = '';
+        foreach ($attributes as $k => $v)
+            $attr_str .= sprintf(' %s="%s"', $k, $v);
+        
+        return sprintf('<svg %s><use xlink:href="%s"></use></svg>', $attr_str, rtrim(substr($path, strlen($_SERVER['DOCUMENT_ROOT'])), '/').'#'.$icon_id);
+    }
+
+}

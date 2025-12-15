@@ -21,13 +21,15 @@ final class File {
                 'ttf' => 'font/ttf',
                 'eot' => 'font/eot',
                 'otf' => 'font/otf',
+                'svg' => 'image/svg+xml'
             ],
             'resolvers' => [
-                'image/' => Mimes\ImageMime::class,
+                'image/svg+xml' => Mimes\SvgMime::class,
                 'text/plain' => Mimes\TextPlainMime::class,
                 'application/javascript' => Mimes\JavaScriptMime::class,
+                'application/json' => Mimes\JsonMime::class,
                 'font/' => Mimes\FontMime::class,
-                'application/json' => Mimes\JsonMime::class
+                'image/' => Mimes\ImageMime::class,
             ]
         ],
         'fetch' => [
