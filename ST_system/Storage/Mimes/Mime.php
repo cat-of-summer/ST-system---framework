@@ -10,6 +10,9 @@ abstract class Mime {
 
     protected function __init(): void {}
 
+    public function get($data) { return $data; }
+    public function set($data, int &$flags = 0) { return $data; }
+
     final public function __construct(File $file) {
         $this->file = $file;
 

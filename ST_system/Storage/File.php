@@ -26,7 +26,8 @@ final class File {
                 'image/' => Mimes\ImageMime::class,
                 'text/plain' => Mimes\TextPlainMime::class,
                 'application/javascript' => Mimes\JavaScriptMime::class,
-                'font/' => Mimes\FontMime::class
+                'font/' => Mimes\FontMime::class,
+                'application/json' => Mimes\JsonMime::class
             ]
         ],
         'fetch' => [
