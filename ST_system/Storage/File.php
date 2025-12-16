@@ -269,7 +269,7 @@ final class File {
         flock($lock, LOCK_EX);
 
         $meta = is_file($cache_meta_filename)
-            ? @json_decode(@file_get_contents($cache_meta_filename), true) ?: []
+            ? (@json_decode(@file_get_contents($cache_meta_filename), true) ?: [])
             : [];
 
         if (
@@ -601,7 +601,7 @@ final class File {
         return str_replace(static::prepare_path($root), '/', $this->getRealPath());
     }
 
-    public function getContents() {
+    public function getRaw() {
         $instance = $this->isUri()
             ? $this->fetch()
             : $this;
@@ -609,10 +609,18 @@ final class File {
         return file_get_contents($instance->getRealPath());
     }
 
-    public function putContents($data, int $flags = 0) {
+    public function getContents() {
+        $raw = $this->getRaw();
+
+        return $this->mime_instance->get($raw);
+    }
+
+    public function putContents($raw, int $flags = 0) {
         $instance = $this->isUri()
             ? $this->fetch()
             : $this;
+
+        $data = $this->mime_instance->set($raw, $flags);
 
         return file_put_contents($instance->getRealPath(), $data, $flags);
     }

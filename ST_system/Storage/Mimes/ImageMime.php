@@ -11,7 +11,6 @@ class ImageMime extends Mime {
     use HasConfig;
 
     protected static array $CONFIG = [
-        'cache_dir' => '~/cache/converted/',
         'convertTo' => [
             'config' => [
                 'quality' => 90,
@@ -95,7 +94,7 @@ class ImageMime extends Mime {
     protected function __init(): void {
         if (!static::$CACHE_INIT) {
             static::set_config([
-                'cache_dir' => File::prepare_path(static::config('cache_dir'))
+                'cache_dir' => File::prepare_path(rtrim(File::config('cache_dir'), '/').'/image_cache/')
             ]);
 
             if (!is_dir(static::config('cache_dir'))) {
@@ -184,7 +183,7 @@ class ImageMime extends Mime {
         
             switch (static::$IMAGE_DRIVER) {
                 case 'imagick':
-                    $image = new \Imagick();
+                    $image = new Imagick();
                     $image->pingImage($this->file->getPathname());
 
                     $width  = $image->getImageWidth();
