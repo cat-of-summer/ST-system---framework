@@ -100,6 +100,8 @@ final class File {
 
     public static function __callStatic(string $name, array $args) {
         switch ($name) {
+            case 'fetch':
+                return static::make($args[0])->fetch($args[1] ?? false);
             case 'find':
                 return static::find(...$args);
             default:
@@ -109,6 +111,8 @@ final class File {
 
     public function __call(string $name, array $args) {
         switch ($name) {
+            case 'fetch':
+                return $this->{$name}(...$args);
             case 'make':
                 return new static($args[0], $this);
             case 'find':
@@ -341,7 +345,7 @@ final class File {
         return $headers;
     }
 
-    public function fetch(bool $force = false): static {
+    private function fetch(bool $force = false): static {
         if (!$this->isUri()) return $this;
 
         $meta = [];
