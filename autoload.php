@@ -1,5 +1,8 @@
 <?php
 
-require_once 'ST_system/Autoloader.php';
+spl_autoload_register(function(string $class_name) {
+    $path = __DIR__.'/'.str_replace('\\', '/', $class_name).'.php';
 
-\ST_system\Autoloader::PSR_4(__DIR__);
+    if (file_exists($path))
+        require_once $path;
+});

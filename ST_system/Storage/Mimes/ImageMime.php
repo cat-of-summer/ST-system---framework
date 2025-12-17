@@ -88,11 +88,12 @@ class ImageMime extends Mime {
         ]
     ];
 
-    private static bool $CACHE_INIT = false;
     private static string $IMAGE_DRIVER = '';
 
     protected function __init(): void {
-        if (!static::$CACHE_INIT) {
+        static $is_cache_init = false;
+
+        if (!$is_cache_init) {
             static::set_config([
                 'cache_dir' => File::prepare_path(rtrim(File::config('cache_dir'), '/').'/image_cache/')
             ]);
@@ -103,7 +104,10 @@ class ImageMime extends Mime {
                 if (!is_dir(static::config('cache_dir')))
                     throw new \RuntimeException("Cannot create cache directory");
             }
+
+            $is_cache_init = true;
         }
+        
         if (static::$IMAGE_DRIVER == '')
             static::$IMAGE_DRIVER = class_exists('Imagick')
                 ? 'imagick'

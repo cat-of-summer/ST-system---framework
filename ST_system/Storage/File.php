@@ -46,8 +46,6 @@ final class File {
         ]
     ];
 
-    private static bool $CACHE_INIT = false;
-
     public static function prepare_path(string $path): string {
         if (strpos($path, '~') === 0)
             $path = $_SERVER['DOCUMENT_ROOT'].'/'.trim($path, '/~');
@@ -65,7 +63,9 @@ final class File {
     protected static $original;
 
     private function __construct(string $path, $original = null) {
-        if (!static::$CACHE_INIT) {
+        static $is_cache_init = false;
+
+        if (!$is_cache_init) {
             static::set_config([
                 'cache_dir' => static::prepare_path(static::config('cache_dir'))
             ]);
@@ -76,6 +76,8 @@ final class File {
                 if (!is_dir(static::config('cache_dir')))
                     throw new \RuntimeException("Cannot create cache directory");
             }
+
+            $is_cache_init = true;
         }
 
         $this->isUri = (bool)filter_var($path, FILTER_VALIDATE_URL);
@@ -112,7 +114,7 @@ final class File {
             case 'find':
                 return $this->isUri()
                     ? []
-                    : static::find($this->fetch()->getPath().'/'.ltrim($args[0], '/'), $args[1] ?? []);
+                    : static::find(array_map(fn($i) => $this->fetch()->getDirectory().'/'.ltrim($i, '/'), is_array($args[0]) ? $args[0] : [$args[0]]), $args[1] ?? []);
             case 'getType':
                 if ($this->isUri()) return 'uri';
             case 'getBasename':
@@ -149,6 +151,9 @@ final class File {
             ...$config
         ];
 
+        if (isset($config['extension']) && !is_array($config['extension']))
+            $config['extension'] = [$config['extension']];
+
         if (!is_array($input)) $input = [$input];
 
         array_walk($input, function ($i) use (&$results, $config) {
@@ -161,8 +166,8 @@ final class File {
                         $iterator = static::getFilesystemIterator($i, $config);
 
                         foreach ($iterator as $file)
-                            if ($file->isFile()) {
-                                $results[$file->getRealPath()] = $file->getRealPath();
+                            if ($file->isFile() && (!isset($config['extension']) || in_array($file->getExtension(), $config['extension'], true))) {
+                                $results[$file->getPathname()] = $file->getPathname();
 
                                 if ($config['max_files'] > 0 && count($results) >= $config['max_files'] )
                                     break;
@@ -213,9 +218,9 @@ final class File {
                             continue;
                     }
 
-                    if ($file->isFile()) {
-                        if (@preg_match($pattern, $file->getRealPath()) === 1) {
-                            $results[$file->getRealPath()] = $file->getRealPath();
+                    if ($file->isFile() && (!isset($config['extension']) || in_array($file->getExtension(), $config['extension'], true))) {
+                        if (@preg_match($pattern, $file->getPathname()) === 1) {
+                            $results[$file->getPathname()] = $file->getPathname();
                             if ($config['max_files'] > 0 && count($results) >= $config['max_files'] )
                                 break;
                         }
@@ -598,7 +603,17 @@ final class File {
         if ($this->isUri())
             return $this->getPathname();
 
-        return str_replace(static::prepare_path($root), '/', $this->getRealPath());
+        return str_replace(static::prepare_path($root), '/', $this->getPathname());
+    }
+
+    public function exists(): bool {
+        return file_exists($this->getPathname());
+    }
+
+    public function getDirectory(): string {
+        return $this->isDir()
+            ? $this->getPathname()
+            : $this->getPath();
     }
 
     public function getRaw() {
