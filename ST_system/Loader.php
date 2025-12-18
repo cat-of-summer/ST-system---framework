@@ -4,7 +4,18 @@ namespace ST_system;
 
 use ST_system\Storage\File;
 
-final class Autoloader {
+final class Loader {
+
+    private function connect(string $path, $key, string $action): void {
+        switch ($action) {
+            case 'require': require $path; break;
+            case 'include': include $path; break;
+            case 'require_once': require_once $path; break;
+            case 'include_once': include_once $path; break;
+            default:
+                throw new \Exception("Method {$action} not found");
+        }
+    }
 
     public static function create(...$args): static { return new static(...$args); }
 
@@ -19,14 +30,7 @@ final class Autoloader {
                 array_walk(array_keys(File::find(array_shift($args), [
                     ...array_shift($args) ?? [],
                     'extension' => 'php'
-                ])), function($f) use ($name) {
-                    switch ($name) {
-                        case 'require': require $f; break;
-                        case 'include': include $f; break;
-                        case 'require_once': require_once $f; break;
-                        case 'include_once': include_once $f; break;
-                    }
-                });
+                ])), [static, 'connect'], $name);
 
                 return;
             case 'registerClass':
@@ -53,14 +57,7 @@ final class Autoloader {
                 array_walk(array_keys($this->file->find($input, [
                     ...array_shift($args) ?? [],
                     'extension' => 'php'
-                ])), function($f) use ($name) {
-                    switch ($name) {
-                        case 'require': require $f; break;
-                        case 'include': include $f; break;
-                        case 'require_once': require_once $f; break;
-                        case 'include_once': include_once $f; break;
-                    }
-                });
+                ])), [static, 'connect'], $name);
 
                 return;
             default:
