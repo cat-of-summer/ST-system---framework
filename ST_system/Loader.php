@@ -6,7 +6,7 @@ use ST_system\Storage\File;
 
 final class Loader {
 
-    private function connect(string $path, $key, string $action): void {
+    private static function connect(string $path, $key, string $action): void {
         switch ($action) {
             case 'require': require $path; break;
             case 'include': include $path; break;
