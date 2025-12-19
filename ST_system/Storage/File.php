@@ -9,13 +9,13 @@ final class File {
 
     use HasConfig;
 
-    protected static array $CONFIG = [
+    private static array $CONFIG = [
         'cache_dir' => '~/cache/',
         'mimes' => [
-            'default' => Mimes\DefaultMime::class,
             'extensions' => [
                 'js' => 'application/javascript',
                 'json' => 'application/json',
+                'css' => 'text/css',
                 'woff2' => 'font/woff2',
                 'woff' => 'font/woff',
                 'ttf' => 'font/ttf',
@@ -26,6 +26,7 @@ final class File {
             'resolvers' => [
                 'image/svg+xml' => Mimes\SvgMime::class,
                 'text/plain' => Mimes\TextPlainMime::class,
+                'text/css' => Mimes\CssMime::class,
                 'application/javascript' => Mimes\JavaScriptMime::class,
                 'application/json' => Mimes\JsonMime::class,
                 'font/' => Mimes\FontMime::class,
@@ -51,16 +52,18 @@ final class File {
             $path = $_SERVER['DOCUMENT_ROOT'].'/'.trim($path, '/~');
         elseif (strpos($path, '/') !== 0)
             $path = __DIR__.'/'.trim($path, '/');
+        else
+            $path = rtrim($path, '/');
 
         return $path;
     }
 
     public static function make(string $path) { return new static($path); }
 
-    protected bool $isUri;
-    protected \SplFileInfo $info;
-    protected Mimes\Mime $mime_instance;
-    protected static $original;
+    private bool $isUri;
+    private \SplFileInfo $info;
+    private Mimes\Mime $mime_instance;
+    private $original;
 
     private function __construct(string $path, $original = null) {
         static $is_cache_init = false;
@@ -82,20 +85,19 @@ final class File {
 
         $this->isUri = (bool)filter_var($path, FILTER_VALIDATE_URL);
         $this->info = new \SplFileInfo($this->isUri ? $path : static::prepare_path($path));
-
-        $resolver = static::config('mimes.default');
-        if (!$this->isUri && $this->isFile()) {
-            $mime = $this->getMime();
-
-            foreach (static::config('mimes.resolvers') as $m => $r)
-                if (strpos($mime, $m) !== false) {
-                    $resolver = $r;
-                    break;
-                }
-        }
-
-        $this->mime_instance = new $resolver($this);
         $this->original = $original ?? $this;
+
+        $mime = $this->getMime();
+
+        $this->mime_instance = (
+            ($matched = array_filter(
+                static::config('mimes.resolvers'),
+                fn($r, $m) => strpos($mime, $m) !== false,
+                ARRAY_FILTER_USE_BOTH
+            ))
+                ? new (reset($matched))($this)
+                : new class($this) extends Mimes\Mime {}
+        );
     }
 
     public static function __callStatic(string $name, array $args) {
@@ -121,6 +123,10 @@ final class File {
                     : static::find(array_map(fn($i) => $this->fetch()->getDirectory().'/'.ltrim($i, '/'), is_array($args[0]) ? $args[0] : [$args[0]]), $args[1] ?? []);
             case 'getType':
                 if ($this->isUri()) return 'uri';
+                break;
+            case 'getSize':
+                if ($this->isUri()) return (int)$this->getHeaders()['content-length'];
+                break;
             case 'getBasename':
                 if (empty($args)) return $this->info->getBasename('.'.$this->getExtension());
         }
@@ -239,15 +245,15 @@ final class File {
     private static function getTtl(array $headers = []): int {
         $ttl = static::config('fetch.default_ttl');
 
-        if (!empty($headers['headers']['cache-control'])) {
-            if (preg_match('/\bmax-age\s*=\s*(\d+)/i', $headers['headers']['cache-control'], $m))
+        if (!empty($headers['cache-control'])) {
+            if (preg_match('/\bmax-age\s*=\s*(\d+)/i', $headers['cache-control'], $m))
                 $ttl = (int)$m[1];
-            elseif (preg_match('/\bs-maxage\s*=\s*(\d+)/i', $headers['headers']['cache-control'], $m))
+            elseif (preg_match('/\bs-maxage\s*=\s*(\d+)/i', $headers['cache-control'], $m))
                 $ttl = (int)$m[1];
-            elseif (preg_match('/\b(no-cache|no-store)\b/i', $headers['headers']['cache-control']))
+            elseif (preg_match('/\b(no-cache|no-store)\b/i', $headers['cache-control']))
                 $ttl = 0;
-        } elseif (!empty($headers['headers']['expires'])) {
-            $expires = strtotime($headers['headers']['expires']);
+        } elseif (!empty($headers['expires'])) {
+            $expires = strtotime($headers['expires']);
 
             if ($expires !== false)
                 $ttl = max($expires - time(), 0);
@@ -268,13 +274,13 @@ final class File {
             mkdir($cache_directory, 0775, true);
 
             if (!is_dir($cache_directory))
-                throw new \RuntimeException("Cannot create cache directory");
+                throw new \Exception("Cannot create cache directory");
         }
 
         $cache_meta_filename = $cache_directory.'metadata';
 
         $lock = fopen($cache_meta_filename.'.lock', 'c');
-        if ($lock === false) throw new \RuntimeException("Cannot open lock file {$cache_meta_filename}.lock");
+        if ($lock === false) throw new \Exception("Cannot open lock file {$cache_meta_filename}.lock");
         flock($lock, LOCK_EX);
 
         $meta = is_file($cache_meta_filename)
@@ -282,16 +288,14 @@ final class File {
             : [];
 
         if (
-            !empty($meta['filename']) &&
-            is_file($cache_directory.$meta['filename']) &&
-            $meta['cache_expires_in'] ?? 0 > time()
+            ($meta['headers_cache_expires_in'] ?? 0) > time()
             && !$force
         ) {
             flock($lock, LOCK_UN);
             fclose($lock);
             @unlink($cache_meta_filename.'.lock');
 
-            return $meta['headers'];
+            return $meta;
         }
 
         $curl = curl_init();
@@ -314,27 +318,34 @@ final class File {
 
         curl_close($curl);
 
-        if ($error)
-            throw new \Exception("cURL request failed for URL {$url} with error #{$error}: ".curl_strerror($error));
+        if (!$error) {
+            $headers = [];
+            foreach (preg_split('#\r\n#', trim(explode("\r\n\r\n", ($response ?? '')."\r\n\r\n", 2)[0])) as $line) {
+                if (strpos($line, ':') !== false) {
+                    [$k, $v] = explode(':', $line, 2);
+                    $headers[strtolower(trim($k))] = trim($v);
+                } else
+                    $headers['status-line'] = $line;
+            }
 
-        $headers = [];
-        foreach (preg_split('#\r\n#', trim(explode("\r\n\r\n", ($response ?? '')."\r\n\r\n", 2)[0])) as $line) {
-            if (strpos($line, ':') !== false) {
-                [$k, $v] = explode(':', $line, 2);
-                $headers[strtolower(trim($k))] = trim($v);
-            } else
-                $headers['status-line'] = $line;
-        }
+            $headers = [
+                ...$headers,
+                'http_code' => $info['http_code'] ?? null,
+                'effective_url' => $info['url'] ?? $url,
+                'content_length' => ($info['download_content_length'] ?? 0) > 0 
+                    ? $info['download_content_length']
+                    : $headers['content_length'] ?? 0
+            ];
 
-        $headers = [
-            'http_code' => $info['http_code'] ?? null,
-            'effective_url' => $info['url'] ?? $url,
-            'content_length' => $info['download_content_length'] ?? null,
-            'headers' => $headers
-        ];
+            $meta = [
+                ...$meta,
+                ...$headers,
+                'headers_cache_expires_in' => time() + static::getTtl($headers)
+            ];
 
-        if (($headers['http_code'] ?? null) == 304) {
-            $meta['cache_expires_in'] = time() + self::getTtl($headers);
+            if (($meta['http_code'] ?? null) != 200 && !empty($meta['filename']) && is_file($cache_directory.$meta['filename']))
+                $meta['file_cache_expires_in'] = time() + static::getTtl($meta);
+            
             @file_put_contents($cache_meta_filename, json_encode($meta));
         }
 
@@ -342,7 +353,7 @@ final class File {
         fclose($lock);
         @unlink($cache_meta_filename.'.lock');
 
-        return $headers;
+        return $meta;
     }
 
     private function fetch(bool $force = false): static {
@@ -358,83 +369,28 @@ final class File {
             mkdir($cache_directory, 0775, true);
 
             if (!is_dir($cache_directory))
-                throw new \RuntimeException("Cannot create cache directory");
+                throw new \Exception("Cannot create cache directory");
         }
 
         $cache_meta_filename = $cache_directory.'metadata';
 
-        $lock = fopen($cache_meta_filename.'.lock', 'c');
-        if ($lock === false) throw new \RuntimeException("Cannot open lock file {$cache_meta_filename}.lock");
-        flock($lock, LOCK_EX);
-
         if (!$force) {
             if (is_file($cache_meta_filename))
-                $meta = @json_decode(@file_get_contents($cache_meta_filename), true) ?: [];
+                $meta = $this->getHeaders($force);
             
-            if (!empty($meta['filename']) && is_file($cache_directory.$meta['filename']) && $meta['cache_expires_in'] ?? 0 > time()) {
-                flock($lock, LOCK_UN);
-                fclose($lock);
-                @unlink($cache_meta_filename.'.lock');
-
-                return new static($cache_directory.$meta['filename'], $this);
-            }
-
-            $curl = curl_init();
-            curl_setopt_array($curl, [
-                CURLOPT_URL => $url,
-                CURLOPT_NOBODY => true,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_MAXREDIRS => 10,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HEADER => true,
-                CURLOPT_CONNECTTIMEOUT => static::config('fetch.connect_timeout'),
-                CURLOPT_TIMEOUT => min(30, static::config('fetch.timeout')),
-                CURLOPT_SSL_VERIFYPEER => true,
-                CURLOPT_SSL_VERIFYHOST => 2,
-                CURLOPT_HTTPHEADER => array_filter([
-                    !empty($meta['etag']) ? 'If-None-Match: '.$meta['etag'] : null,
-                    !empty($meta['last_modified']) ? 'If-Modified-Since: '.$meta['last_modified'] : null
-                ]),
-            ]);
-
-            $response = curl_exec($curl);
-            $error = curl_errno($curl);
-            $info = curl_getinfo($curl);
-
-            curl_close($curl);
-
-            if ($error)
-                throw new \RuntimeException("cURL request failed for URL {$url} with error #{$error}: ".curl_strerror($error));
-
-            $headers = [];
-            foreach (preg_split('#\r\n#', trim(explode("\r\n\r\n", ($response ?? '')."\r\n\r\n", 2)[0])) as $line) {
-                if (strpos($line, ':') !== false) {
-                    [$k, $v] = explode(':', $line, 2);
-                    $headers[strtolower(trim($k))] = trim($v);
-                } else
-                    $headers['status-line'] = $line;
-            }
-
-            $headers = [
-                'http_code' => $info['http_code'] ?? null,
-                'effective_url' => $info['url'] ?? $url,
-                'content_length' => $info['download_content_length'] ?? null,
-                'headers' => $headers
-            ];
-
-            if (($headers['http_code'] ?? null) == 304 && !empty($meta['filename']) && is_file($cache_directory.$meta['filename'])) {
-                $meta['cache_expires_in'] = time() + self::getTtl($headers);
-
-                @file_put_contents($cache_meta_filename, json_encode($meta));
-
-                flock($lock, LOCK_UN);
-                fclose($lock);
-                @unlink($cache_meta_filename.'.lock');
-
-                return new static($cache_directory.$meta['filename'], $this);
-            }
-
+            if (
+                !empty($meta['filename']) &&
+                is_file($cache_directory.$meta['filename']) &&
+                (
+                    ($meta['file_cache_expires_in'] ?? 0) > time() ||
+                    ($meta['http_code'] ?? null) != 200
+                )
+            ) return new static($cache_directory.$meta['filename'], $this);
         }
+
+        $lock = fopen($cache_meta_filename.'.lock', 'c');
+        if ($lock === false) throw new \Exception("Cannot open lock file {$cache_meta_filename}.lock");
+        flock($lock, LOCK_EX);
 
         $attempt = 0;
         while ($attempt < static::config('fetch.max_attempts')) {
@@ -442,7 +398,6 @@ final class File {
                 $fopen = fopen($cache_meta_filename.'.temp', 'w');
                 if (!$fopen) throw new \Exception();
 
-                $headers = [];
                 $curl = curl_init();
                 curl_setopt_array($curl, [
                     CURLOPT_URL => $url,
@@ -457,6 +412,7 @@ final class File {
                     CURLOPT_SSL_VERIFYHOST => 2,
                 ]);
 
+                $headers = [];
                 curl_setopt($curl, CURLOPT_HEADERFUNCTION, function ($curl, $header_line) use (&$headers) {
                     $trim = trim($header_line);
                     if ($trim === '') return strlen($header_line);
@@ -475,7 +431,7 @@ final class File {
 
                 if ($error) {
                     @unlink($cache_meta_filename.'.temp');
-                    throw new \Exception();
+                    throw new \RuntimeException ("cURL request failed for URL {$url} with error #{$error}: ".curl_strerror($error));
                 }
 
                 $cache_filename = '';
@@ -495,20 +451,18 @@ final class File {
 
                 rename($cache_meta_filename.'.temp', $filename);
 
-                $ttl = self::getTtl($headers);
+                $ttl = static::getTtl($headers);
+                $cache_expires_in = time() + $ttl;
 
                 $meta = [
-                    'original_url' => $url,
+                    ...$headers,
                     'effective_url' => $headers['effective_url'] ?? $url,
-                    'http_code' => $headers['http_code'] ?? null,
                     'content_length' => $headers['content_length'] ?? filesize($filename),
-                    'content_type' => $headers['content-type'] ?? null,
-                    'etag' => $headers['etag'] ?? $meta['etag'] ?? null,
-                    'last_modified' => $headers['last-modified'] ?? $meta['last_modified'] ?? null,
+                    'original_url' => $url,
                     'fetched_at' => time(),
                     'cache_ttl' => $ttl,
-                    'cache_expires_in' => time() + $ttl,
-                    'headers' => $headers,
+                    'file_cache_expires_in' => $cache_expires_in,
+                    'headers_cache_expires_in' => $cache_expires_in,
                     'filename' => $cache_filename
                 ];
 
@@ -524,7 +478,11 @@ final class File {
             }
         }
 
-        return $this;
+        flock($lock, LOCK_UN);
+        fclose($lock);
+        @unlink($cache_meta_filename.'.lock');
+
+        throw $th;
     }
 
     public function isUri(): bool {
@@ -585,7 +543,7 @@ final class File {
             return static::config('mimes.extensions')[$extension];
 
         if ($this->isUri())
-            return $this->getHeaders()['content-type'];
+            return $this->getHeaders()['content-type'] ?: '';
 
         $mime_type = '';
 
@@ -611,7 +569,9 @@ final class File {
     }
 
     public function exists(): bool {
-        return file_exists($this->getPathname());
+        return $this->isUri()
+            ? false
+            : file_exists($this->getPathname());
     }
 
     public function getDirectory(): string {
@@ -641,7 +601,7 @@ final class File {
 
         $data = $this->mime_instance->set($raw, $flags);
 
-        return file_put_contents($instance->getRealPath(), $data, $flags);
+        return file_put_contents($instance->getRealPath() ?: $instance->getPathname(), $data, $flags);
     }
 
 }

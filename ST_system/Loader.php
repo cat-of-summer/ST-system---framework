@@ -6,7 +6,7 @@ use ST_system\Storage\File;
 
 final class Loader {
 
-    private static function connect(string $path, $key, string $action): void {
+    private function connect(string $path, string $action): void {
         switch ($action) {
             case 'require': require $path; break;
             case 'include': include $path; break;
@@ -27,11 +27,12 @@ final class Loader {
             case 'include':
             case 'require_once':
             case 'include_once':                
-                array_walk(array_keys(File::find(array_shift($args), [
-                    ...array_shift($args) ?? [],
-                    'extension' => 'php'
-                ])), [static, 'connect'], $name);
-
+                array_map(fn($path) => static::connect($path, $name),
+                    array_keys($this->file->find($input, [
+                        ...(array_shift($args) ?? []),
+                        'extension' => 'php'
+                    ]))
+                );
                 return;
             case 'registerClass':
                 return static::create(array_shift($args))->{$name}(array_shift($args));
@@ -54,10 +55,12 @@ final class Loader {
                 if ($input == '' && $this->file->isFile())
                     $input = $this->file->getFilename();
 
-                array_walk(array_keys($this->file->find($input, [
-                    ...array_shift($args) ?? [],
-                    'extension' => 'php'
-                ])), [static, 'connect'], $name);
+                array_map(fn($path) => static::connect($path, $name),
+                    array_keys($this->file->find($input, [
+                        ...(array_shift($args) ?? []),
+                        'extension' => 'php'
+                    ]))
+                );
 
                 return;
             default:

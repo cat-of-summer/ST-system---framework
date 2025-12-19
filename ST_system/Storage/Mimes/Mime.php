@@ -4,7 +4,7 @@ namespace ST_system\Storage\Mimes;
 
 use ST_system\Storage\File;
 
-abstract class Mime {
+class Mime {
 
     protected File $file;
 
@@ -19,5 +19,5 @@ abstract class Mime {
         $this->__init();
     }
 
-    abstract public function toHTML(array $config = []): string;
+    public function toHTML(array $config = []): string { return ''; }
 }

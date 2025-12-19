@@ -131,7 +131,11 @@ class ImageMime extends Mime {
         return implode('<br>', array_map(fn($file) => $file->toHTML(), $imgs));
     }
 
-    public function convert(array $config): File {
+    public function convert(array $config = []): File {
+        $instance = $this->file->isUri()
+            ? $this->file->fetch()
+            : $this->file;
+
         $resize_config = (isset($config['width']) || isset($config['height']) || isset($config['side']))
             ? [
                 ...static::config('resize.config'),
@@ -141,18 +145,18 @@ class ImageMime extends Mime {
 
         $convert_config = (isset($config['extension']) || isset($config['quality']))
             ? [
-                'extension' => $this->file->getExtension(),
+                'extension' => $instance->getExtension(),
                 ...static::config('convertTo.config'),
                 ...$config
             ]
             : [];
 
         if (empty($resize_config) && empty($convert_config))
-            return $this->file;
+            return $instance;
 
         $quality = $convert_config['quality'] ?? $resize_config['quality'];
-        $old_file = $this->file->getPathname();
-        $old_extension = $this->file->getExtension();
+        $old_file = $instance->getPathname();
+        $old_extension = $instance->getExtension();
         $new_extension = $convert_config['extension'] ?? $old_extension;
         $cache_directory = static::config('cache_dir').'/'.md5($old_file).'/';
         $prefix = '';
@@ -187,8 +191,8 @@ class ImageMime extends Mime {
         
             switch (static::$IMAGE_DRIVER) {
                 case 'imagick':
-                    $image = new Imagick();
-                    $image->pingImage($this->file->getPathname());
+                    $image = new \Imagick();
+                    $image->pingImage($instance->getPathname());
 
                     $width  = $image->getImageWidth();
                     $height = $image->getImageHeight();
@@ -197,7 +201,7 @@ class ImageMime extends Mime {
                     $image->destroy();
                 break;
                 case 'gd':
-                    $info = getimagesize($this->file->getPathname());
+                    $info = getimagesize($instance->getPathname());
 
                     if (!$info)
                         throw new \Exception("Couldn't resize the image");
@@ -271,7 +275,7 @@ class ImageMime extends Mime {
             ];
         }
 
-        $new_file = $cache_directory.$prefix.$this->file->getBasename().'.'.$new_extension;
+        $new_file = $cache_directory.$prefix.$instance->getBasename().'.'.$new_extension;
 
         if (($config['force'] ?? false) || !is_file($new_file)) {
             switch (static::$IMAGE_DRIVER) {
@@ -287,7 +291,7 @@ class ImageMime extends Mime {
                         if (!isset(static::config('formats.gd')[$ext]))
                             throw new \Exception("The format {$ext} is not supported");
 
-                    $image = imagecreatefromstring($this->file->getContents());
+                    $image = imagecreatefromstring($instance->getContents());
 
                     if (!$image)
                         throw new \Exception("Couldn't convert the image");
@@ -314,7 +318,7 @@ class ImageMime extends Mime {
             }
         }
 
-        return $this->file->make($new_file);
+        return $instance->make($new_file);
     }
 
     private function convertImage(object $image, array $config = []): object {
