@@ -11,7 +11,7 @@ class ImageMime extends Mime {
     use HasConfig;
 
     protected static array $CONFIG = [
-        'convertTo' => [
+        'convert' => [
             'config' => [
                 'quality' => 90,
                 'force' => false
@@ -146,7 +146,7 @@ class ImageMime extends Mime {
         $convert_config = (isset($config['extension']) || isset($config['quality']))
             ? [
                 'extension' => $instance->getExtension(),
-                ...static::config('convertTo.config'),
+                ...static::config('convert.config'),
                 ...$config
             ]
             : [];
