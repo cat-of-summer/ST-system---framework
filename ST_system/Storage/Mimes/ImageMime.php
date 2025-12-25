@@ -4,6 +4,7 @@ namespace ST_system\Storage\Mimes;
 
 use ST_system\Storage\Mimes\Mime;
 use ST_system\Traits\HasConfig;
+use ST_system\Cache;
 use ST_system\Storage\File;
 
 class ImageMime extends Mime {
@@ -90,23 +91,13 @@ class ImageMime extends Mime {
 
     private static string $IMAGE_DRIVER = '';
 
+    private Cache $cache;
+
     protected function __init(): void {
-        static $is_cache_init = false;
-
-        if (!$is_cache_init) {
-            static::set_config([
-                'cache_dir' => File::prepare_path(rtrim(File::config('cache_dir'), '/').'/image_cache/')
-            ]);
-
-            if (!is_dir(static::config('cache_dir'))) {
-                @mkdir(static::config('cache_dir'), 0775, true);
-
-                if (!is_dir(static::config('cache_dir')))
-                    throw new \RuntimeException("Cannot create cache directory");
-            }
-
-            $is_cache_init = true;
-        }
+        $this->cache = Cache::make($this->file->getPathname(), [
+            'dir' => rtrim(File::config('cache.dir'), '/').'/image_cache/',
+            'ttl' => -1
+        ]);
         
         if (static::$IMAGE_DRIVER == '')
             static::$IMAGE_DRIVER = class_exists('Imagick')
@@ -161,13 +152,6 @@ class ImageMime extends Mime {
         $cache_directory = static::config('cache_dir').'/'.md5($old_file).'/';
         $prefix = '';
         
-        if (!is_dir($cache_directory)) {
-            mkdir($cache_directory, 0775, true);
-
-            if (!is_dir($cache_directory))
-                throw new \RuntimeException("Cannot create cache directory");
-        }
-
         if (!empty($resize_config)) {
             $resize_config['object-fit'] = in_array($resize_config['object-fit'], static::config('resize.object-fit'))
                 ? $resize_config['object-fit']
@@ -275,9 +259,15 @@ class ImageMime extends Mime {
             ];
         }
 
-        $new_file = $cache_directory.$prefix.$instance->getBasename().'.'.$new_extension;
+        $cache = $this->cache->make('', [
+            'file' => $prefix.$instance->getBasename().'.'.$new_extension
+        ]);
 
-        if (($config['force'] ?? false) || !is_file($new_file)) {
+        if (($config['force'] ?? false) || !is_file($cache->file)) {
+            $cache->setMeta([
+                'src' => $old_file
+            ]);
+
             switch (static::$IMAGE_DRIVER) {
                 case 'imagick':
                     foreach ([$old_extension, $new_extension] as $ext)
@@ -304,7 +294,7 @@ class ImageMime extends Mime {
             $image = $this->convertImage($image, [
                 'extension' => $new_extension,
                 'quality' => $quality,
-                'file' => $new_file
+                'file' => $cache->file
             ]);
     
             switch (static::$IMAGE_DRIVER) {
@@ -318,7 +308,7 @@ class ImageMime extends Mime {
             }
         }
 
-        return $instance->make($new_file);
+        return $instance->make($cache->file);
     }
 
     private function convertImage(object $image, array $config = []): object {

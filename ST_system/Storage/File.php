@@ -3,6 +3,8 @@
 namespace ST_system\Storage;
 
 use ST_system\Traits\HasConfig;
+use ST_system\Main;
+use ST_system\Cache;
 use ST_system\Storage\Mimes;
 
 final class File {
@@ -10,7 +12,10 @@ final class File {
     use HasConfig;
 
     private static array $CONFIG = [
-        'cache_dir' => '~/cache/',
+        'cache' => [
+            'dir' => '~/cache/',
+            'ttl' => 3600
+        ],
         'mimes' => [
             'extensions' => [
                 'js' => 'application/javascript',
@@ -36,7 +41,6 @@ final class File {
         'fetch' => [
             'connect_timeout' => 10,
             'timeout' => 300,
-            'default_ttl' => 3600,
             'max_attempts' => 15,
         ],
         'find' => [
@@ -47,49 +51,27 @@ final class File {
         ]
     ];
 
-    public static function prepare_path(string $path): string {
-        if (strpos($path, '~') === 0)
-            $path = $_SERVER['DOCUMENT_ROOT'].'/'.trim($path, '/~');
-        elseif (strpos($path, '/') !== 0)
-            $path = __DIR__.'/'.trim($path, '/');
-        else
-            $path = rtrim($path, '/');
-
-        return $path;
-    }
-
     public static function make(string $path) { return new static($path); }
 
     private bool $isUri;
     private \SplFileInfo $info;
-    private Mimes\Mime $mime_instance;
-    private $original;
+    private Mimes\Mime $mime;
+    private Cache $cache;
+    private $original = null;
 
     private function __construct(string $path, $original = null) {
-        static $is_cache_init = false;
-
-        if (!$is_cache_init) {
-            static::set_config([
-                'cache_dir' => static::prepare_path(static::config('cache_dir'))
-            ]);
-
-            if (!is_dir(static::config('cache_dir'))) {
-                @mkdir(static::config('cache_dir'), 0775, true);
-
-                if (!is_dir(static::config('cache_dir')))
-                    throw new \RuntimeException("Cannot create cache directory");
-            }
-
-            $is_cache_init = true;
-        }
-
+        $this->original = $original;
         $this->isUri = (bool)filter_var($path, FILTER_VALIDATE_URL);
-        $this->info = new \SplFileInfo($this->isUri ? $path : static::prepare_path($path));
-        $this->original = $original ?? $this;
+        $this->info = new \SplFileInfo($this->isUri ? $path : Main::prepare_path($path));
+        $this->cache = Cache::make($this->getPathname(), [
+            'dir' => static::config('cache.dir'),
+            'ttl' => static::config('cache.ttl'),
+            'file' => $this->getFilename()
+        ]);
 
         $mime = $this->getMime();
 
-        $this->mime_instance = (
+        $this->mime = (
             ($matched = array_filter(
                 static::config('mimes.resolvers'),
                 fn($r, $m) => strpos($mime, $m) !== false,
@@ -133,12 +115,12 @@ final class File {
 
         return is_callable([$this->info, $name])
             ? $this->info->{$name}(...$args)
-            : (isset($this->mime_instance) && is_callable([$this->mime_instance, $name])
-                ? $this->mime_instance->{$name}(...$args)
+            : (isset($this->mime) && is_callable([$this->mime, $name])
+                ? $this->mime->{$name}(...$args)
                 : throw new \Exception("Method {$name} not found"));
     }
 
-    public function getOriginal(): static {
+    public function getOriginal() {
         return $this->original;
     }
 
@@ -168,7 +150,7 @@ final class File {
 
         array_walk($input, function ($i) use (&$results, $config) {
             
-            $i = static::prepare_path($i);
+            $i = Main::prepare_path($i);
 
             if (!preg_match('/[\\(\\[\\{\\|\\?\\+\\*]/', $i)) {
                 if (file_exists($i)) {
@@ -243,7 +225,7 @@ final class File {
     }
 
     private static function getTtl(array $headers = []): int {
-        $ttl = static::config('fetch.default_ttl');
+        $ttl = static::config('cache.ttl');
 
         if (!empty($headers['cache-control'])) {
             if (preg_match('/\bmax-age\s*=\s*(\d+)/i', $headers['cache-control'], $m))
@@ -266,37 +248,10 @@ final class File {
         if (!$this->isUri()) return [];
 
         $url = $this->getPathname();
+        $meta = $this->cache->getMeta();
 
-        $cache_key = md5($url);
-        $cache_directory = static::config('cache_dir').'/'.$cache_key.'/';
-
-        if (!is_dir($cache_directory)) {
-            mkdir($cache_directory, 0775, true);
-
-            if (!is_dir($cache_directory))
-                throw new \Exception("Cannot create cache directory");
-        }
-
-        $cache_meta_filename = $cache_directory.'metadata';
-
-        $lock = fopen($cache_meta_filename.'.lock', 'c');
-        if ($lock === false) throw new \Exception("Cannot open lock file {$cache_meta_filename}.lock");
-        flock($lock, LOCK_EX);
-
-        $meta = is_file($cache_meta_filename)
-            ? (@json_decode(@file_get_contents($cache_meta_filename), true) ?: [])
-            : [];
-
-        if (
-            ($meta['headers_cache_expires_in'] ?? 0) > time()
-            && !$force
-        ) {
-            flock($lock, LOCK_UN);
-            fclose($lock);
-            @unlink($cache_meta_filename.'.lock');
-
+        if (($meta['headers_cache_expires_in'] ?? 0) > time() && !$force)
             return $meta;
-        }
 
         $curl = curl_init();
         curl_setopt_array($curl, [
@@ -328,30 +283,22 @@ final class File {
                     $headers['status-line'] = $line;
             }
 
-            $headers = [
+            $meta = [
+                ...$meta,
                 ...$headers,
                 'http_code' => $info['http_code'] ?? null,
                 'effective_url' => $info['url'] ?? $url,
+                'headers_cache_expires_in' => time() + static::getTtl($headers),
                 'content_length' => ($info['download_content_length'] ?? 0) > 0 
                     ? $info['download_content_length']
                     : $headers['content_length'] ?? 0
             ];
 
-            $meta = [
-                ...$meta,
-                ...$headers,
-                'headers_cache_expires_in' => time() + static::getTtl($headers)
-            ];
-
-            if (($meta['http_code'] ?? null) != 200 && !empty($meta['filename']) && is_file($cache_directory.$meta['filename']))
+            if (($meta['http_code'] ?? null) != 200 && is_file($this->cache->file))
                 $meta['file_cache_expires_in'] = time() + static::getTtl($meta);
-            
-            @file_put_contents($cache_meta_filename, json_encode($meta));
-        }
 
-        flock($lock, LOCK_UN);
-        fclose($lock);
-        @unlink($cache_meta_filename.'.lock');
+            $this->cache->setMeta($meta);
+        }
 
         return $meta;
     }
@@ -359,43 +306,24 @@ final class File {
     private function fetch(bool $force = false): static {
         if (!$this->isUri()) return $this;
 
-        $meta = [];
         $url = $this->getPathname();
 
-        $cache_key = md5($url);
-        $cache_directory = static::config('cache_dir').'/'.$cache_key.'/';
-
-        if (!is_dir($cache_directory)) {
-            mkdir($cache_directory, 0775, true);
-
-            if (!is_dir($cache_directory))
-                throw new \Exception("Cannot create cache directory");
-        }
-
-        $cache_meta_filename = $cache_directory.'metadata';
-
         if (!$force) {
-            if (is_file($cache_meta_filename))
-                $meta = $this->getHeaders($force);
-            
+            $meta = $this->getHeaders(false);
+
             if (
-                !empty($meta['filename']) &&
-                is_file($cache_directory.$meta['filename']) &&
+                is_file($this->cache->file) &&
                 (
                     ($meta['file_cache_expires_in'] ?? 0) > time() ||
                     ($meta['http_code'] ?? null) != 200
                 )
-            ) return new static($cache_directory.$meta['filename'], $this);
+            ) return new static($this->cache->file, $this);
         }
-
-        $lock = fopen($cache_meta_filename.'.lock', 'c');
-        if ($lock === false) throw new \Exception("Cannot open lock file {$cache_meta_filename}.lock");
-        flock($lock, LOCK_EX);
 
         $attempt = 0;
         while ($attempt < static::config('fetch.max_attempts')) {
             try {
-                $fopen = fopen($cache_meta_filename.'.temp', 'w');
+                $fopen = fopen($this->cache->file.'.temp', 'w');
                 if (!$fopen) throw new \Exception();
 
                 $curl = curl_init();
@@ -430,26 +358,11 @@ final class File {
                 fclose($fopen);
 
                 if ($error) {
-                    @unlink($cache_meta_filename.'.temp');
+                    @unlink($this->cache->file.'.temp');
                     throw new \RuntimeException ("cURL request failed for URL {$url} with error #{$error}: ".curl_strerror($error));
                 }
 
-                $cache_filename = '';
-                if (isset($headers['content-disposition']) && preg_match('/filename="?([^"]+)"?/i', $headers['content-disposition'], $m))
-                    $cache_filename = $m[1];
-                
-                if (!$cache_filename)
-                    $cache_filename = basename(parse_url($info['url'] ?? $url, PHP_URL_PATH));
-
-                if (!$cache_filename)
-                    $cache_filename = 'file.bin';
-                
-                $filename = $cache_directory.$cache_filename;
-
-                if ($cache_meta_filename == $filename)
-                    $filename = $cache_directory.'_'.$cache_filename;
-
-                rename($cache_meta_filename.'.temp', $filename);
+                rename($this->cache->file.'.temp', $this->cache->file);
 
                 $ttl = static::getTtl($headers);
                 $cache_expires_in = time() + $ttl;
@@ -457,30 +370,21 @@ final class File {
                 $meta = [
                     ...$headers,
                     'effective_url' => $headers['effective_url'] ?? $url,
-                    'content_length' => $headers['content_length'] ?? filesize($filename),
+                    'content_length' => $headers['content_length'] ?? filesize($this->cache->file),
                     'original_url' => $url,
                     'fetched_at' => time(),
                     'cache_ttl' => $ttl,
                     'file_cache_expires_in' => $cache_expires_in,
-                    'headers_cache_expires_in' => $cache_expires_in,
-                    'filename' => $cache_filename
+                    'headers_cache_expires_in' => $cache_expires_in
                 ];
 
-                @file_put_contents($cache_meta_filename, json_encode($meta));
+                $this->cache->setMeta($meta);
 
-                flock($lock, LOCK_UN);
-                fclose($lock);
-                @unlink($cache_meta_filename.'.lock');
-
-                return new static($filename, $this);
+                return new static($this->cache->file, $this);
             } catch (\Throwable $th) {
                 $attempt++;
             }
         }
-
-        flock($lock, LOCK_UN);
-        fclose($lock);
-        @unlink($cache_meta_filename.'.lock');
 
         throw $th;
     }
@@ -490,49 +394,18 @@ final class File {
     }
 
     public static function purgeAllCache(): void {
-        $dir = static::config('cache_dir');
-
-        if (!is_dir($dir)) return;
-
-        $it = new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS);
-        $files = new \RecursiveIteratorIterator($it, \RecursiveIteratorIterator::CHILD_FIRST);
-
-        foreach ($files as $file)
-            if ($file->isDir())
-                rmdir($file->getPathname());
-            else
-                unlink($file->getPathname());
+        Cache::make('', [
+            'dir' => static::config('cache.dir')
+        ])->purgeBase();
     }
 
     public function purgeCache(): static {
-        if (!$this->isUri()) return $this;
+        $this->cache->purge();
 
-        $dir = static::config('cache_dir').'/'.md5($this->getPathname());
-
-        if (!is_dir($dir)) return $this;
-
-        $it = new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS);
-        $files = new \RecursiveIteratorIterator($it, \RecursiveIteratorIterator::CHILD_FIRST);
-
-        $lock_filename = $dir.'/'.'metadata.lock';
-        $lock = fopen($lock_filename, 'c');
-
-        if ($lock === false) throw new \RuntimeException("Cannot open lock file {$lock_filename}");
-        flock($lock, LOCK_EX);
-
-        foreach ($files as $file)
-            if ($file->isDir())
-                rmdir($file->getPathname());
-            else
-                unlink($file->getPathname());
-
-        flock($lock, LOCK_UN);
-        fclose($lock);
-        @unlink($$lock_filename);
-
-        rmdir($dir);
-
-        return $this;
+        if ($original = $this->getOriginal())
+            $original->purgeCache();
+                
+        return $original ?? $this;
     }
 
     public function getMime(): string {
@@ -565,7 +438,7 @@ final class File {
         if ($this->isUri())
             return $this->getPathname();
 
-        return str_replace(static::prepare_path($root), '/', $this->getPathname());
+        return str_replace(Main::prepare_path($root), '/', $this->getPathname());
     }
 
     public function exists(): bool {
@@ -591,7 +464,7 @@ final class File {
     public function getContents() {
         $raw = $this->getRaw();
 
-        return $this->mime_instance->get($raw);
+        return $this->mime->get($raw);
     }
 
     public function putContents($raw, int $flags = 0) {
@@ -599,7 +472,16 @@ final class File {
             ? $this->fetch()
             : $this;
 
-        $data = $this->mime_instance->set($raw, $flags);
+        $data = $instance->mime->set($raw, $flags);
+        
+        $dir = $instance->getDirectory();
+
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+
+            if (!is_dir($dir))
+                throw new \RuntimeException("Cannot create cache directory");
+        }
 
         return file_put_contents($instance->getRealPath() ?: $instance->getPathname(), $data, $flags);
     }
