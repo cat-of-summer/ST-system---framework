@@ -126,6 +126,18 @@ final class TelegramBot extends IntegrationDriver {
                     'reply_markup' => 'reply_markup'
                 ]
             ],
+            'sendMediaGroup' => [
+                'params' => [
+                    'chat_id' => '*int',
+                    'media' => [new \Exception("Не передан массив медиа-контента или он некорректен!"), fn($v) => is_array($v) && count($v) >= 2 && count($v) <= 10, 'after' => fn($v) => json_encode(array_map(fn($j) => static::prepare_params([
+                        'type' => [new \Exception("Не передан тип медиа-контента!"), fn($v) => in_array($v, ['audio', 'document', 'photo', 'video'])],
+                        'parse_mode' => 'parse_mode',
+                        'media' => '*url',
+                        'thumbnail' => 'url',
+                        'caption' => 'html',
+                    ], $j), $v))],
+                ]
+            ],
             // 'editMessageText' => [
             //     'params' => [
             //         ...$this->method_config('sendMessage')['params'],
