@@ -71,6 +71,15 @@ class ImageMime extends Mime {
                 'force' => false,
                 'object-fit' => 'fill'
             ],
+            'viewports' => [
+                'xs' => 359.98,
+                'sm' => 767.98,
+                'md' => 1023.98,
+                'lp' => 1279.98,
+                'lg' => 1535.98,
+                'dt' => 1919.98,
+                'xl' => false,
+            ],
             'sizes' => [
                 'tiny' => 64,
                 'small' => 128,
@@ -94,9 +103,25 @@ class ImageMime extends Mime {
     private Cache $cache;
 
     protected function __init(): void {
+        static $is_sorted = false;
+        if ($is_sorted === false) {
+            $resize = static::config('resize');
+            uasort($resize['viewports'], function ($a, $b) {
+                if ($a === false) return 1;
+                if ($b === false) return -1;
+
+                return $a <=> $b;
+            });
+            asort($resize['sizes']);
+
+            static::set_config(['resize' => $resize]);
+            $is_sorted = true;
+        }
+
         $this->cache = Cache::make($this->file->getPathname(), [
-            'dir' => rtrim(File::config('cache.dir'), '/').'/image_cache/',
-            'ttl' => -1
+            'dir' => File::config('cache.dir'),
+            'file' => $this->file->getFilename(),
+            'ttl' => -1,
         ]);
         
         if (static::$IMAGE_DRIVER == '')
@@ -108,18 +133,107 @@ class ImageMime extends Mime {
                 );
     }
 
-    public function toHTML(array $config = []): string { return "<img src='{$this->file->getRelativePath()}' alt='{$this->file->getBasename()}' />"; }
+    public function toHTML(array $config = []): string {
+        $attrs = [
+            'alt' => $this->file->getBasename(),
+            ...$config,
+            'src' => $this->file->getRelativePath()
+        ];
 
-    public function test() {
-        $imgs = [];
-        foreach (static::config('resize.sizes') as $size => $v) {
-            $imgs[] = $this->file->convert([
-                'extension' => 'webp',
-                'side' => $size
-            ]);
+        return '<img '.static::getAttrString($attrs).' />';
+    }
+
+    public function toResponsive(array $config = []): string {
+        $instance = $this->file->isUri()
+            ? $this->file->fetch()
+            : $this->file;
+        
+        $extension = $config['extension'] ?? 'webp';
+        $viewport = $config['viewport'] ?? [];
+
+        unset($config['extension']);
+        unset($config['viewport']);
+        
+        ['width' => $width] = $instance->getImageSize();
+
+        $srcset = [];
+        foreach (static::config('resize.sizes') as $px) {
+            $w = min($px, $width);
+
+            $srcset[$w] = $instance->convert([
+                ...($w === $width ? [] : [
+                    'width' => $w,
+                ]),
+                'extension' => $extension
+            ])->getRelativePath()." {$w}w";
+
+            if ($w === $width) break;
         }
 
-        return implode('<br>', array_map(fn($file) => $file->toHTML(), $imgs));
+        $sizes = [];
+        foreach (array_reverse(static::config('resize.viewports'), true) as $display => $max) {
+            $value = $viewport[$display] ?? ($max === false ? '100vw' : null);
+
+            if (!$value) continue;
+
+            $sizes[$max] = ($max !== false
+                ? "(max-width:{$max}px) "
+                : '').(is_string($value) ? $value : min($value, $max).'px');
+        }
+
+        $attrs = [
+            'alt' => $this->file->getBasename(),
+            ...$config,
+            'src' => $srcset[$width],
+            'srcset' => implode(', ', $srcset),
+            'sizes' => implode(', ', array_reverse($sizes))
+        ];
+
+        return '<img '.static::getAttrString($attrs).' />';
+    }
+
+    public function getImageSize(): array {
+        $instance = $this->file->isUri()
+            ? $this->file->fetch()
+            : $this->file;
+
+        $cache = $this->cache->make(($instance->getOriginal() ?? $instance)->getPathname());
+
+        if ($result = $cache->getMeta()['imageSize'])
+            return $result;
+
+        switch (static::$IMAGE_DRIVER) {
+            case 'imagick':
+                $image = new \Imagick();
+                $image->pingImage($instance->getPathname());
+
+                $width  = $image->getImageWidth();
+                $height = $image->getImageHeight();
+
+                $image->clear();
+                $image->destroy();
+            break;
+            case 'gd':
+                $info = getimagesize($instance->getPathname());
+
+                if (!$info)
+                    throw new \Exception("Couldn't resize the image");
+                
+                $width  = (int)$info[0];
+                $height = (int)$info[1];
+            break;
+        }
+
+        $result = [
+            'width' => $width,
+            'height' => $height
+        ];
+
+        $cache->setMeta([
+            'imageSize' => $result
+        ]);
+
+        return $result;
     }
 
     public function convert(array $config = []): File {
@@ -173,27 +287,10 @@ class ImageMime extends Mime {
                     if (!$resize_config[$side]) unset($resize_config[$side]);
                 }
         
-            switch (static::$IMAGE_DRIVER) {
-                case 'imagick':
-                    $image = new \Imagick();
-                    $image->pingImage($instance->getPathname());
-
-                    $width  = $image->getImageWidth();
-                    $height = $image->getImageHeight();
-
-                    $image->clear();
-                    $image->destroy();
-                break;
-                case 'gd':
-                    $info = getimagesize($instance->getPathname());
-
-                    if (!$info)
-                        throw new \Exception("Couldn't resize the image");
-                    
-                    $width  = (int)$info[0];
-                    $height = (int)$info[1];
-                break;
-            }
+            [
+                'width' => $width,
+                'height' => $height
+            ] = $instance->getImageSize();
                     
             if (!isset($resize_config['width']) && !isset($resize_config['height'])) {
                 if (!isset($resize_config['side']))
@@ -259,14 +356,12 @@ class ImageMime extends Mime {
             ];
         }
 
-        $cache = $this->cache->make('', [
+        $cache = $this->cache->make(($instance->getOriginal() ?? $instance)->getPathname(), [
             'file' => $prefix.$instance->getBasename().'.'.$new_extension
         ]);
 
-        if (($config['force'] ?? false) || !is_file($cache->file)) {
-            $cache->setMeta([
-                'src' => $old_file
-            ]);
+        if (($config['force'] ?? false) || !is_file($cache->file) || $cache->getMeta()['modified_at'] < $cache->getMeta($instance->getFilename())['modified_at']) {
+            $cache->initDir();
 
             switch (static::$IMAGE_DRIVER) {
                 case 'imagick':
@@ -306,6 +401,8 @@ class ImageMime extends Mime {
                     imagedestroy($image);
                 break;
             }
+
+            $cache->setMeta([]);
         }
 
         return $instance->make($cache->file);

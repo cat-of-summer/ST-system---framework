@@ -19,5 +19,13 @@ class Mime {
         $this->__init();
     }
 
+    final static function getAttrString(array $attrs): string {
+        return implode(' ', array_filter(array_map(
+            fn($k, $v) => $v === true ? $k : ($v === false || $v === null ? null : $k.'="'.htmlspecialchars(is_array($v) ? implode(' ', $v) : (string)$v, ENT_QUOTES).'"'),
+            array_keys($attrs),
+            $attrs
+        )));
+    }
+
     public function toHTML(array $config = []): string { return ''; }
 }

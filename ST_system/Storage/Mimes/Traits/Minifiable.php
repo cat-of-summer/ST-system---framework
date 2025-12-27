@@ -2,6 +2,7 @@
 namespace ST_system\Storage\Mimes\Traits;
 
 use ST_system\Storage\File;
+use ST_system\Main;
 use ST_system\Cache;
 
 trait Minifiable {
@@ -11,7 +12,8 @@ trait Minifiable {
 
     protected function __init(): void {
         $this->cache = Cache::make($this->file->getPathname(), [
-            'dir' => rtrim(File::config('cache.dir'), '/').'/minified_cache/',
+            'dir' => File::config('cache.dir'),
+            'file' => $this->file->getFilename(),
             'ttl' => -1
         ]);
     }
@@ -24,11 +26,11 @@ trait Minifiable {
         if ($instance->is_minified)
             return $instance;
 
-        $cache = $this->cache->make('', [
+        $cache = $this->cache->make(($instance->getOriginal() ?? $instance)->getPathname(), [
             'file' => $instance->getBasename().'.min.'.$instance->getExtension()
         ]);
 
-        if (($config['force'] ?? false) || !is_file($cache->file))
+        if (($config['force'] ?? false) || !is_file($cache->file) || $cache->getMeta()['modified_at'] < $cache->getMeta($instance->getFilename())['modified_at'])
             $cache->set($this->__minify($instance->getRaw(), $config));
         
         return $instance->make($cache->file);

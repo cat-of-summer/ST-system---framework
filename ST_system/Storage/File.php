@@ -107,7 +107,7 @@ final class File {
                 if ($this->isUri()) return 'uri';
                 break;
             case 'getSize':
-                if ($this->isUri()) return (int)$this->getHeaders()['content-length'];
+                if ($this->isUri()) return (int)$this->getMeta()['content-length'];
                 break;
             case 'getBasename':
                 if (empty($args)) return $this->info->getBasename('.'.$this->getExtension());
@@ -244,13 +244,13 @@ final class File {
         return (int)$ttl;
     }
 
-    private function getHeaders(bool $force = false): array {
+    public function getMeta(bool $force = false): array {
         if (!$this->isUri()) return [];
 
         $url = $this->getPathname();
         $meta = $this->cache->getMeta();
-
-        if (($meta['headers_cache_expires_in'] ?? 0) > time() && !$force)
+        
+        if (!$this->cache->isExpired('', 'headers_cache_expires_in') && !$force)
             return $meta;
 
         $curl = curl_init();
@@ -295,9 +295,9 @@ final class File {
             ];
 
             if (($meta['http_code'] ?? null) != 200 && is_file($this->cache->file))
-                $meta['file_cache_expires_in'] = time() + static::getTtl($meta);
+                $meta['expires_in'] = time() + static::getTtl($meta);
 
-            $this->cache->setMeta($meta);
+            $this->cache->setMeta($meta, '', 0, false);
         }
 
         return $meta;
@@ -309,12 +309,12 @@ final class File {
         $url = $this->getPathname();
 
         if (!$force) {
-            $meta = $this->getHeaders(false);
+            $meta = $this->getMeta();
 
             if (
                 is_file($this->cache->file) &&
                 (
-                    ($meta['file_cache_expires_in'] ?? 0) > time() ||
+                    !$this->cache->isExpired() ||
                     ($meta['http_code'] ?? null) != 200
                 )
             ) return new static($this->cache->file, $this);
@@ -374,11 +374,11 @@ final class File {
                     'original_url' => $url,
                     'fetched_at' => time(),
                     'cache_ttl' => $ttl,
-                    'file_cache_expires_in' => $cache_expires_in,
+                    'expires_in' => $cache_expires_in,
                     'headers_cache_expires_in' => $cache_expires_in
                 ];
 
-                $this->cache->setMeta($meta);
+                $this->cache->setMeta($meta, '', 0, false);
 
                 return new static($this->cache->file, $this);
             } catch (\Throwable $th) {
@@ -416,7 +416,7 @@ final class File {
             return static::config('mimes.extensions')[$extension];
 
         if ($this->isUri())
-            return $this->getHeaders()['content-type'] ?: '';
+            return $this->getMeta()['content-type'] ?: '';
 
         $mime_type = '';
 
@@ -447,10 +447,15 @@ final class File {
             : file_exists($this->getPathname());
     }
 
-    public function getDirectory(): string {
-        return $this->isDir()
+    public function getDirectory(int $depth = 0): string {
+        $dir = $this->isDir()
             ? $this->getPathname()
             : $this->getPath();
+
+        for ($i = 0; $i < $depth; $i++)
+            $dir = dirname($dir);
+        
+        return $dir;
     }
 
     public function getRaw() {

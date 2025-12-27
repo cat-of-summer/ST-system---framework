@@ -12,11 +12,8 @@ final class Cache {
     private static array $CONFIG = [
         'dir' => '~/cache/',
         'file' => 'data',
-        'ttl' => 3600,
-        'expires_key' => 'expires_in'
+        'ttl' => 3600
     ];
-
-    private static $INITIALIZED_DIRS = [];
 
     private string $base_dir;
     private $raw_key;
@@ -25,8 +22,11 @@ final class Cache {
     private int $ttl;
 
     public static function __callStatic(string $name, array $args) {
-        if ($name === 'make')
-            return static::make(...$args);
+        switch ($name) {
+            case 'make':
+            case 'isExpired':
+                return static::make(...$args);
+        }
 
         if (!in_array($name, [
             'get',
@@ -64,6 +64,7 @@ final class Cache {
             case 'get':
             case 'getMeta':
             case 'setMeta':
+            case 'isExpired':
                 return $this->{$name}(...$args);
         }
         throw new \BadMethodCallException("Method {$name} not found");
@@ -90,20 +91,12 @@ final class Cache {
         $config = array_merge(static::config(), array_filter($config));
 
         $this->base_dir = Main::prepare_path($config['dir']);
+        
+        $this->initDir(true);
+
         $this->raw_key = $key;
 
         $key = md5(Main::serialize($this->raw_key));
-
-        if (!isset(static::$INITIALIZED_DIRS[$this->base_dir])) {
-            if (!is_dir($this->base_dir)) {
-                @mkdir($this->base_dir, 0775, true);
-
-                if (!is_dir($this->base_dir))
-                    throw new \RuntimeException("Cannot create cache directory");
-            }
-
-            static::$INITIALIZED_DIRS[$this->base_dir] = true;
-        }
 
         $this->dir = $this->base_dir.'/'.$key;
         $this->file = $config['file'];
@@ -158,28 +151,24 @@ final class Cache {
         @rmdir($this->dir);
     }
 
-    private function setMeta(array $data, string $file = '', int $ttl = 0): void {
-        if ($file === '')
-            $file = $this->file;
+    private function setMeta(array $data, string $file = '', int $ttl = 0, bool $append = true): void {
+        $this->initDir();
 
         if ($ttl === -1)
-            unset($data[static::config('expires_key')]);
-        elseif (!isset($data[static::config('expires_key')]) && $ttl > 0)
-            $data[static::config('expires_key')] = $ttl + time();
+            $data['expires_in'] = -1;
+        elseif (!isset($data['expires_in']) && $ttl > 0)
+            $data['expires_in'] = $ttl + time();
 
-        $data = array_merge($this->getMeta($file), $data);
-        $meta = $this->dir.'/'.$file.'.meta';
+        $data = [
+            ...(!$append ? [] : $this->getMeta($file)),
+            ...$data
+        ];
 
-        if (!isset(static::$INITIALIZED_DIRS[$this->dir])) {
-            if (!is_dir($this->dir)) {
-                @mkdir($this->dir, 0775, true);
+        $file = $this->dir.'/'.($file === '' ? $this->file : $file);
+        $meta = $file.'.meta';
 
-                if (!is_dir($this->dir))
-                    throw new \RuntimeException("Cannot create cache directory");
-            }
-
-            static::$INITIALIZED_DIRS[$this->dir] = true;
-        }
+        $data['modified_at'] = filemtime($file);
+        $data['meta_modified_at'] = filemtime($meta);
 
         $lock = fopen($meta.'.lock', 'c+');
 
@@ -213,6 +202,7 @@ final class Cache {
         static $meta_cache = [];
 
         if (!is_dir($this->dir)) return [
+            'meta_modified_at' => false,
             'modified_at' => false
         ];
 
@@ -222,7 +212,7 @@ final class Cache {
         $meta = $this->dir.'/'.$file.'.meta';
         $filemtime = filemtime($meta);
 
-        if (isset($meta_cache[$meta]) && $meta_cache[$meta]['modified_at'] == $filemtime)
+        if (isset($meta_cache[$meta]) && $meta_cache[$meta]['meta_modified_at'] == $filemtime)
             return $meta_cache[$meta];
 
         $lock = fopen($meta.'.lock', 'c+');
@@ -242,7 +232,7 @@ final class Cache {
             
             return $data = is_array($decoded = @json_decode($content, true)) ? $decoded : [];
         } finally {
-            $data['modified_at'] = $filemtime;
+            $data['meta_modified_at'] = $filemtime;
             $meta_cache[$meta] = $data;
             
             flock($lock, LOCK_UN);
@@ -254,25 +244,14 @@ final class Cache {
     }
 
     private function set($data, string $file = '', int $ttl = 0): void {
+        $this->initDir();
+
         if ($file === '')
             $file = $this->file;
         
         if ($ttl === 0)
             $ttl = $this->ttl;
         
-        if (!isset(static::$INITIALIZED_DIRS[$this->dir])) {
-            if (!is_dir($this->dir)) {
-                @mkdir($this->dir, 0775, true);
-
-                if (!is_dir($this->dir))
-                    throw new \RuntimeException("Cannot create cache directory");
-            }
-
-            static::$INITIALIZED_DIRS[$this->dir] = true;
-        }
-
-        $this->setMeta(['type' => gettype($data)], $file, $ttl);
-
         if (is_object($data))
             $data = $data instanceof \JsonSerializable
                 ? $data->jsonSerialize()
@@ -282,9 +261,13 @@ final class Cache {
             $data = @json_encode($data);
         
         @file_put_contents($this->dir.'/'.$file, $data, LOCK_EX);
+
+        $this->setMeta(['type' => gettype($data)], $file, $ttl);
     }
 
     private function get(string $file = '') {
+        static $data_cache = [];
+
         if (!is_dir($this->dir))
             return null;
 
@@ -294,6 +277,11 @@ final class Cache {
         $meta = $this->getMeta($file);
 
         $file = $this->dir.'/'.($file === '' ? $this->file : $file);
+        $filemtime = filemtime($file);
+
+        if (isset($data_cache[$file]) && $meta['modified_at'] == $filemtime)
+            return $data_cache[$file];
+
         $lock = fopen($file.'.lock', 'c+');
 
         if ($lock === false)
@@ -304,43 +292,59 @@ final class Cache {
                 throw new \RuntimeException("Cannot acquire shared lock on {$file}.lock");
             
             if (!is_file($file))
-                return null;
+                return $data = null;
 
             if (($content = @file_get_contents($file)) === false)
-                return null;
+                return $data = null;
 
             switch ($meta['type']) {
                 case 'array':
-                    return is_array($decoded = @json_decode($content, true)) ? $decoded : [];
+                    return $data = is_array($decoded = @json_decode($content, true)) ? $decoded : [];
                 case 'object':
-                    return is_object($decoded = @json_decode($content, false)) ? $decoded : new \stdClass();
+                    return $data = is_object($decoded = @json_decode($content, false)) ? $decoded : new \stdClass();
                 case 'string':
-                    return (string)$content;
+                    return $data = (string)$content;
                 case 'int':
                 case 'integer':
-                    return (int)$content;
+                    return $data = (int)$content;
                 case 'float':
                 case 'double':
-                    return (float)$content;
+                    return $data = (float)$content;
                 case 'bool':
                 case 'boolean':
-                    return (bool)$content;
+                    return $data = (bool)$content;
                 default:
-                    return $content;
+                    return $data = $content;
             }
         } finally {
+            $data_cache[$file] = $data;
+
             flock($lock, LOCK_UN);
             fclose($lock);
             @unlink($file.'.lock');
         }
     }
 
-    private function isExpired(string $file = '', string $expires_key = ''): bool {
-        if ($expires_key === '')
-            $expires_key = static::config('expires_key');
+    private function isExpired(string $file = '', string $expires_key = 'expires_in'): bool {
+        $expires_in = $this->getMeta($file)[$expires_key] ?? 0;
 
-        $meta = $this->getMeta($file);
+        return $expires_in != -1 && $expires_in < time();
+    }
 
-        return isset($meta[$expires_key]) && $meta[$expires_key] < time();
+    public function initDir(bool $base_dir = false): void {
+        static $initialized_dirs = [];
+
+        $dir = $base_dir ? $this->base_dir : $this->dir;
+
+        if (!isset($initialized_dirs[$dir])) {
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+
+                if (!is_dir($dir))
+                    throw new \RuntimeException("Cannot create cache directory");
+            }
+
+            $initialized_dirs[$dir] = true;
+        }
     }
 }
