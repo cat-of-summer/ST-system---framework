@@ -28,7 +28,7 @@ final class File {
                 'otf' => 'font/otf',
                 'svg' => 'image/svg+xml'
             ],
-            'resolvers' => [
+            'services' => [
                 'image/svg+xml' => Mimes\SvgMime::class,
                 'text/plain' => Mimes\TextPlainMime::class,
                 'text/css' => Mimes\CssMime::class,
@@ -73,7 +73,7 @@ final class File {
 
         $this->mime = (
             ($matched = array_filter(
-                static::config('mimes.resolvers'),
+                static::config('mimes.services'),
                 fn($r, $m) => strpos($mime, $m) !== false,
                 ARRAY_FILTER_USE_BOTH
             ))
@@ -120,8 +120,17 @@ final class File {
                 : throw new \Exception("Method {$name} not found"));
     }
 
-    public function getOriginal() {
-        return $this->original;
+    public function getOriginal(bool $force = false) {
+        $instance = $this;
+
+        if ($force) {
+            while ($original = $instance->original)
+                $instance = $original;
+
+            return $instance;
+        }
+
+        return $instance->original;
     }
 
     private static function getFilesystemIterator(string $start_dir, array $config): object {
@@ -432,6 +441,12 @@ final class File {
             $mime_type = @mime_content_type($path) ?: '';
 
         return $mime_type;
+    }
+
+    public function getServiceName(): string {
+        return (new \ReflectionClass($this->mime))->isAnonymous()
+            ? 'Default'
+            : get_class($this->mime);
     }
 
     public function getRelativePath(string $root = '~'): string {

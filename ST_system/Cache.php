@@ -25,6 +25,7 @@ final class Cache {
         switch ($name) {
             case 'make':
             case 'isExpired':
+            case 'isValid':
                 return static::make(...$args);
         }
 
@@ -65,6 +66,7 @@ final class Cache {
             case 'getMeta':
             case 'setMeta':
             case 'isExpired':
+            case 'isValid':
                 return $this->{$name}(...$args);
         }
         throw new \BadMethodCallException("Method {$name} not found");
@@ -271,7 +273,7 @@ final class Cache {
         if (!is_dir($this->dir))
             return null;
 
-        if ($this->isExpired($file))
+        if (!$this->isValid($file))
             return null;
 
         $meta = $this->getMeta($file);
@@ -291,9 +293,6 @@ final class Cache {
             if (!flock($lock, LOCK_SH))
                 throw new \RuntimeException("Cannot acquire shared lock on {$file}.lock");
             
-            if (!is_file($file))
-                return $data = null;
-
             if (($content = @file_get_contents($file)) === false)
                 return $data = null;
 
@@ -329,6 +328,15 @@ final class Cache {
         $expires_in = $this->getMeta($file)[$expires_key] ?? 0;
 
         return $expires_in != -1 && $expires_in < time();
+    }
+
+    private function isValid(string $file = '', string $expires_key = 'expires_in'): bool {
+        if ($this->isExpired($file, $expires_key))
+            return false;
+
+        $file = $this->dir.'/'.($file === '' ? $this->file : $file);
+        
+        return is_file($file);
     }
 
     public function initDir(bool $base_dir = false): void {

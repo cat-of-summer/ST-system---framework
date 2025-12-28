@@ -197,7 +197,7 @@ class ImageMime extends Mime {
             ? $this->file->fetch()
             : $this->file;
 
-        $cache = $this->cache->make(($instance->getOriginal() ?? $instance)->getPathname());
+        $cache = $this->cache->make($instance->getOriginal(true)->getPathname());
 
         if ($result = $cache->getMeta()['imageSize'])
             return $result;
@@ -356,7 +356,7 @@ class ImageMime extends Mime {
             ];
         }
 
-        $cache = $this->cache->make(($instance->getOriginal() ?? $instance)->getPathname(), [
+        $cache = $this->cache->make($instance->getOriginal(true)->getPathname(), [
             'file' => $prefix.$instance->getBasename().'.'.$new_extension
         ]);
 

@@ -26,7 +26,7 @@ trait Minifiable {
         if ($instance->is_minified)
             return $instance;
 
-        $cache = $this->cache->make(($instance->getOriginal() ?? $instance)->getPathname(), [
+        $cache = $this->cache->make($instance->getOriginal(true)->getPathname(), [
             'file' => $instance->getBasename().'.min.'.$instance->getExtension()
         ]);
 
