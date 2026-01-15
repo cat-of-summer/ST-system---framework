@@ -6,6 +6,7 @@ trait HasAttributes {
 
     // use HasAttributes {
     //     __get as private getAttribute;
+    //     __set as private setAttribute;
     // }
 
     protected array $attributes = [];
