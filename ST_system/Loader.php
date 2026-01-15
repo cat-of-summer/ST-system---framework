@@ -26,9 +26,11 @@ final class Loader {
             case 'require':
             case 'include':
             case 'require_once':
-            case 'include_once':                
+            case 'include_once':
+                $input = array_shift($args);
+                
                 array_map(fn($path) => static::connect($path, $name),
-                    array_keys($this->file->find($input, [
+                    array_keys(File::find($input, [
                         ...(array_shift($args) ?? []),
                         'extension' => 'php'
                     ]))

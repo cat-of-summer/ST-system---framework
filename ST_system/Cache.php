@@ -26,7 +26,7 @@ final class Cache {
             case 'make':
             case 'isExpired':
             case 'isValid':
-                return static::make(...$args);
+                return static::{$name}(...$args);
         }
 
         if (!in_array($name, [
