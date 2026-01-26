@@ -54,6 +54,7 @@ class ImageMime extends Mime {
                 ],
             ],
             'imagick' => [
+                'png' => true,
                 'jpg' => true,
                 'jpeg' => true,
                 'gif' => true,
