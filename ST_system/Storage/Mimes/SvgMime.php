@@ -106,12 +106,12 @@ class SvgMime extends Mime {
         $content = $this->file->getRaw();
 
         if (class_exists('DOMDocument')) {
-            $dom = new \DOMDocument();
 
             libxml_use_internal_errors(true);
-
+            $dom = new \DOMDocument();
             $dom->loadXML($content, LIBXML_NOWARNING | LIBXML_NOERROR);
-
+            libxml_clear_errors();
+            
             $xpath = new \DOMXPath($dom);
             foreach ($xpath->query('//*[@id]') as $el) {
                 $oldId = $el->getAttribute('id');

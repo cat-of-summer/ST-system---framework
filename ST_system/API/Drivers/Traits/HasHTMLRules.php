@@ -63,10 +63,8 @@ trait HasHTMLRules {
 
     private static function html_to_DOM(string $html) {
         libxml_use_internal_errors(true);
-
-        $document = new \DOMDocument();
-        $document->loadHTML('<?xml encoding="utf-8" ?>'.$html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-
+        $document = new \DOMDocument('1.0', 'UTF-8');
+        $document->loadHTML($html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         libxml_clear_errors();
 
         return $document;
