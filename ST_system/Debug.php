@@ -32,12 +32,14 @@ final class Debug {
             return "{$call} in {$file} on line {$line}.\n";
         };
 
-        $config = [
-            'chain' => true,
-            'skip_start' => 0,
-            'skip_end' => 0,
-            ...$config
-        ];
+        $config = array_merge(
+            [
+                'chain' => true,
+                'skip_start' => 0,
+                'skip_end' => 0
+            ],
+            $config
+        );
 
         $result = "";
         if ($config['chain']) {
@@ -109,11 +111,13 @@ final class Debug {
     private array $config = [];
 
     private function get_output($content): string {
-        $this->config = [
-            'backtrace' => false,
-            'pre' => true,
-            ...$this->config
-        ];
+        $this->config = array_merge(
+            [
+                'backtrace' => false,
+                'pre' => true,
+            ],
+            $this->config
+        );
 
         $dumpers = [
             'print_r' => fn($c) => print_r($c, true),
@@ -142,10 +146,10 @@ final class Debug {
     }
 
     private function __construct(array $config = []) {
-        $this->config = [
-            ...static::config(),
-            ...$config
-        ];
+        $this->config = array_merge(
+            static::config(),
+            $config
+        );
 
         if (strpos($this->config['dir'], '~') === 0)
             $this->config['dir'] = $_SERVER['DOCUMENT_ROOT'].DIRECTORY_SEPARATOR.trim($this->config['dir'], DIRECTORY_SEPARATOR.'~');
@@ -170,22 +174,26 @@ final class Debug {
     }
 
     private function to_email($content): bool {
-        $this->config = [
-            'to' => null,
-            'subject' => 'dump_to_email_log',
-            ...$this->config
-        ];
+        $this->config = array_merge(
+            [
+                'to' => null,
+                'subject' => 'dump_to_email_log',
+            ],
+            $this->config
+        );
 
         return mail($this->config['to'], $this->config['subject'], static::get_output($content));
     }
 
     private function to_file($content) {
-        $this->config = [
-            'timestamp' => false,
-            'merge' => true,
-            'append' => false,
-            ...$this->config
-        ];
+        $this->config = array_merge(
+            [
+                'timestamp' => false,
+                'merge' => true,
+                'append' => false,
+            ],
+            $this->config
+        );
 
         if (!is_dir($this->config['dir'])) mkdir($this->config['dir'], 0777, true);
 

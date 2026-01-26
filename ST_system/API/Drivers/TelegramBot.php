@@ -56,8 +56,8 @@ final class TelegramBot extends IntegrationDriver {
 
         static::register_rules_map([
             'parse_mode' => [null, fn($v) => in_array($v, [null, 'HTML', 'Markdown', 'MarkdownV2'])],
-            'html' => [...static::rule('string'), 'after' => fn($v, $k, $p) => ($p['parse_mode'] ?? '') == 'HTML' ? self::normalize_html($v) : $v],
-            '*html' => [...static::rule('*string'), 'after' => fn($v, $k, $p) => ($p['parse_mode'] ?? '') == 'HTML' ? self::normalize_html($v) : $v],
+            'html' => array_merge(static::rule('string'), ['after' => fn($v, $k, $p) => ($p['parse_mode'] ?? '') == 'HTML' ? self::normalize_html($v) : $v]),
+            '*html' => array_merge(static::rule('*string'), ['after' => fn($v, $k, $p) => ($p['parse_mode'] ?? '') == 'HTML' ? self::normalize_html($v) : $v]),
             'inline_keyboard' => [null, fn($v) => is_array($v), 'after' => fn($v) => array_map(fn($i) => array_map(fn($j) => static::prepare_params([
                 'text' => '*string',
                 'url' => 'url',

@@ -101,11 +101,13 @@ final class Loader {
     private function registerDir(array $config = []): void {
         static $directories_map = [];
 
-        $config = [
-            'throw' => true,
-            'prepend ' => false,
-            ...$config
-        ];
+        $config = array_merge(
+            [
+                'throw' => true,
+                'prepend ' => false
+            ],
+            $config
+        );
 
         $directory = $this->file->getDirectory();
 

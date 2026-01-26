@@ -161,10 +161,10 @@ final class Cache {
         elseif (!isset($data['expires_in']) && $ttl > 0)
             $data['expires_in'] = $ttl + time();
 
-        $data = [
-            ...(!$append ? [] : $this->getMeta($file)),
-            ...$data
-        ];
+        $data = array_merge(
+            !$append ? [] : $this->getMeta($file),
+            $data
+        );
 
         $file = $this->dir.'/'.($file === '' ? $this->file : $file);
         $meta = $file.'.meta';

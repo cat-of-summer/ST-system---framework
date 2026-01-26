@@ -62,10 +62,10 @@ class FontMime extends Mime {
     }
 
     public function toHTML(array $config = []): string {
-        $config = [
-            ...$this->parseFilename(),
-            ...$config
-        ];
+        $config = array_merge(
+            $this->parseFilename(),
+            $config
+        );
 
         return "
             <style>

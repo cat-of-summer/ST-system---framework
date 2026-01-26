@@ -147,10 +147,10 @@ final class File {
     private static function find($input, array $config = []): array {
         $results = [];
 
-        $config = [
-            ...static::config('find'),
-            ...$config
-        ];
+        $config = array_merge(
+            static::config('find'),
+            $config
+        );
 
         if (isset($config['extension']) && !is_array($config['extension']))
             $config['extension'] = [$config['extension']];
@@ -292,16 +292,18 @@ final class File {
                     $headers['status-line'] = $line;
             }
 
-            $meta = [
-                ...$meta,
-                ...$headers,
-                'http_code' => $info['http_code'] ?? null,
-                'effective_url' => $info['url'] ?? $url,
-                'headers_cache_expires_in' => time() + static::getTtl($headers),
-                'content_length' => ($info['download_content_length'] ?? 0) > 0 
-                    ? $info['download_content_length']
-                    : $headers['content_length'] ?? 0
-            ];
+            $meta = array_merge(
+                $meta,
+                $headers,
+                [
+                    'http_code' => $info['http_code'] ?? null,
+                    'effective_url' => $info['url'] ?? $url,
+                    'headers_cache_expires_in' => time() + static::getTtl($headers),
+                    'content_length' => ($info['download_content_length'] ?? 0) > 0 
+                        ? $info['download_content_length']
+                        : $headers['content_length'] ?? 0
+                ]
+            );
 
             if (($meta['http_code'] ?? null) != 200 && is_file($this->cache->file))
                 $meta['expires_in'] = time() + static::getTtl($meta);
@@ -376,16 +378,18 @@ final class File {
                 $ttl = static::getTtl($headers);
                 $cache_expires_in = time() + $ttl;
 
-                $meta = [
-                    ...$headers,
-                    'effective_url' => $headers['effective_url'] ?? $url,
-                    'content_length' => $headers['content_length'] ?? filesize($this->cache->file),
-                    'original_url' => $url,
-                    'fetched_at' => time(),
-                    'cache_ttl' => $ttl,
-                    'expires_in' => $cache_expires_in,
-                    'headers_cache_expires_in' => $cache_expires_in
-                ];
+                $meta = array_merge(
+                    $headers,
+                    [
+                        'effective_url' => $headers['effective_url'] ?? $url,
+                        'content_length' => $headers['content_length'] ?? filesize($this->cache->file),
+                        'original_url' => $url,
+                        'fetched_at' => time(),
+                        'cache_ttl' => $ttl,
+                        'expires_in' => $cache_expires_in,
+                        'headers_cache_expires_in' => $cache_expires_in,
+                    ]
+                );
 
                 $this->cache->setMeta($meta, '', 0, false);
 

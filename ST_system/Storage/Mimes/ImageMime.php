@@ -140,11 +140,11 @@ class ImageMime extends Mime {
     }
 
     public function toHTML(array $config = []): string {
-        $attrs = [
-            'alt' => $this->file->getBasename(),
-            ...$config,
-            'src' => $this->file->getRelativePath()
-        ];
+        $attrs = array_merge(
+            ['alt' => $this->file->getBasename()],
+            $config,
+            ['src' => $this->file->getRelativePath()]
+        );
 
         return '<img '.static::getAttrString($attrs).' />';
     }
@@ -173,13 +173,15 @@ class ImageMime extends Mime {
         ) {
             $w = min($px, $width);
 
-            $srcset[$w] = $instance->convert([
-                ...($w === $width ? [] : [
+            $srcset[$w] = $instance->convert(array_merge(
+                $w === $width ? [] : [
                     'width' => $w,
-                ]),
-                'quality' => $quality,
-                'extension' => $extension
-            ])->getRelativePath()." {$w}w";
+                ],
+                [
+                    'quality' => $quality,
+                    'extension' => $extension,
+                ]
+            ))->getRelativePath()." {$w}w";
 
             if ($w === $width) break;
         }
@@ -195,13 +197,13 @@ class ImageMime extends Mime {
                 : '').(is_string($value) ? $value : min($value, $max).'px');
         }
 
-        $attrs = [
-            'alt' => $this->file->getBasename(),
-            ...$attrs,
-            'src' => $srcset[$width],
-            'srcset' => implode(', ', $srcset),
-            'sizes' => implode(', ', array_reverse($sizes))
-        ];
+        $attrs = array_merge(
+            ['alt' => $this->file->getBasename()],
+            $attrs,
+            ['src' => $srcset[$width]],
+            ['srcset' => implode(', ', $srcset)],
+            ['sizes' => implode(', ', array_reverse($sizes))]
+        );
 
         return '<img '.static::getAttrString($attrs).' />';
     }
@@ -257,18 +259,18 @@ class ImageMime extends Mime {
             : $this->file;
 
         $resize_config = (isset($config['width']) || isset($config['height']) || isset($config['side']))
-            ? [
-                ...static::config('resize.config'),
-                ...$config
-            ]
+            ? array_merge(
+                static::config('resize.config'),
+                $config
+            )
             : [];
 
         $convert_config = (isset($config['extension']) || isset($config['quality']))
-            ? [
-                'extension' => $instance->getExtension(),
-                ...static::config('convert.config'),
-                ...$config
-            ]
+            ? array_merge(
+                ['extension' => $instance->getExtension()],
+                static::config('convert.config'),
+                $config
+            )
             : [];
 
         if (empty($resize_config) && empty($convert_config))

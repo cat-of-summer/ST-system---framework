@@ -87,18 +87,18 @@ final class Sdek extends IntegrationDriver {
                 'cache_ttl' => 3600
             ],
             'location/cities' => [
-                'params' => [
-                    ...array_diff_key($params['default'], array_flip(['city_code'])),
-                    ...$params['pagination'],
-                ],
+                'params' => array_merge(
+                    array_diff_key($params['default'], array_flip(['city_code'])),
+                    $params['pagination'],
+                ),
                 'cache_ttl' => 3600
             ],
             'deliverypoints' => [
-                'params' => [
-                    'type' => ['ALL', fn($v) => is_string($v) && in_array($v, ['PVZ', 'ALL', 'POSTAMAT'])],
-                    ...$params['default'],
-                    ...$params['pagination'],
-                ],
+                'params' => array_merge(
+                    ['type' => ['ALL', fn($v) => is_string($v) && in_array($v, ['PVZ', 'ALL', 'POSTAMAT'])]],
+                    $params['default'],
+                    $params['pagination'],
+                ),
                 'cache_ttl' => 3600
             ],
             'calculator/tariff' => [
