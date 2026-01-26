@@ -67,7 +67,6 @@ class ImageMime extends Mime {
         ],
         'resize' => [
             'config' => [
-                'quality' => 90,
                 'force' => false,
                 'object-fit' => 'fill'
             ],
@@ -100,6 +99,18 @@ class ImageMime extends Mime {
 
     private static string $IMAGE_DRIVER = '';
 
+    public static function getImageDriver(): string {
+        if (static::$IMAGE_DRIVER == '')
+            static::$IMAGE_DRIVER = class_exists('Imagick')
+                ? 'imagick'
+                : ((function_exists('gd_info'))
+                    ? 'gd'
+                    : ''
+                );
+
+        return static::$IMAGE_DRIVER;
+    }
+
     private Cache $cache;
 
     protected function __init(): void {
@@ -124,13 +135,8 @@ class ImageMime extends Mime {
             'ttl' => -1,
         ]);
         
-        if (static::$IMAGE_DRIVER == '')
-            static::$IMAGE_DRIVER = class_exists('Imagick')
-                ? 'imagick'
-                : ((function_exists('gd_info'))
-                    ? 'gd'
-                    : throw new \Exception("No Imagick or GD")
-                );
+        if (static::getImageDriver() == '')
+            throw new \Exception("No Imagick or GD");
     }
 
     public function toHTML(array $config = []): string {
@@ -143,27 +149,35 @@ class ImageMime extends Mime {
         return '<img '.static::getAttrString($attrs).' />';
     }
 
-    public function toResponsive(array $config = []): string {
+    public function toResponsive(array $config = [], array $attrs = []): string {
         $instance = $this->file->isUri()
             ? $this->file->fetch()
             : $this->file;
         
         $extension = $config['extension'] ?? 'webp';
         $viewport = $config['viewport'] ?? [];
-
-        unset($config['extension']);
-        unset($config['viewport']);
+        $quality = $config['quality'] ?? static::config('convert.config.quality');
+        $sizes = $config['sizes'] ?? [];
         
         ['width' => $width] = $instance->getImageSize();
 
         $srcset = [];
-        foreach (static::config('resize.sizes') as $px) {
+        foreach (
+            (empty($sizes)
+                ? static::config('resize.sizes') 
+                : array_intersect_key(
+                    static::config('resize.sizes'),
+                    array_filter($sizes)
+                )
+            ) as $px
+        ) {
             $w = min($px, $width);
 
             $srcset[$w] = $instance->convert([
                 ...($w === $width ? [] : [
                     'width' => $w,
                 ]),
+                'quality' => $quality,
                 'extension' => $extension
             ])->getRelativePath()." {$w}w";
 
@@ -183,7 +197,7 @@ class ImageMime extends Mime {
 
         $attrs = [
             'alt' => $this->file->getBasename(),
-            ...$config,
+            ...$attrs,
             'src' => $srcset[$width],
             'srcset' => implode(', ', $srcset),
             'sizes' => implode(', ', array_reverse($sizes))
@@ -226,7 +240,8 @@ class ImageMime extends Mime {
 
         $result = [
             'width' => $width,
-            'height' => $height
+            'height' => $height,
+            'side' => $width > $height ? $width : $height
         ];
 
         $cache->setMeta([
@@ -259,7 +274,7 @@ class ImageMime extends Mime {
         if (empty($resize_config) && empty($convert_config))
             return $instance;
 
-        $quality = $convert_config['quality'] ?? $resize_config['quality'];
+        $quality = $convert_config['quality'];
         $old_file = $instance->getPathname();
         $old_extension = $instance->getExtension();
         $new_extension = $convert_config['extension'] ?? $old_extension;
@@ -334,7 +349,7 @@ class ImageMime extends Mime {
                 }
             }
 
-            $prefix = "{$resize_config['height']}x{$resize_config['width']}_{$resize_config['object-fit']}_";
+            $prefix = "{$resize_config['height']}x{$resize_config['width']}_{$quality}_{$resize_config['object-fit']}_";
 
             $resize_config = [
                 'src' => [
