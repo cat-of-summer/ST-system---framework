@@ -457,7 +457,7 @@ final class File {
         if ($this->isUri())
             return $this->getPathname();
 
-        return str_replace(Main::prepare_path($root), '/', $this->getPathname());
+        return str_replace(Main::prepare_path($root), '', $this->getPathname());
     }
 
     public function exists(): bool {

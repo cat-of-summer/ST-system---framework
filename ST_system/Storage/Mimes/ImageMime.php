@@ -174,7 +174,7 @@ class ImageMime extends Mime {
         ) {
             $w = min($px, $width);
 
-            $srcset[$w] = $instance->convert(array_merge(
+            $url = $instance->convert(array_merge(
                 $w === $width ? [] : [
                     'width' => $w,
                 ],
@@ -182,9 +182,14 @@ class ImageMime extends Mime {
                     'quality' => $quality,
                     'extension' => $extension,
                 ]
-            ))->getRelativePath()." {$w}w";
+            ))->getRelativePath();
 
-            if ($w === $width) break;
+            $srcset[$w] = $url." {$w}w";
+            
+            if ($w === $width) {
+                $original = $url;
+                break;
+            }
         }
 
         $sizes = [];
@@ -201,7 +206,7 @@ class ImageMime extends Mime {
         $attrs = array_merge(
             ['alt' => $this->file->getBasename()],
             $attrs,
-            ['src' => $srcset[$width]],
+            ['src' => $original],
             ['srcset' => implode(', ', $srcset)],
             ['sizes' => implode(', ', array_reverse($sizes))]
         );
@@ -293,7 +298,7 @@ class ImageMime extends Mime {
                 'width',
                 'height',
                 'side'
-            ] as $side)
+            ] as $side) {
                 if (isset($resize_config[$side])) {
                     if (isset(static::config('resize.sizes')[$resize_config[$side]]))
                         $resize_config[$side] = static::config('resize.sizes')[$resize_config[$side]];
@@ -304,6 +309,7 @@ class ImageMime extends Mime {
 
                     if (!$resize_config[$side]) unset($resize_config[$side]);
                 }
+            }
         
             [
                 'width' => $width,
@@ -352,7 +358,7 @@ class ImageMime extends Mime {
                 }
             }
 
-            $prefix = "{$resize_config['height']}x{$resize_config['width']}_{$quality}_{$resize_config['object-fit']}_";
+            $prefix .= "{$resize_config['height']}x{$resize_config['width']}_{$resize_config['object-fit']}_";
 
             $resize_config = [
                 'src' => [
@@ -373,6 +379,9 @@ class ImageMime extends Mime {
                 ]
             ];
         }
+
+        if ($quality < 100)
+            $prefix .= "{$quality}_";
 
         $cache = $this->cache->make($instance->getOriginal(true)->getPathname(), [
             'file' => $prefix.$instance->getBasename().'.'.$new_extension

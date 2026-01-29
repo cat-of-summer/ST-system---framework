@@ -128,9 +128,21 @@ final class Main {
             $path = $_SERVER['DOCUMENT_ROOT'].'/'.trim($path, '/~');
         elseif (strpos($path, '/') !== 0)
             $path = __DIR__.'/'.trim($path, '/');
-        else
-            $path = rtrim($path, '/');
+        
+        $path = rtrim($path, '/');
 
-        return $path;
+        $stack = [];
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.') continue;
+    
+            if ($segment === '..') {
+                array_pop($stack);
+                continue;
+            }
+
+            $stack[] = $segment;
+        }
+
+        return '/'.implode('/', $stack);
     }
 }
