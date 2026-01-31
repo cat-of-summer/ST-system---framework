@@ -90,9 +90,9 @@ final class Cache {
     private static function make(...$args): static { return new static(...$args); }
 
     public function __construct($key, array $config = []) {
-        $config = array_merge(static::config(), array_filter($config));
+        $config = array_merge(static::config(), $config);
 
-        $this->base_dir = Main::prepare_path($config['dir']);
+        $this->base_dir = Main::prepare_path($config['dir'], 3);
         
         $this->initDir(true);
 

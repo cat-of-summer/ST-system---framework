@@ -43,12 +43,12 @@ final class Debug {
 
         $result = "";
         if ($config['chain']) {
-            $full_backtrace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT);
+            $full_backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | DEBUG_BACKTRACE_PROVIDE_OBJECT);
 
             for ($level = $config['skip_start'] + 2; $level < count($full_backtrace) - $config['skip_end']; $level++)
                 $result .= str_repeat("    ", $level - $config['skip_start'] - 2).'↘ '.$get_trace_func($full_backtrace[$level]);
         } else
-            $result = $get_trace_func(debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT)[3]);
+            $result = $get_trace_func(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | DEBUG_BACKTRACE_PROVIDE_OBJECT)[4]);
         
         return $result;
     }
@@ -108,6 +108,41 @@ final class Debug {
         ];
     }
 
+    public static function linter(string $file_path): array {
+        static $short_open_tag = null;
+
+        $file_path = Main::prepare_path($file_path, 1);
+
+        if (!is_file($file_path)) 
+            return [
+                'ok' => false,
+                'errors' => "The file '{$file_path}' does not exist",
+                'result' => '',
+                'code' => 1
+            ];
+        
+        try {
+            if ($short_open_tag === null)
+                $short_open_tag = ini_get('short_open_tag');
+    
+            @exec('php -d short_open_tag='.$short_open_tag.' -l '.escapeshellarg($file_path).' 2>&1', $output_lines, $exit_code);
+
+            return [
+                'ok' => $exit_code == 0,
+                'result' => array_pop($output_lines),
+                'errors' => $output_lines,
+                'code' => $exit_code
+            ];
+        } catch (\Throwable $th) {
+            return [
+                'ok' => false,
+                'result' => $th->getMessage(),
+                'errors' => [$th->getMessage()],
+                'code' => -1
+            ];
+        }
+    }
+
     private array $config = [];
 
     private function get_output($content): string {
@@ -151,7 +186,7 @@ final class Debug {
             $config
         );
 
-        $this->config['dir'] = Main::prepare_path($this->config['dir']);
+        $this->config['dir'] = Main::prepare_path($this->config['dir'], 3);
         $this->config['file'] = trim($this->config['file'], DIRECTORY_SEPARATOR);
     }
 

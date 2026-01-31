@@ -62,7 +62,7 @@ final class File {
     private function __construct(string $path, $original = null) {
         $this->original = $original;
         $this->isUri = (bool)filter_var($path, FILTER_VALIDATE_URL);
-        $this->info = new \SplFileInfo($this->isUri ? $path : Main::prepare_path($path));
+        $this->info = new \SplFileInfo($this->isUri ? $path : Main::prepare_path($path, 2));
         $this->cache = Cache::make($this->getPathname(), [
             'dir' => static::config('cache.dir'),
             'ttl' => static::config('cache.ttl'),
@@ -145,7 +145,7 @@ final class File {
     }
 
     private static function find($input, array $config = []): array {
-        $results = [];
+        static $input_cache = [];
 
         $config = array_merge(
             static::config('find'),
@@ -157,9 +157,9 @@ final class File {
 
         if (!is_array($input)) $input = [$input];
 
-        array_walk($input, function ($i) use (&$results, $config) {
-            
-            $i = Main::prepare_path($i);
+        $results = [];
+        array_walk($input, function ($i) use (&$results, $config, &$input_cache) {
+            $i = $input_cache[$i] ??= Main::prepare_path($i, 5);
 
             if (!preg_match('/[\\(\\[\\{\\|\\?\\+\\*]/', $i)) {
                 if (file_exists($i)) {
@@ -453,11 +453,11 @@ final class File {
             : get_class($this->mime);
     }
 
-    public function getRelativePath(string $root = '~'): string {
+    public function getRelativePath(string $root = ''): string {
         if ($this->isUri())
             return $this->getPathname();
 
-        return str_replace(Main::prepare_path($root), '', $this->getPathname());
+        return str_replace(Main::prepare_path('~'.$root, 1), '', $this->getPathname());
     }
 
     public function exists(): bool {

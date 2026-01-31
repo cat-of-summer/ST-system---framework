@@ -3,15 +3,24 @@
 namespace ST_system;
 
 use ST_system\Storage\File;
+use ST_system\Debug;
 
 final class Loader {
 
-    private function connect(string $path, string $action): void {
+    private static function connect(string $realpath, string $action): void {
         switch ($action) {
-            case 'require': require $path; break;
-            case 'include': include $path; break;
-            case 'require_once': require_once $path; break;
-            case 'include_once': include_once $path; break;
+            case 'require': require $realpath; break;
+            case 'require_once': require_once $realpath; break;
+            case 'include':
+            case 'include_once':
+                if (Debug::linter($realpath)['code'] > 0) return;
+
+                switch ($action) {
+                    case 'include': include $realpath; break;
+                    case 'include_once': include_once $realpath; break;
+                }
+                
+                break;
             default:
                 throw new \Exception("Method {$action} not found");
         }
@@ -28,7 +37,7 @@ final class Loader {
             case 'require_once':
             case 'include_once':
                 $input = array_shift($args);
-                
+    
                 array_map(fn($path) => static::connect($path, $name),
                     array_keys(File::find($input, [
                         ...(array_shift($args) ?? []),

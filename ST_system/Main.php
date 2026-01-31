@@ -123,12 +123,12 @@ final class Main {
         }
     }
 
-    public static function prepare_path(string $path): string {
+    public static function prepare_path(string $path, int $depth = 0): string {
         if (strpos($path, '~') === 0)
             $path = $_SERVER['DOCUMENT_ROOT'].'/'.trim($path, '/~');
         elseif (strpos($path, '/') !== 0)
-            $path = __DIR__.'/'.trim($path, '/');
-        
+            $path = dirname(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS)[$depth]['file']).'/'.trim($path, '/');
+                
         $path = rtrim($path, '/');
 
         $stack = [];
