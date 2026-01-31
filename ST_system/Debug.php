@@ -151,11 +151,7 @@ final class Debug {
             $config
         );
 
-        if (strpos($this->config['dir'], '~') === 0)
-            $this->config['dir'] = $_SERVER['DOCUMENT_ROOT'].DIRECTORY_SEPARATOR.trim($this->config['dir'], DIRECTORY_SEPARATOR.'~');
-        elseif (strpos($this->config['dir'], DIRECTORY_SEPARATOR) !== 0)
-            $this->config['dir'] = __DIR__.DIRECTORY_SEPARATOR.trim($this->config['dir'], DIRECTORY_SEPARATOR);
-
+        $this->config['dir'] = Main::prepare_path($this->config['dir']);
         $this->config['file'] = trim($this->config['file'], DIRECTORY_SEPARATOR);
     }
 
