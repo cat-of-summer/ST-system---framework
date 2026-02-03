@@ -6,7 +6,7 @@ use ST_system\Storage\Mimes\Mime;
 
 class SvgMime extends Mime {
 
-    public function getSprite(string $id, array $config = []): string {
+    public function toSprite(string $id, array $config = []): string {
         $attr_str = '';
 
         foreach ($config as $k => $v)
@@ -67,17 +67,15 @@ class SvgMime extends Mime {
 
             if (preg_match($pattern, $content, $matches)) {
                 
-                $openTag = $matches[1];    // Например: <symbol id="icon-a" viewBox="0 0 10 10" class="test">
-                $innerContent = trim($matches[2]); // Внутреннее содержимое <path>...</path>
+                $openTag = $matches[1];
+                $innerContent = trim($matches[2]);
                 
-                // 2. Ищем viewBox внутри захваченного открывающего тега
                 if (preg_match('/(viewBox\s*=\s*["\'][^"\']*["\'])/i', $openTag, $viewBoxMatch)) {
-                    $viewBoxAttr = $viewBoxMatch[1]; // 'viewBox="0 0 10 10"'
+                    $viewBoxAttr = $viewBoxMatch[1];
                 } else {
                     $viewBoxAttr = '';
                 }
 
-                // 3. Формирование строки атрибутов из $config (как было)
                 $configAttrs = '';
                 foreach ($config as $k => $v) {
                     $configAttrs .= sprintf(' %s="%s"', $k, htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE));
@@ -86,8 +84,8 @@ class SvgMime extends Mime {
                 // 4. Собираем новый SVG
                 $newSvg = sprintf(
                     '<svg xmlns="http://www.w3.org/2000/svg"%s%s>%s</svg>',
-                    ($viewBoxAttr ? ' ' . $viewBoxAttr : ''), // Добавляем viewBox
-                    $configAttrs, // Добавляем атрибуты из конфига
+                    ($viewBoxAttr ? ' ' . $viewBoxAttr : ''),
+                    $configAttrs,
                     $innerContent
                 );
 
@@ -98,9 +96,23 @@ class SvgMime extends Mime {
         }
     }
 
-    public function toImg(): string { return "<img src='{$this->file->getRelativePath()}' alt='{$this->file->getBasename()}' />"; }
+    public function toImg(array $config = []): string {
+        $attrs = array_merge(
+            ['alt' => $this->file->getBasename()],
+            $config,
+            ['src' => $this->file->getRelativePath()]
+        );
+
+        return '<img '.static::getAttrString($attrs).' />';
+    }
 
     public function toHTML(array $config = []): string {
+        unset($config['src']);
+
+        return '<svg '.static::getAttrString($config).'><use href="'.$this->file->getRelativePath().'"></use></svg>';
+    }
+
+    public function extract(array $config = []): string {
         static $counter = 0; $counter++;
 
         $content = $this->file->getRaw();
