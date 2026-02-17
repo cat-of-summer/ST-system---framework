@@ -83,7 +83,7 @@ class Request {
     private function validate(array $params) {
         $this->data();
 
-        static::prepare_params_links($params, $this->data['data']);
+        static::prepare_params($params, $this->data['data']);
 
         foreach (['get', 'post', 'query', 'files'] as $key)
             foreach ($this->data[$key] as $k => $v)
