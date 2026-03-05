@@ -46,7 +46,8 @@ final class Loader {
                 );
                 return;
             case 'registerClass':
-                return static::create(array_shift($args))->{$name}(array_shift($args));
+                $path = array_shift($args);
+                return static::create($path)->{$name}(...$args);
             default:
                 throw new \Exception("Method {$name} not found");
         }
@@ -88,12 +89,12 @@ final class Loader {
             throw new \Exception("Path must be a local file, URI given: {$path}");
     }
 
-    private function registerClass(string $class_name, string $file_path): void {
+    private function registerClass(string $class_name, string $file_path, string $prefix = ''): void {
         static $autoload_registered  = false;
         static $classes_map = [];
 
         if (!$autoload_registered) {
-            spl_autoload_register(function(string $class_name) use ($classes_map) {
+            spl_autoload_register(function(string $class_name) use (&$classes_map) {
                 if (isset($classes_map[$class_name]))
                     require $classes_map[$class_name];
             });
@@ -101,10 +102,13 @@ final class Loader {
             $autoload_registered  = true;
         }
 
+        $prefix     = trim($prefix, '\\');
+        $full_class = $prefix !== '' ? $prefix . '\\' . $class_name : $class_name;
+
         $file = File::make($this->file->getDirectory().'/'.$file_path.'.php');
-        
+
         if ($file->exists())
-            $classes_map[$class_name] = $file->getPathname();
+            $classes_map[$full_class] = $file->getPathname();
     }
 
     private function registerDir(array $config = []): void {
@@ -112,23 +116,34 @@ final class Loader {
 
         $config = array_merge(
             [
-                'throw' => true,
-                'prepend ' => false
+                'throw'   => true,
+                'prepend' => false,
+                'prefix'  => '',
             ],
             $config
         );
 
+        $prefix    = trim($config['prefix'], '\\');
         $directory = $this->file->getDirectory();
+        $mapKey    = $directory . ':' . $prefix;
 
-        if (!isset($directories_map[$directory])) {
-            spl_autoload_register(function(string $class_name) use ($directory) {
-                $file = File::make($directory.'/'.str_replace('\\', '/', $class_name).'.php');
+        if (!isset($directories_map[$mapKey])) {
+            spl_autoload_register(function(string $class_name) use ($directory, $prefix) {
+                if ($prefix !== '') {
+                    $prefixNs = $prefix . '\\';
+                    if (strncmp($class_name, $prefixNs, strlen($prefixNs)) !== 0) return;
+                    $relative = substr($class_name, strlen($prefixNs));
+                } else {
+                    $relative = $class_name;
+                }
+
+                $file = File::make($directory . '/' . str_replace('\\', '/', $relative) . '.php');
 
                 if ($file->exists())
                     require_once $file->getPathname();
             }, $config['throw'], $config['prepend']);
 
-            $directories_map[$directory] = true;
+            $directories_map[$mapKey] = true;
         }
     }
 }

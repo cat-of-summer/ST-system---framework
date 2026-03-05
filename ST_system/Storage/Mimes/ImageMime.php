@@ -12,6 +12,7 @@ class ImageMime extends Mime {
     use HasConfig;
 
     protected static array $CONFIG = [
+        'cache_dir' => '~/cache/',
         'convert' => [
             'config' => [
                 'quality' => 90,
@@ -54,7 +55,6 @@ class ImageMime extends Mime {
                 ],
             ],
             'imagick' => [
-                'png' => true,
                 'jpg' => true,
                 'jpeg' => true,
                 // 'gif' => true,
@@ -131,7 +131,7 @@ class ImageMime extends Mime {
         }
 
         $this->cache = Cache::make($this->file->getPathname(), [
-            'dir' => File::config('cache.dir'),
+            'dir' => static::config('cache_dir') ?: File::config('cache.dir'),
             'file' => $this->file->getFilename(),
             'ttl' => -1,
         ]);
@@ -281,7 +281,6 @@ class ImageMime extends Mime {
         $old_file = $instance->getPathname();
         $old_extension = $instance->getExtension();
         $new_extension = $convert_config['extension'] ?? $old_extension;
-        $cache_directory = static::config('cache_dir').'/'.md5($old_file).'/';
         $prefix = '';
         
         if (!empty($resize_config)) {
