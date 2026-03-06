@@ -2,215 +2,203 @@
 
 namespace ST_system\Validation;
 
-use ST_system\Validation\Rules\Rule;
-
 final class Validator {
 
-    /** @var array<string, Rule> */
-    private array $rulesMap = [];
+    /** @var array<string, string|array|Rule> */
+    private $rules = [];
 
-    public function __construct() {
-        $this->rulesMap = $this->defaultRules();
+    /** @var array<string, string[]> */
+    public $errors = [];
+
+    /** @var bool */
+    private $isSilent = true;
+
+    private function __construct(array $rules) {
+        $this->rules = $rules;
     }
 
-    /**
-     * @return array<string, Rule>
-     */
-    final public function defaultRules(): array {
-        $priorityPresence = 100;
-        $priorityType     = 50;
-        $priorityConstraint = 0;
+    // ─── Фабрики ────────────────────────────────────────────────────
 
-        return [
-            'required' => new Rule(
-                function ($value): bool {
-                    return $value !== null && $value !== '';
-                },
-                ['priority' => $priorityPresence, 'bail' => true]
-            ),
-            'nullable' => new Rule(
-                function ($value): bool {
-                    return $value === null || $value === '';
-                },
-                ['priority' => $priorityPresence, 'stop_chain_when_passed' => true]
-            ),
-            'string' => new Rule(
-                fn($value): bool => is_string($value),
-                ['priority' => $priorityType]
-            ),
-            'int' => new Rule(
-                fn($value): bool => is_int($value),
-                ['priority' => $priorityType],
-                null,
-                fn($v): int => (int) $v
-            ),
-            'float' => new Rule(
-                fn($value): bool => is_float($value) || is_numeric($value),
-                ['priority' => $priorityType],
-                null,
-                fn($v): float => (float) $v
-            ),
-            'bool' => new Rule(
-                fn($value): bool => is_bool($value) || in_array($value, ['0', '1', 0, 1, 'true', 'false'], true),
-                ['priority' => $priorityType],
-                null,
-                fn($v): bool => (bool) (is_string($v) ? filter_var($v, FILTER_VALIDATE_BOOLEAN) : $v)
-            ),
-            'max' => new Rule(
-                function ($value, array $params): bool {
-                    $limit = $params[0] ?? $params['max'] ?? null;
-                    if ($limit === null) {
-                        return true;
-                    }
-                    $limit = (int) $limit;
-                    if (is_string($value)) {
-                        return mb_strlen($value) <= $limit;
-                    }
-                    if (is_array($value)) {
-                        return count($value) <= $limit;
-                    }
-                    return is_numeric($value) && (float) $value <= $limit;
-                },
-                ['priority' => $priorityConstraint]
-            ),
-            'min' => new Rule(
-                function ($value, array $params): bool {
-                    $limit = $params[0] ?? $params['min'] ?? null;
-                    if ($limit === null) {
-                        return true;
-                    }
-                    $limit = (int) $limit;
-                    if (is_string($value)) {
-                        return mb_strlen($value) >= $limit;
-                    }
-                    if (is_array($value)) {
-                        return count($value) >= $limit;
-                    }
-                    return is_numeric($value) && (float) $value >= $limit;
-                },
-                ['priority' => $priorityConstraint]
-            ),
-        ];
+    public static function create(array $rules): self {
+        return new self($rules);
     }
 
-    /**
-     * Parse a rule string like "required|string|max:50" into an array of Rule instances.
-     *
-     * @param array<string, Rule>|null $rulesMap defaults to $this->defaultRules()
-     * @return Rule[]
-     */
-    public function parseRuleString(string $ruleString, ?array $rulesMap = null): array {
-        $rulesMap = $rulesMap ?? $this->defaultRules();
-        $segments = array_map('trim', explode('|', trim($ruleString)));
-        $result   = [];
+    // ─── Режимы ─────────────────────────────────────────────────────
 
-        foreach ($segments as $segment) {
-            if ($segment === '') {
-                continue;
-            }
-
-            $params = [];
-            if (strpos($segment, ':') !== false) {
-                [$name, $paramStr] = explode(':', $segment, 2);
-                $name   = trim($name);
-                $params = array_map('trim', explode(',', $paramStr));
-                if (count($params) === 1 && $name !== 'in') {
-                    $params = [$params[0]];
-                }
-            } else {
-                $name = $segment;
-            }
-
-            if (!isset($rulesMap[$name])) {
-                continue;
-            }
-
-            $template = $rulesMap[$name];
-            if (!$template instanceof Rule) {
-                continue;
-            }
-
-            if (count($params) === 0) {
-                $result[] = $template;
-                continue;
-            }
-
-            $merged = [];
-            foreach ($params as $i => $p) {
-                $merged[$i] = $p;
-            }
-            if ($name === 'max') {
-                $merged['max'] = $params[0];
-            } elseif ($name === 'min') {
-                $merged['min'] = $params[0];
-            }
-            $result[] = $template->withParams($merged);
-        }
-
-        return $result;
+    /** @return self */
+    public function silent(): self {
+        $this->isSilent = true;
+        return $this;
     }
 
+    /** @return self */
+    public function loud(): self {
+        $this->isSilent = false;
+        return $this;
+    }
+
+    // ─── Основной метод ─────────────────────────────────────────────
+
     /**
-     * @param array<string, string|Rule[]> $rules field => rule string or array of Rule
-     * @param array<string, mixed>         $defaults field => default value
+     * Валидирует и мутирует $data по ссылке.
+     * Поля без правил удаляются из $data.
      */
-    public function validate(array $data, array $rules, array $defaults = []): ValidationResult {
-        $validated = [];
-        $errors    = [];
+    public function validate(array &$data, ?callable $onPrepare = null): void {
+        $this->errors = [];
+        $result = [];
 
-        foreach ($rules as $field => $ruleSpec) {
-            $value = array_key_exists($field, $data) ? $data[$field] : ($defaults[$field] ?? null);
+        foreach ($this->rules as $field => $ruleSpec) {
+            $exists = array_key_exists($field, $data);
+            $value  = $exists ? $data[$field] : null;
 
-            $ruleList = is_string($ruleSpec)
-                ? $this->parseRuleString($ruleSpec)
-                : $ruleSpec;
+            // Нормализация правила
+            $rule = $this->normalizeRule($ruleSpec);
 
-            if (count($ruleList) === 0) {
-                $validated[$field] = $value;
-                continue;
-            }
+            $context = [
+                '__key'    => $field,
+                '__exists' => $exists,
+                '__silent' => $this->isSilent,
+                '__skip'   => false,
+            ];
 
-            $ruleList = $this->sortRulesByPriority($ruleList);
-            $context  = ['key' => $field, 'result' => &$validated];
-            $fieldFailed = false;
+            // Выполнение правила
+            try {
+                $nestedErrors = $rule->applyWithErrors($value, $context);
 
-            foreach ($ruleList as $rule) {
-                $value = $rule->runBefore($value, $context);
-
-                if (!$rule->validate($value, $context)) {
-                    if (!isset($errors[$field])) {
-                        $errors[$field] = [];
-                    }
-                    $errors[$field][] = 'Validation failed for ' . $field;
-                    $fieldFailed = true;
-                    if ($rule->getBail()) {
-                        break;
-                    }
+                // skipField (sometimes / excludeIf) — поле не было в данных
+                if (!empty($context['__skip'])) {
                     continue;
                 }
 
-                if ($rule->getStopChainWhenPassed()) {
-                    $validated[$field] = $value;
-                    continue 2;
+                if ($nestedErrors !== null) {
+                    $this->mergeErrors($field, $nestedErrors, $rule, $value);
+                } else {
+                    $result[$field] = $value;
                 }
-
-                $value = $rule->runAfter($value, $context);
-            }
-
-            if (!$fieldFailed) {
-                $validated[$field] = $value;
+            } catch (\Throwable $e) {
+                if (!$this->isSilent) {
+                    throw $e;
+                }
+                $this->errors[$field] = $this->errors[$field] ?? [];
+                $this->errors[$field][] = $e->getMessage();
             }
         }
 
-        return new ValidationResult($validated, $errors);
+        $data = $result;
+
+        if ($onPrepare !== null) {
+            $onPrepare($data);
+        }
+    }
+
+    // ─── Статический шорткат ────────────────────────────────────────
+
+    /**
+     * Быстрая валидация без создания экземпляра вручную.
+     */
+    public static function check(array $rules, array &$data, ?callable $onPrepare = null): void {
+        $v = new self($rules);
+        $v->validate($data, $onPrepare);
+    }
+
+    // ─── Приватные хелперы ───────────────────────────────────────────
+
+    /**
+     * @param string|array|Rule $spec
+     * @return Rule
+     */
+    private function normalizeRule($spec): Rule {
+        if ($spec instanceof Rule) {
+            return $spec;
+        }
+
+        if (is_string($spec)) {
+            return Rule::create($spec);
+        }
+
+        // Массив: ['required', 'string', 'max:50'] или ['required', Rule::forEach(...)]
+        if (is_array($spec)) {
+            return $this->normalizeArrayRule($spec);
+        }
+
+        return Rule::create(fn() => true);
+    }
+
+    private function normalizeArrayRule(array $spec): Rule {
+        // Если массив содержит ключ 'rule'/'default'/'before'/'after' — старый формат
+        if (array_key_exists('rule', $spec) || array_key_exists('default', $spec)
+            || array_key_exists('before', $spec) || array_key_exists('after', $spec)) {
+            return Rule::create($spec);
+        }
+
+        // Массив строк и Rule: ['required', 'string', Rule::forEach(...)]
+        $stringParts = [];
+        $extraRules  = [];
+
+        foreach ($spec as $item) {
+            if (is_string($item)) {
+                $stringParts[] = $item;
+            } elseif ($item instanceof Rule) {
+                $extraRules[] = $item;
+            }
+        }
+
+        if (count($stringParts) > 0 && count($extraRules) === 0) {
+            return Rule::create(implode('|', $stringParts));
+        }
+
+        // Смешанный массив — собираем составной Rule
+        $combined = [];
+        if (count($stringParts) > 0) {
+            $parsed = Rule::create(implode('|', $stringParts));
+            $combined[] = $parsed;
+        }
+        foreach ($extraRules as $er) {
+            $combined[] = $er;
+        }
+
+        // Обернуть в один составной Rule — используем create со строкой-заглушкой
+        // и добавляем в chain...  проще собрать вручную через fromString + merge
+        if (count($combined) === 1) return $combined[0];
+
+        // Нужен механизм объединения — создадим Rule::create для объединения
+        return $this->mergeRules($combined);
+    }
+
+    private function mergeRules(array $rules): Rule {
+        $captured = $rules;
+        $r = Rule::create(function(&$value, array $params, array $context) use ($captured): bool {
+            foreach ($captured as $rule) {
+                if (!$rule->apply($value, $context)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        return $r;
     }
 
     /**
-     * @param Rule[] $ruleList
-     * @return Rule[]
+     * @param mixed $value
      */
-    private function sortRulesByPriority(array $ruleList): array {
-        usort($ruleList, fn(Rule $a, Rule $b): int => $b->getPriority() <=> $a->getPriority());
-        return $ruleList;
+    private function mergeErrors(string $field, array $nestedErrors, Rule $rule, $value): void {
+        // __self маркер — простая ошибка валидации
+        if (isset($nestedErrors['__self'])) {
+            $this->errors[$field] = $this->errors[$field] ?? [];
+            $msg = $rule->getErrorMessage($value) ?: "Validation failed for {$field}";
+            $this->errors[$field][] = $msg;
+            return;
+        }
+
+        // Вложенные ошибки (object / forEach) — dot-нотация
+        foreach ($nestedErrors as $subField => $subErrors) {
+            $dotKey = $field . '.' . $subField;
+            $this->errors[$dotKey] = $this->errors[$dotKey] ?? [];
+            if (is_array($subErrors)) {
+                array_push($this->errors[$dotKey], ...$subErrors);
+            } else {
+                $this->errors[$dotKey][] = (string) $subErrors;
+            }
+        }
     }
 }
