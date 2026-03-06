@@ -380,3 +380,148 @@ Validator::create([
 | `min:n` | Мин. длина строки / кол-во элементов / числовое значение |
 | `in:a,b,c` | Значение входит в список |
 | `notIn:a,b,c` | Значение не входит в список |
+| `regex:/pattern/` | Проверка регулярным выражением. Для паттернов с `\|` — `Rule::regex(...)` |
+| `digits:n` | Строка из ровно `n` цифр |
+| `between:min,max` | Значение/длина/кол-во в диапазоне [min, max] |
+| `date` | Валидная дата (`strtotime`) |
+| `date_format:Y-m-d` | Дата соответствует формату |
+| `json` | Валидный JSON |
+| `uuid` | UUID формат (v1–v5) |
+| `starts_with:x,y` | Строка начинается с одного из значений |
+| `ends_with:x,y` | Строка заканчивается одним из значений |
+| `contains:x,y` | Строка содержит одно из значений |
+| `same:field` | Значение совпадает с другим полем |
+| `different:field` | Значение отличается от другого поля |
+| `trim` | Трансформер: обрезает пробелы (order -1) |
+| `uppercase` | Трансформер: приводит к верхнему регистру (order 1000) |
+| `lowercase` | Трансформер: приводит к нижнему регистру (order 1000) |
+
+---
+
+## 21. passes() и fails()
+
+```php
+$data = ['email' => 'invalid'];
+
+$v = Validator::create(['email' => 'required|email']);
+$v->validate($data);
+
+$v->passes(); // false
+$v->fails();  // true
+```
+
+---
+
+## 22. bail() — остановить после первой ошибки
+
+```php
+$data = ['a' => '', 'b' => '', 'c' => 'ok'];
+
+$v = Validator::create([
+    'a' => 'required|string',
+    'b' => 'required|string',
+    'c' => 'required|string',
+])->bail();
+
+$v->validate($data);
+// $v->errors содержит только 'a' — обработка остановилась
+```
+
+---
+
+## 23. Новые правила: regex, digits, between
+
+```php
+$data = ['code' => '1234', 'price' => 50, 'hex' => '#ff0000'];
+
+Validator::create([
+    'code'  => 'required|digits:4',
+    'price' => 'required|int|between:1,1000',
+    'hex'   => ['required', Rule::regex('/^#[0-9a-f]{6}$/i')],
+])->validate($data);
+```
+
+> `Rule::regex(string)` — статический хелпер для паттернов, содержащих `|` (нельзя через строку `regex:/a|b/`).
+
+---
+
+## 24. date / date_format / json / uuid
+
+```php
+$data = [
+    'created' => '2025-01-15',
+    'payload' => '{"key": "value"}',
+    'id'      => '550e8400-e29b-41d4-a716-446655440000',
+];
+
+Validator::create([
+    'created' => 'required|date_format:Y-m-d',
+    'payload' => 'required|json',
+    'id'      => 'required|uuid',
+])->validate($data);
+```
+
+---
+
+## 25. starts_with / ends_with / contains
+
+```php
+$data = ['file' => 'image.png', 'url' => 'https://example.com'];
+
+Validator::create([
+    'file' => 'required|string|ends_with:.png,.jpg,.webp',
+    'url'  => 'required|string|starts_with:https://,http://',
+])->validate($data);
+```
+
+---
+
+## 26. same / different (cross-field)
+
+```php
+$data = ['password' => 'secret', 'password_confirm' => 'secret'];
+
+Validator::create([
+    'password'         => 'required|string|min:6',
+    'password_confirm' => 'required|same:password',
+])->validate($data);
+// OK — значения совпадают
+
+$data2 = ['old' => 'abc', 'new' => 'xyz'];
+Validator::create([
+    'old' => 'required|string',
+    'new' => 'required|string|different:old',
+])->validate($data2);
+// OK — значения различаются
+```
+
+---
+
+## 27. trim / uppercase / lowercase (трансформеры)
+
+```php
+$data = ['name' => '  John  ', 'code' => 'abc'];
+
+Validator::create([
+    'name' => 'trim|required|string|max:100',
+    'code' => 'trim|required|uppercase',
+])->validate($data);
+
+// $data['name'] === 'John'
+// $data['code'] === 'ABC'
+```
+
+---
+
+## 28. onError с ($value, $field)
+
+```php
+$rule = Rule::create('required|email')
+    ->onError(fn($value, $field) => "Поле {$field}: ожидался email, получено " . var_export($value, true));
+
+$data = ['email' => 'invalid'];
+$v = Validator::create(['email' => $rule]);
+$v->validate($data);
+
+// $v->errors === ['email' => ['Поле email: ожидался email, получено \'invalid\'']]
+```

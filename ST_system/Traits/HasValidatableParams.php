@@ -103,26 +103,26 @@ trait HasValidatableParams {
         ];
     }
 
-    final protected function extend_rule(string $rule, array $config) {
-        if (!isset($this->rules_map[$rule]))
-            throw new \Exception("Переданное правило '{$rule}' не зарегистрировано в ".get_called_class());
+    final protected function extend_rule(string $ruleName, array $config) {
+        if (!isset(static::$RULES[$ruleName]))
+            throw new \Exception("Переданное правило '{$ruleName}' не зарегистрировано в ".get_called_class());
 
-        $rule_config = $this->rule($rule);
+        $rule_config = static::rule($ruleName);
 
         $default = $config['default'] ?? $config[0] ?? $rule_config['default'] ?? null;
-        $rule = $config['rule'] ?? $config[1] ?? $rule_config['rule'] ?? null;
-        $before = $config['before'] ?? $config[2] ?? $rule_config['before'] ?? null;
-        $after = $config['after'] ?? $config[3] ?? $rule_config['after'] ?? null;
-        
-        return [
-            2 => $before,
-            'before' => $before,
-            3 => $after,
-            'after' => $after,
-            0 => $default,
-            'default' => $default,
-            1 => $rule,
-            'rule' => $rule,
+        $rule    = $config['rule']    ?? $config[1] ?? $rule_config['rule']    ?? null;
+        $before  = $config['before']  ?? $config[2] ?? $rule_config['before']  ?? null;
+        $after   = $config['after']   ?? $config[3] ?? $rule_config['after']   ?? null;
+
+        $merged = [
+            0 => $default, 'default' => $default,
+            1 => $rule,    'rule'    => $rule,
+            2 => $before,  'before'  => $before,
+            3 => $after,   'after'   => $after,
         ];
+
+        static::$RULES[$ruleName] = $merged;
+
+        return $merged;
     }
 }

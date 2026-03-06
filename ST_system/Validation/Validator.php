@@ -16,6 +16,9 @@ final class Validator {
     /** @var bool */
     private $isSafe = false;
 
+    /** @var bool */
+    private $bailOnFirst = false;
+
     private function __construct(array $rules) {
         $this->rules = $rules;
     }
@@ -52,6 +55,22 @@ final class Validator {
         return $this;
     }
 
+    /** @return self */
+    public function bail(): self {
+        $this->bailOnFirst = true;
+        return $this;
+    }
+
+    // ─── Результат ─────────────────────────────────────────────────────
+
+    public function passes(): bool {
+        return empty($this->errors);
+    }
+
+    public function fails(): bool {
+        return !empty($this->errors);
+    }
+
     // ─── Основной метод ─────────────────────────────────────────────
 
     /**
@@ -82,6 +101,10 @@ final class Validator {
                 foreach ($paths as $path) {
                     $this->validateOnePath($data, $path, $rule);
                 }
+            }
+
+            if ($this->bailOnFirst && !empty($this->errors)) {
+                break;
             }
         }
 
@@ -175,7 +198,7 @@ final class Validator {
 
     private function mergeRules(array $rules): Rule {
         $captured = $rules;
-        $r = Rule::create(function(&$value, array $params, array $context) use ($captured): bool {
+        $r = Rule::create(function(&$value, array $params, array &$context) use ($captured): bool {
             foreach ($captured as $rule) {
                 if (!$rule->apply($value, $context)) {
                     return false;
@@ -193,7 +216,7 @@ final class Validator {
         // __self маркер — простая ошибка валидации
         if (isset($nestedErrors['__self'])) {
             $this->errors[$field] = $this->errors[$field] ?? [];
-            $msg = $rule->getErrorMessage($value) ?: "Validation failed for {$field}";
+            $msg = $rule->getErrorMessage($value, $field) ?: "Validation failed for {$field}";
             $this->errors[$field][] = $msg;
             return;
         }
@@ -222,6 +245,8 @@ final class Validator {
             '__silent' => $this->isSilent,
             '__safe'   => $this->isSafe,
             '__skip'   => false,
+            '__data'   => &$data,
+            '__field'  => $field,
         ];
 
         try {
@@ -251,15 +276,16 @@ final class Validator {
 
     private function validateOnePath(array &$data, array $path, Rule $rule): void {
         [$value, $exists] = $this->getByPath($data, $path);
+        $field = implode('.', $path);
 
         $context = [
             '__exists' => $exists,
             '__silent' => $this->isSilent,
             '__safe'   => $this->isSafe,
             '__skip'   => false,
+            '__data'   => &$data,
+            '__field'  => $field,
         ];
-
-        $field = implode('.', $path);
 
         try {
             $nestedErrors = $rule->applyWithErrors($value, $context);
