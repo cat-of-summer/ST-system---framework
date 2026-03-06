@@ -13,6 +13,9 @@ final class Validator {
     /** @var bool */
     private $isSilent = true;
 
+    /** @var bool */
+    private $isSafe = false;
+
     private function __construct(array $rules) {
         $this->rules = $rules;
     }
@@ -37,50 +40,55 @@ final class Validator {
         return $this;
     }
 
+    /** @return self */
+    public function safe(): self {
+        $this->isSafe = true;
+        return $this;
+    }
+
+    /** @return self */
+    public function unsafe(): self {
+        $this->isSafe = false;
+        return $this;
+    }
+
     // ─── Основной метод ─────────────────────────────────────────────
 
     /**
      * Валидирует и мутирует $data по ссылке.
-     * Поля без правил удаляются из $data.
+     * Flat-поля без правил удаляются. Dot-path/wildcard затрагивают только конкретные листья.
      */
     public function validate(array &$data, ?callable $onPrepare = null): void {
         $this->errors = [];
-        $result = [];
+        $result       = [];
+        $dotTopKeys   = [];
 
         foreach ($this->rules as $field => $ruleSpec) {
-            $exists = array_key_exists($field, $data);
-            $value  = $exists ? $data[$field] : null;
+            $rule     = $this->normalizeRule($ruleSpec);
+            $isNested = strpos($field, '.') !== false || strpos($field, '*') !== false;
 
-            // Нормализация правила
-            $rule = $this->normalizeRule($ruleSpec);
+            if (!$isNested) {
+                $this->validateFlat($data, $field, $rule, $result);
+            } else {
+                $segments = $this->parsePath($field);
+                $dotTopKeys[$segments[0]] = true;
 
-            $context = [
-                '__key'    => $field,
-                '__exists' => $exists,
-                '__silent' => $this->isSilent,
-                '__skip'   => false,
-            ];
-
-            // Выполнение правила
-            try {
-                $nestedErrors = $rule->applyWithErrors($value, $context);
-
-                // skipField (sometimes / excludeIf) — поле не было в данных
-                if (!empty($context['__skip'])) {
-                    continue;
-                }
-
-                if ($nestedErrors !== null) {
-                    $this->mergeErrors($field, $nestedErrors, $rule, $value);
+                if (in_array('*', $segments, true)) {
+                    $paths = $this->expandWildcards($data, $segments);
                 } else {
-                    $result[$field] = $value;
+                    $paths = [$segments];
                 }
-            } catch (\Throwable $e) {
-                if (!$this->isSilent) {
-                    throw $e;
+
+                foreach ($paths as $path) {
+                    $this->validateOnePath($data, $path, $rule);
                 }
-                $this->errors[$field] = $this->errors[$field] ?? [];
-                $this->errors[$field][] = $e->getMessage();
+            }
+        }
+
+        // Топ-ключи dot-path/wildcard правил переносим из уже мутированного $data
+        foreach ($dotTopKeys as $key => $_) {
+            if (array_key_exists($key, $data)) {
+                $result[$key] = $data[$key];
             }
         }
 
@@ -192,6 +200,7 @@ final class Validator {
 
         // Вложенные ошибки (object / forEach) — dot-нотация
         foreach ($nestedErrors as $subField => $subErrors) {
+            if ($subField === '__partial') continue;
             $dotKey = $field . '.' . $subField;
             $this->errors[$dotKey] = $this->errors[$dotKey] ?? [];
             if (is_array($subErrors)) {
@@ -200,5 +209,147 @@ final class Validator {
                 $this->errors[$dotKey][] = (string) $subErrors;
             }
         }
+    }
+
+    // ─── Выполнение правила ───────────────────────────────────────────
+
+    private function validateFlat(array &$data, string $field, Rule $rule, array &$result): void {
+        $exists = array_key_exists($field, $data);
+        $value  = $exists ? $data[$field] : null;
+
+        $context = [
+            '__exists' => $exists,
+            '__silent' => $this->isSilent,
+            '__safe'   => $this->isSafe,
+            '__skip'   => false,
+        ];
+
+        try {
+            $nestedErrors = $rule->applyWithErrors($value, $context);
+
+            if (!empty($context['__skip'])) {
+                return;
+            }
+
+            if ($nestedErrors !== null) {
+                $this->mergeErrors($field, $nestedErrors, $rule, $value);
+                // __partial: forEach нашёл ошибки в части элементов, но массив жив
+                if (isset($nestedErrors['__partial'])) {
+                    $result[$field] = $value;
+                }
+            } else {
+                $result[$field] = $value;
+            }
+        } catch (\Throwable $e) {
+            if (!$this->isSilent) {
+                throw $e;
+            }
+            $this->errors[$field] = $this->errors[$field] ?? [];
+            $this->errors[$field][] = $e->getMessage();
+        }
+    }
+
+    private function validateOnePath(array &$data, array $path, Rule $rule): void {
+        [$value, $exists] = $this->getByPath($data, $path);
+
+        $context = [
+            '__exists' => $exists,
+            '__silent' => $this->isSilent,
+            '__safe'   => $this->isSafe,
+            '__skip'   => false,
+        ];
+
+        $field = implode('.', $path);
+
+        try {
+            $nestedErrors = $rule->applyWithErrors($value, $context);
+
+            if (!empty($context['__skip'])) {
+                return;
+            }
+
+            if ($nestedErrors !== null) {
+                $this->mergeErrors($field, $nestedErrors, $rule, $value);
+                if (isset($nestedErrors['__partial'])) {
+                    // safe-режим forEach: массив отфильтрован, записываем обратно
+                    $this->setByPath($data, $path, $value);
+                } else {
+                    // лист удаляется, сиблинги выживают
+                    $this->unsetByPath($data, $path);
+                }
+            } else {
+                $this->setByPath($data, $path, $value);
+            }
+        } catch (\Throwable $e) {
+            if (!$this->isSilent) {
+                throw $e;
+            }
+            $this->errors[$field] = $this->errors[$field] ?? [];
+            $this->errors[$field][] = $e->getMessage();
+        }
+    }
+
+    // ─── Path хелперы ────────────────────────────────────────────────
+
+    private function parsePath(string $field): array {
+        return explode('.', $field);
+    }
+
+    /** @return array */
+    private function getByPath(array $data, array $path): array {
+        $node = $data;
+        foreach ($path as $seg) {
+            if (!is_array($node) || !array_key_exists($seg, $node)) {
+                return [null, false];
+            }
+            $node = $node[$seg];
+        }
+        return [$node, true];
+    }
+
+    /** @param mixed $value */
+    private function setByPath(array &$data, array $path, $value): void {
+        $node = &$data;
+        $last = array_pop($path);
+        foreach ($path as $seg) {
+            if (!isset($node[$seg]) || !is_array($node[$seg])) {
+                $node[$seg] = [];
+            }
+            $node = &$node[$seg];
+        }
+        $node[$last] = $value;
+    }
+
+    private function unsetByPath(array &$data, array $path): void {
+        $node = &$data;
+        $last = array_pop($path);
+        foreach ($path as $seg) {
+            if (!is_array($node) || !array_key_exists($seg, $node)) {
+                return;
+            }
+            $node = &$node[$seg];
+        }
+        unset($node[$last]);
+    }
+
+    /** @return array[] */
+    private function expandWildcards(array $data, array $segments): array {
+        $current = [[]];
+        foreach ($segments as $seg) {
+            $next = [];
+            foreach ($current as $prefix) {
+                if ($seg !== '*') {
+                    $next[] = array_merge($prefix, [$seg]);
+                } else {
+                    [$node, $nodeExists] = $this->getByPath($data, $prefix);
+                    if (!$nodeExists || !is_array($node)) continue;
+                    foreach (array_keys($node) as $key) {
+                        $next[] = array_merge($prefix, [(string)$key]);
+                    }
+                }
+            }
+            $current = $next;
+        }
+        return $current;
     }
 }

@@ -249,6 +249,7 @@ final class Rule {
                 if (!is_array($value)) return false;
                 $v = Validator::create($rules);
                 if (!empty($context['__silent'])) $v->silent(); else $v->loud();
+                if (!empty($context['__safe'])) $v->safe();
                 $v->validate($value);
                 return empty($v->errors) ? true : $v->errors;
             },
@@ -267,6 +268,7 @@ final class Rule {
             return new self([
                 'callback' => function(&$value, array $params, array $context) use ($inner) {
                     if (!is_array($value)) return false;
+                    $isSafe = !empty($context['__safe']);
                     $errors = [];
                     foreach ($value as $i => &$item) {
                         $c = $inner->copy();
@@ -275,6 +277,12 @@ final class Rule {
                         }
                     }
                     unset($item);
+                    if ($isSafe) {
+                        foreach (array_keys($errors) as $k) {
+                            unset($value[$k]);
+                        }
+                    }
+                    if (!empty($errors)) $errors['__partial'] = true;
                     return empty($errors) ? true : $errors;
                 },
                 'isModifier' => true,
@@ -284,11 +292,20 @@ final class Rule {
         return new self([
             'callback' => function(&$value, array $params, array $context) use ($fn) {
                 if (!is_array($value)) return false;
+                $isSafe = !empty($context['__safe']);
                 $errors = [];
                 foreach ($value as $i => &$item) {
-                    if (!$fn($item)) $errors[$i] = "Validation failed for element {$i}";
+                    if (!$fn($item)) {
+                        $errors[$i] = "Validation failed for element {$i}";
+                    }
                 }
                 unset($item);
+                if ($isSafe) {
+                    foreach (array_keys($errors) as $k) {
+                        unset($value[$k]);
+                    }
+                }
+                if (!empty($errors)) $errors['__partial'] = true;
                 return empty($errors) ? true : $errors;
             },
             'isModifier' => true,
