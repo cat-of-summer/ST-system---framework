@@ -77,7 +77,7 @@ class Yandex_captcha {
         if (self::$IS_CDN_INCLUDED)
             return true;
 
-        $onLoad_JS = (isset($PARAMS['onload_JS_func']) && is_callable($PARAMS['onload_JS_func']))
+        $onLoad_JS = (($PARAMS['onload_JS_func'] ?? null) instanceof \Closure)
         ? $PARAMS['onload_JS_func']()
         : ((self::$USE_CONSOLE_LOG_IN_DEFAULT_PARAM) 
             ? "console.log('Успешное подключение CDN!')" 

@@ -42,11 +42,11 @@ final class Access {
 
         $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config['password_name'];
         $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm');
-        $onFail_func = (isset($PARAMS['onFail']) && is_callable($PARAMS['onFail'])) 
+        $onFail_func = (($PARAMS['onFail'] ?? null) instanceof \Closure)
             ? $PARAMS['onFail'] 
             : function () { header("Location: /"); exit; };
 
-        $onSuccess_func = (isset($PARAMS['onSuccess']) && is_callable($PARAMS['onSuccess'])) 
+        $onSuccess_func = (($PARAMS['onSuccess'] ?? null) instanceof \Closure)
             ? $PARAMS['onSuccess'] 
             : fn() => true;
 

@@ -29,10 +29,10 @@ trait HasValidatableParams {
 
             $value = $values[$key] ?? $default;
 
-            if (is_callable($before))
+            if ($before instanceof \Closure)
                 $value = $before($value, $key, $result);
 
-            if (is_callable($rule) && !$rule($value, $key, $result))
+            if ($rule instanceof \Closure && !$rule($value, $key, $result))
                 $value = $default;
             
             if ($value instanceof \Throwable)
@@ -41,7 +41,7 @@ trait HasValidatableParams {
             if ($value === null)
                 continue;
 
-            if (is_callable($after))
+            if ($after instanceof \Closure)
                 $value = $after($value, $key, $result);
                                                 
             $result[$key] = $value;
@@ -49,7 +49,7 @@ trait HasValidatableParams {
 
         $input = $is_scalar ? $result[0] : $result;
 
-        if (is_callable($on_prepare) && ($v = $on_prepare($input)))
+        if ($on_prepare instanceof \Closure && ($v = $on_prepare($input)))
             $input = $v;
 
         return $input;
@@ -77,11 +77,11 @@ trait HasValidatableParams {
 
             $value = $hasValue ? $values[$key] : $default;
 
-            if (is_callable($before)) {
+            if ($before instanceof \Closure) {
                 $value = $before($value, $key, $result);
             }
 
-            if (is_callable($rule) && !$rule($value, $key, $result)) {
+            if ($rule instanceof \Closure && !$rule($value, $key, $result)) {
                 $value = $default;
             }
 
@@ -89,7 +89,7 @@ trait HasValidatableParams {
                 throw $value;
             }
 
-            if (is_callable($after)) {
+            if ($after instanceof \Closure) {
                 $value = $after($value, $key, $result);
             }
 
@@ -110,7 +110,7 @@ trait HasValidatableParams {
             }
         }
 
-        if (is_callable($on_prepare)) {
+        if ($on_prepare instanceof \Closure) {
             $maybe = $on_prepare($input);
             if ($maybe !== null) {
                 $input = $maybe;

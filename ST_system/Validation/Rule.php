@@ -280,7 +280,7 @@ final class Rule {
 
         if (is_string($spec)) return self::fromString($spec);
 
-        if (is_callable($spec) && !is_array($spec)) {
+        if ($spec instanceof \Closure) {
             return new self(['callback' => $spec]);
         }
 
@@ -353,7 +353,7 @@ final class Rule {
 
         // before → modifier
         $before = $spec['before'] ?? null;
-        if (is_callable($before)) {
+        if ($before instanceof \Closure) {
             $chain[] = new self(['callback' => $before, 'order' => -1, 'isModifier' => true]);
         }
 
@@ -371,14 +371,14 @@ final class Rule {
                     if (count($parsed->chain) > 0) array_push($chain, ...$parsed->chain);
                     elseif ($parsed->callback !== null) $chain[] = $parsed;
                 }
-            } elseif (is_callable($rule)) {
+            } elseif ($rule instanceof \Closure) {
                 $chain[] = new self(['callback' => $rule]);
             }
         }
 
         // after → modifier
         $after = $spec['after'] ?? null;
-        if (is_callable($after)) {
+        if ($after instanceof \Closure) {
             $chain[] = new self(['callback' => $after, 'order' => 1000, 'isModifier' => true]);
         }
 
@@ -393,7 +393,7 @@ final class Rule {
      */
     public static function object($spec): Rule {
         self::init();
-        if (is_callable($spec) && !is_array($spec)) {
+        if ($spec instanceof \Closure) {
             return new self(['callback' => $spec]);
         }
         $rules = $spec;
@@ -470,7 +470,7 @@ final class Rule {
      */
     public static function requiredIf($cond): Rule {
         self::init();
-        $fn = is_callable($cond) ? $cond : fn() => $cond;
+        $fn = $cond instanceof \Closure ? $cond : function() use ($cond) { return $cond; };
         return new self(['callback' => fn($v) => $fn() ? ($v !== null && $v !== '') : true, 'order' => 100, 'bail' => true]);
     }
 
@@ -480,7 +480,7 @@ final class Rule {
      */
     public static function prohibitedIf($cond): Rule {
         self::init();
-        $fn = is_callable($cond) ? $cond : fn() => $cond;
+        $fn = $cond instanceof \Closure ? $cond : function() use ($cond) { return $cond; };
         return new self(['callback' => fn($v) => $fn() ? ($v === null || $v === '') : true, 'order' => 100, 'bail' => true]);
     }
 
@@ -490,7 +490,7 @@ final class Rule {
      */
     public static function excludeIf($cond): Rule {
         self::init();
-        $fn = is_callable($cond) ? $cond : fn() => $cond;
+        $fn = $cond instanceof \Closure ? $cond : function() use ($cond) { return $cond; };
         return new self(['callback' => fn($v) => !$fn(), 'order' => 0, 'skipField' => true]);
     }
 
@@ -502,7 +502,7 @@ final class Rule {
     public static function when($cond, $then): Rule {
         self::init();
         $thenRule = is_string($then) ? self::create($then) : $then;
-        $fn = is_callable($cond) ? $cond : fn() => $cond;
+        $fn = $cond instanceof \Closure ? $cond : function() use ($cond) { return $cond; };
         return new self([
             'callback' => function(&$v, array $p, array &$ctx) use ($fn, $thenRule): bool {
                 return $fn() ? $thenRule->apply($v, $ctx) : true;

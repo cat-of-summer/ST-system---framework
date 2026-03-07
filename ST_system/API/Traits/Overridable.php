@@ -12,7 +12,7 @@ trait Overridable {
         $old_config = $this->methods_map[$method];
         $this->unregister_method($method);
 
-        $this->register_method($method, is_callable($config)
+        $this->register_method($method, $config instanceof \Closure
             ? $config
             : Main::merge($old_config, $config)    
         );
