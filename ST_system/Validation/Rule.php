@@ -11,8 +11,8 @@ final class Rule {
     private $callback;
     /** @var int */
     private $order;
-    /** @var bool */
-    private $isModifier;
+    /** @var bool  Флаг: шаг не принимает params при парсинге строки (cast-шаги int/float/bool, трансформеры) */
+    private $noParams;
     /** @var bool */
     private $bail;
     /** @var bool */
@@ -30,10 +30,23 @@ final class Rule {
     /** @var bool */
     private $bailChain = false;
 
+    // ─── Schema (заменяет Validator) ─────────────────────────────────
+
+    /** @var array<string, mixed>|null */
+    private $schemaRules = null;
+    /** @var array<string, string[]> */
+    public $errors = [];
+    /** @var bool */
+    private $isSilent = true;
+    /** @var bool */
+    private $isSafe = false;
+    /** @var bool */
+    private $bailOnFirst = false;
+
     private function __construct(array $opts = []) {
         $this->callback   = $opts['callback'] ?? null;
         $this->order      = $opts['order'] ?? 700;
-        $this->isModifier = $opts['isModifier'] ?? false;
+        $this->noParams   = $opts['noParams'] ?? false;
         $this->bail       = $opts['bail'] ?? false;
         $this->stopOnPass = $opts['stopOnPass'] ?? false;
         $this->skipField  = $opts['skipField'] ?? false;
@@ -62,7 +75,7 @@ final class Rule {
                 if ($v === null || $v === '') $v = $p[0] ?? null;
                 return true;
             },
-            'order' => 50, 'isModifier' => true,
+            'order' => 50,
         ]))->alias('default');
 
         (new self(['callback' => fn($v) => $v !== null && $v !== '', 'order' => 100, 'bail' => true]))->alias('required');
@@ -72,12 +85,12 @@ final class Rule {
 
         (new self(['chain' => [
             new self(['callback' => fn($v) => is_int($v) || (is_string($v) && ctype_digit(ltrim((string)$v, '-'))), 'order' => 500]),
-            new self(['callback' => function(&$v): bool { $v = (int)$v; return true; }, 'order' => 1000, 'isModifier' => true]),
+            new self(['callback' => function(&$v): bool { $v = (int)$v; return true; }, 'order' => 1000, 'noParams' => true]),
         ]]))->alias('int')->alias('integer');
 
         (new self(['chain' => [
             new self(['callback' => fn($v) => is_float($v) || is_numeric($v), 'order' => 500]),
-            new self(['callback' => function(&$v): bool { $v = (float)$v; return true; }, 'order' => 1000, 'isModifier' => true]),
+            new self(['callback' => function(&$v): bool { $v = (float)$v; return true; }, 'order' => 1000, 'noParams' => true]),
         ]]))->alias('float');
 
         (new self(['chain' => [
@@ -85,7 +98,7 @@ final class Rule {
             new self(['callback' => function(&$v): bool {
                 $v = is_string($v) ? filter_var($v, FILTER_VALIDATE_BOOLEAN) : (bool)$v;
                 return true;
-            }, 'order' => 1000, 'isModifier' => true]),
+            }, 'order' => 1000, 'noParams' => true]),
         ]]))->alias('bool');
 
         (new self(['callback' => fn($v) => is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) !== false, 'order' => 500]))->alias('email');
@@ -195,23 +208,23 @@ final class Rule {
             return !array_key_exists($other, $data) || $v !== $data[$other];
         }]))->alias('different');
 
-        // trim (modifier)
+        // trim
         (new self(['callback' => function(&$v): bool {
             if (is_string($v)) $v = trim($v);
             return true;
-        }, 'order' => -1, 'isModifier' => true]))->alias('trim');
+        }, 'order' => -1, 'noParams' => true]))->alias('trim');
 
-        // uppercase (modifier)
+        // uppercase
         (new self(['callback' => function(&$v): bool {
             if (is_string($v)) $v = mb_strtoupper($v);
             return true;
-        }, 'order' => 1000, 'isModifier' => true]))->alias('uppercase');
+        }, 'order' => 1000, 'noParams' => true]))->alias('uppercase');
 
-        // lowercase (modifier)
+        // lowercase
         (new self(['callback' => function(&$v): bool {
             if (is_string($v)) $v = mb_strtolower($v);
             return true;
-        }, 'order' => 1000, 'isModifier' => true]))->alias('lowercase');
+        }, 'order' => 1000, 'noParams' => true]))->alias('lowercase');
 
         // accepted — yes, on, 1, "1", true, "true"
         (new self(['callback' => fn($v) => in_array($v, [true, 1, '1', 'yes', 'on', 'true'], true), 'order' => 500]))->alias('accepted');
@@ -284,6 +297,7 @@ final class Rule {
             return new self(['callback' => $spec]);
         }
 
+        // Массив: ['required', 'string', Rule::forEach(...)]
         if (is_array($spec)) return self::fromArray($spec);
 
         return new self();
@@ -318,7 +332,7 @@ final class Rule {
             } elseif (count($tpl->chain) > 0) {
                 foreach ($tpl->chain as $sub) {
                     $c = $sub->copy();
-                    if (!$c->isModifier) $c->params = $params;
+                    if (!$c->noParams) $c->params = $params;
                     $chain[] = $c;
                 }
             } elseif (count($params) > 0) {
@@ -336,58 +350,48 @@ final class Rule {
         return new self(['chain' => $chain, 'bailChain' => $bailChain]);
     }
 
+    /** Массив: ['required', 'string', Rule::forEach(...)] */
     private static function fromArray(array $spec): Rule {
-        $chain = [];
+        $stringParts = [];
+        $extraRules  = [];
 
-        // default → modifier в цепочку
-        if (array_key_exists('default', $spec)) {
-            $def = $spec['default'];
-            $chain[] = new self([
-                'callback' => function(&$v) use ($def): bool {
-                    if ($v === null || $v === '') $v = $def;
-                    return true;
-                },
-                'order' => 50, 'isModifier' => true,
-            ]);
-        }
-
-        // before → modifier
-        $before = $spec['before'] ?? null;
-        if ($before instanceof \Closure) {
-            $chain[] = new self(['callback' => $before, 'order' => -1, 'isModifier' => true]);
-        }
-
-        // rule
-        $rule = $spec['rule'] ?? null;
-        if ($rule !== null) {
-            if (is_string($rule)) {
-                $parsed = self::fromString($rule);
-                if (count($parsed->chain) > 0) array_push($chain, ...$parsed->chain);
-                elseif ($parsed->callback !== null) $chain[] = $parsed;
-            } elseif (is_array($rule)) {
-                $joined = implode('|', array_filter($rule, 'is_string'));
-                if ($joined !== '') {
-                    $parsed = self::fromString($joined);
-                    if (count($parsed->chain) > 0) array_push($chain, ...$parsed->chain);
-                    elseif ($parsed->callback !== null) $chain[] = $parsed;
-                }
-            } elseif ($rule instanceof \Closure) {
-                $chain[] = new self(['callback' => $rule]);
+        foreach ($spec as $item) {
+            if (is_string($item)) {
+                $stringParts[] = $item;
+            } elseif ($item instanceof Rule) {
+                $extraRules[] = $item;
             }
         }
 
-        // after → modifier
-        $after = $spec['after'] ?? null;
-        if ($after instanceof \Closure) {
-            $chain[] = new self(['callback' => $after, 'order' => 1000, 'isModifier' => true]);
+        if (count($stringParts) > 0 && count($extraRules) === 0) {
+            return self::fromString(implode('|', $stringParts));
         }
 
-        return new self(['chain' => $chain]);
+        $combined = [];
+        if (count($stringParts) > 0) {
+            $combined[] = self::fromString(implode('|', $stringParts));
+        }
+        foreach ($extraRules as $er) {
+            $combined[] = $er;
+        }
+
+        if (count($combined) === 1) return $combined[0];
+
+        $captured = $combined;
+        return new self(['callback' => function(&$value, array $params, array &$context) use ($captured): bool {
+            foreach ($captured as $rule) {
+                if (!$rule->apply($value, $context)) return false;
+            }
+            return true;
+        }]);
     }
 
     // ─── Хелперы ─────────────────────────────────────────────────────
 
     /**
+     * Валидация ассоциативного массива по схеме полей.
+     * Заменяет Validator::create().
+     *
      * @param array|callable $spec
      * @return Rule
      */
@@ -397,20 +401,28 @@ final class Rule {
             return new self(['callback' => $spec]);
         }
         $rules = $spec;
-        return new self([
-            'callback' => function(&$value, array $params, array $context) use ($rules) {
+        $rule = new self([
+            'callback' => function(&$value, array $params, array &$context) use ($rules): bool {
                 if (!is_array($value)) return false;
-                $v = Validator::create($rules);
-                if (!empty($context['__silent'])) $v->silent(); else $v->loud();
-                if (!empty($context['__safe'])) $v->safe();
-                $v->validate($value);
-                return empty($v->errors) ? true : $v->errors;
+                $schema = new self();
+                $schema->schemaRules = $rules;
+                $schema->isSilent = !empty($context['__silent']);
+                $schema->isSafe   = !empty($context['__safe']);
+                $schema->validateSchema($value);
+                if (!empty($schema->errors)) {
+                    $context['__sub_errors'] = $schema->errors;
+                    return false;
+                }
+                return true;
             },
-            'isModifier' => true,
         ]);
+        $rule->schemaRules = $rules;
+        return $rule;
     }
 
     /**
+     * Валидация каждого элемента массива.
+     *
      * @param string|callable $spec
      * @return Rule
      */
@@ -419,7 +431,7 @@ final class Rule {
         if (is_string($spec)) {
             $inner = self::create($spec);
             return new self([
-                'callback' => function(&$value, array $params, array $context) use ($inner) {
+                'callback' => function(&$value, array $params, array &$context) use ($inner): bool {
                     if (!is_array($value)) return false;
                     $isSafe = !empty($context['__safe']);
                     $errors = [];
@@ -430,19 +442,20 @@ final class Rule {
                     }
                     unset($item);
                     if ($isSafe) {
-                        foreach (array_keys($errors) as $k) {
-                            unset($value[$k]);
-                        }
+                        foreach (array_keys($errors) as $k) unset($value[$k]);
                     }
-                    if (!empty($errors)) $errors['__partial'] = true;
-                    return empty($errors) ? true : $errors;
+                    if (!empty($errors)) {
+                        $errors['__partial'] = true;
+                        $context['__sub_errors'] = $errors;
+                        return false;
+                    }
+                    return true;
                 },
-                'isModifier' => true,
             ]);
         }
         $fn = $spec;
         return new self([
-            'callback' => function(&$value, array $params, array $context) use ($fn) {
+            'callback' => function(&$value, array $params, array &$context) use ($fn): bool {
                 if (!is_array($value)) return false;
                 $isSafe = !empty($context['__safe']);
                 $errors = [];
@@ -453,14 +466,15 @@ final class Rule {
                 }
                 unset($item);
                 if ($isSafe) {
-                    foreach (array_keys($errors) as $k) {
-                        unset($value[$k]);
-                    }
+                    foreach (array_keys($errors) as $k) unset($value[$k]);
                 }
-                if (!empty($errors)) $errors['__partial'] = true;
-                return empty($errors) ? true : $errors;
+                if (!empty($errors)) {
+                    $errors['__partial'] = true;
+                    $context['__sub_errors'] = $errors;
+                    return false;
+                }
+                return true;
             },
-            'isModifier' => true,
         ]);
     }
 
@@ -507,7 +521,7 @@ final class Rule {
             'callback' => function(&$v, array $p, array &$ctx) use ($fn, $thenRule): bool {
                 return $fn() ? $thenRule->apply($v, $ctx) : true;
             },
-            'isModifier' => true, 'order' => $thenRule->order,
+            'order' => $thenRule->order,
         ]);
     }
 
@@ -539,6 +553,36 @@ final class Rule {
     /** @return self */
     public function onSuccess(callable $cb): self { $this->onSuccessCallback = $cb; return $this; }
 
+    /** Добавить трансформ-шаг перед валидацией (order = -1) */
+    public function before(callable $fn): self {
+        $this->ensureChain();
+        $this->chain[] = new self(['callback' => $fn, 'order' => -1, 'noParams' => true]);
+        usort($this->chain, fn(Rule $a, Rule $b) => $a->order <=> $b->order);
+        return $this;
+    }
+
+    /** Добавить трансформ-шаг после валидации (order = 1000) */
+    public function after(callable $fn): self {
+        $this->ensureChain();
+        $this->chain[] = new self(['callback' => $fn, 'order' => 1000, 'noParams' => true]);
+        usort($this->chain, fn(Rule $a, Rule $b) => $a->order <=> $b->order);
+        return $this;
+    }
+
+    private function ensureChain(): void {
+        if (count($this->chain) === 0 && $this->callback !== null) {
+            $this->chain = [new self([
+                'callback'   => $this->callback,
+                'order'      => $this->order,
+                'bail'       => $this->bail,
+                'stopOnPass' => $this->stopOnPass,
+                'skipField'  => $this->skipField,
+                'params'     => $this->params,
+            ])];
+            $this->callback = null;
+        }
+    }
+
     /**
      * @param mixed $value
      * @return string|null
@@ -547,11 +591,44 @@ final class Rule {
         return $this->onErrorCallback ? ($this->onErrorCallback)($value, $field) : null;
     }
 
+    // ─── Schema mode (заменяет Validator) ────────────────────────────
+
+    /** @return self */
+    public function silent(): self  { $this->isSilent = true;   return $this; }
+    /** @return self */
+    public function loud(): self    { $this->isSilent = false;  return $this; }
+    /** @return self */
+    public function safe(): self    { $this->isSafe = true;     return $this; }
+    /** @return self */
+    public function unsafe(): self  { $this->isSafe = false;    return $this; }
+    /** @return self */
+    public function bail(): self    { $this->bailOnFirst = true; return $this; }
+
+    public function passes(): bool { return empty($this->errors); }
+    public function fails(): bool  { return !empty($this->errors); }
+
+    /**
+     * Валидирует и мутирует $data. Работает для schema-правил (object).
+     * @return self
+     */
+    public function validate(array &$data, ?callable $onPrepare = null): self {
+        if ($this->schemaRules === null) return $this;
+        $this->validateSchema($data, $onPrepare);
+        return $this;
+    }
+
+    /**
+     * Статический шорткат: Rule::check(['field' => 'rule'], $data)
+     */
+    public static function check(array $rules, array &$data, ?callable $onPrepare = null): void {
+        $r = self::object($rules);
+        $r->validateSchema($data, $onPrepare);
+    }
+
     // ─── apply ───────────────────────────────────────────────────────
 
     /**
      * @param mixed $value
-     * @return bool
      */
     public function apply(&$value, array &$context = []): bool {
         if (count($this->chain) > 0) return $this->applyChain($value, $context);
@@ -559,8 +636,6 @@ final class Rule {
         if ($this->callback === null) return true;
 
         $cb = $this->callback;
-        if ($this->isModifier) return !is_array($cb($value, $this->params, $context));
-
         return (bool)$cb($value, $this->params, $context);
     }
 
@@ -596,11 +671,11 @@ final class Rule {
         return true;
     }
 
-    // ─── applyWithErrors (для Validator) ─────────────────────────────
+    // ─── applyWithErrors ─────────────────────────────────────────────
 
     /**
      * @param mixed $value
-     * @return array|null
+     * @return array|null  null = OK, array = ошибки
      */
     public function applyWithErrors(&$value, array &$context): ?array {
         if (count($this->chain) > 0) return $this->applyChainWithErrors($value, $context);
@@ -608,12 +683,16 @@ final class Rule {
         if ($this->callback === null) return null;
 
         $cb = $this->callback;
-        if ($this->isModifier) {
-            $result = $cb($value, $this->params, $context);
-            return is_array($result) ? $result : null;
+        if ((bool)$cb($value, $this->params, $context)) return null;
+
+        // Вложенные ошибки от object() / forEach()
+        if (isset($context['__sub_errors'])) {
+            $errors = $context['__sub_errors'];
+            unset($context['__sub_errors']);
+            return $errors;
         }
 
-        return (bool)$cb($value, $this->params, $context) ? null : ['__self' => true];
+        return ['__self' => true];
     }
 
     /** @param mixed $value */
@@ -639,5 +718,204 @@ final class Rule {
         }
 
         return $allErrors;
+    }
+
+    // ─── Schema validation (перенесено из Validator) ─────────────────
+
+    private function validateSchema(array &$data, ?callable $onPrepare = null): void {
+        $this->errors = [];
+        $result       = [];
+        $dotTopKeys   = [];
+
+        foreach ($this->schemaRules as $field => $ruleSpec) {
+            $rule     = $this->normalizeRule($ruleSpec);
+            $isNested = strpos($field, '.') !== false || strpos($field, '*') !== false;
+
+            if (!$isNested) {
+                $this->validateFlat($data, $field, $rule, $result);
+            } else {
+                $segments = explode('.', $field);
+                $dotTopKeys[$segments[0]] = true;
+
+                if (in_array('*', $segments, true)) {
+                    $paths = $this->expandWildcards($data, $segments);
+                } else {
+                    $paths = [$segments];
+                }
+
+                foreach ($paths as $path) {
+                    $this->validateOnePath($data, $path, $rule);
+                }
+            }
+
+            if ($this->bailOnFirst && !empty($this->errors)) break;
+        }
+
+        foreach ($dotTopKeys as $key => $_) {
+            if (array_key_exists($key, $data)) {
+                $result[$key] = $data[$key];
+            }
+        }
+
+        $data = $result;
+
+        if ($onPrepare !== null) {
+            $onPrepare($data);
+        }
+    }
+
+    /** @param string|array|Rule $spec */
+    private function normalizeRule($spec): Rule {
+        if ($spec instanceof Rule) return $spec;
+        if (is_string($spec))     return self::create($spec);
+        if (is_array($spec))      return self::fromArray($spec);
+        return new self(['callback' => fn() => true]);
+    }
+
+    /** @param mixed $value */
+    private function mergeErrors(string $field, array $nestedErrors, Rule $rule, $value): void {
+        if (isset($nestedErrors['__self'])) {
+            $this->errors[$field] = $this->errors[$field] ?? [];
+            $msg = $rule->getErrorMessage($value, $field) ?: "Validation failed for {$field}";
+            $this->errors[$field][] = $msg;
+            return;
+        }
+
+        foreach ($nestedErrors as $subField => $subErrors) {
+            if ($subField === '__partial') continue;
+            $dotKey = $field . '.' . $subField;
+            $this->errors[$dotKey] = $this->errors[$dotKey] ?? [];
+            if (is_array($subErrors)) {
+                array_push($this->errors[$dotKey], ...$subErrors);
+            } else {
+                $this->errors[$dotKey][] = (string)$subErrors;
+            }
+        }
+    }
+
+    private function validateFlat(array &$data, string $field, Rule $rule, array &$result): void {
+        $exists = array_key_exists($field, $data);
+        $value  = $exists ? $data[$field] : null;
+
+        $context = [
+            '__exists' => $exists,
+            '__silent' => $this->isSilent,
+            '__safe'   => $this->isSafe,
+            '__skip'   => false,
+            '__data'   => &$data,
+            '__field'  => $field,
+        ];
+
+        try {
+            $nestedErrors = $rule->applyWithErrors($value, $context);
+
+            if (!empty($context['__skip'])) return;
+
+            if ($nestedErrors !== null) {
+                $this->mergeErrors($field, $nestedErrors, $rule, $value);
+                if (isset($nestedErrors['__partial'])) {
+                    $result[$field] = $value;
+                }
+            } else {
+                $result[$field] = $value;
+            }
+        } catch (\Throwable $e) {
+            if (!$this->isSilent) throw $e;
+            $this->errors[$field] = $this->errors[$field] ?? [];
+            $this->errors[$field][] = $e->getMessage();
+        }
+    }
+
+    private function validateOnePath(array &$data, array $path, Rule $rule): void {
+        [$value, $exists] = $this->getByPath($data, $path);
+        $field = implode('.', $path);
+
+        $context = [
+            '__exists' => $exists,
+            '__silent' => $this->isSilent,
+            '__safe'   => $this->isSafe,
+            '__skip'   => false,
+            '__data'   => &$data,
+            '__field'  => $field,
+        ];
+
+        try {
+            $nestedErrors = $rule->applyWithErrors($value, $context);
+
+            if (!empty($context['__skip'])) return;
+
+            if ($nestedErrors !== null) {
+                $this->mergeErrors($field, $nestedErrors, $rule, $value);
+                if (isset($nestedErrors['__partial'])) {
+                    $this->setByPath($data, $path, $value);
+                } else {
+                    $this->unsetByPath($data, $path);
+                }
+            } else {
+                $this->setByPath($data, $path, $value);
+            }
+        } catch (\Throwable $e) {
+            if (!$this->isSilent) throw $e;
+            $this->errors[$field] = $this->errors[$field] ?? [];
+            $this->errors[$field][] = $e->getMessage();
+        }
+    }
+
+    // ─── Path хелперы ────────────────────────────────────────────────
+
+    /** @return array{0: mixed, 1: bool} */
+    private function getByPath(array $data, array $path): array {
+        $node = $data;
+        foreach ($path as $seg) {
+            if (!is_array($node) || !array_key_exists($seg, $node)) {
+                return [null, false];
+            }
+            $node = $node[$seg];
+        }
+        return [$node, true];
+    }
+
+    /** @param mixed $value */
+    private function setByPath(array &$data, array $path, $value): void {
+        $node = &$data;
+        $last = array_pop($path);
+        foreach ($path as $seg) {
+            if (!isset($node[$seg]) || !is_array($node[$seg])) {
+                $node[$seg] = [];
+            }
+            $node = &$node[$seg];
+        }
+        $node[$last] = $value;
+    }
+
+    private function unsetByPath(array &$data, array $path): void {
+        $node = &$data;
+        $last = array_pop($path);
+        foreach ($path as $seg) {
+            if (!is_array($node) || !array_key_exists($seg, $node)) return;
+            $node = &$node[$seg];
+        }
+        unset($node[$last]);
+    }
+
+    /** @return array[] */
+    private function expandWildcards(array $data, array $segments): array {
+        $current = [[]];
+        foreach ($segments as $seg) {
+            $next = [];
+            foreach ($current as $prefix) {
+                if ($seg !== '*') {
+                    $next[] = array_merge($prefix, [$seg]);
+                } else {
+                    [$node, $nodeExists] = $this->getByPath($data, $prefix);
+                    if (!$nodeExists || !is_array($node)) continue;
+                    foreach (array_keys($node) as $key) {
+                        $next[] = array_merge($prefix, [(string)$key]);
+                    }
+                }
+            }
+            $current = $next;
+        }
+        return $current;
     }
 }

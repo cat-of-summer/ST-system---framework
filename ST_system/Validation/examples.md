@@ -1,16 +1,16 @@
-# Rule & Validator — Примеры использования
+# Rule — Примеры использования
 
 ## Порядок применения правил (order)
 
 | order | Правила |
 |-------|---------|
-| -1 | `before` (из массива-спека) |
+| -1 | `trim`, `before()` |
 | 0 | `sometimes`, `excludeIf` |
 | 50 | `default` |
 | 100 | `required`, `nullable`, `requiredIf`, `prohibitedIf` |
 | 500 | `string`, `int`, `float`, `bool`, `email`, `url`, `array` |
 | 700 | `max`, `min`, `in`, `notIn`, пользовательские правила |
-| 1000 | `after` (из массива-спека), касты типов |
+| 1000 | `after()`, касты типов (`uppercase`, `lowercase`) |
 
 ---
 
@@ -42,29 +42,20 @@ $rule->apply('Long enough'); // true
 
 ---
 
-## 3. Rule::create с массивом (before / after / default)
+## 3. Fluent before / after
 
 ```php
-$rule = Rule::create([
-    'default' => 'default_value',
-    'rule'    => ['string', 'max:100'],
-    'before'  => function(&$value): bool { $value = trim($value); return true; },
-    'after'   => function(&$value): bool { $value = strtoupper($value); return true; },
-]);
+$rule = Rule::create('required|string|max:100')
+    ->before(function(&$value): bool { $value = trim($value); return true; })
+    ->after(function(&$value): bool { $value = strtoupper($value); return true; });
 
 $v = '  hello  ';
 $rule->apply($v);
 // $v === 'HELLO'
 ```
 
-Ключи массива:
-
-| Ключ | Описание |
-|------|----------|
-| `rule` | строка `'required\|string'`, массив строк или callable |
-| `default` | значение по умолчанию (если поле пустое/null) |
-| `before` | callable-модификатор, выполняется первым (order -1) |
-| `after` | callable-модификатор, выполняется последним (order 1000) |
+> `before()` — трансформ перед валидацией (order -1).
+> `after()` — трансформ после валидации (order 1000).
 
 ---
 
@@ -193,7 +184,7 @@ $rule->apply('good'); // true
 ```php
 $data = ['param_1' => 'test@example.com', 'param_2' => 'hello'];
 
-Validator::create([
+Rule::object([
     'param_1' => 'required|email',
     'param_2' => 'nullable|string|max:255',
     'param_3' => 'sometimes|bool|default:true',
@@ -204,12 +195,12 @@ Validator::create([
 // $data['param_3'] — поле отсутствует (sometimes пропустил его)
 ```
 
-> `sometimes` — пропустить поле целиком, если его нет в `$data`.  
+> `sometimes` — пропустить поле целиком, если его нет в `$data`.
 > `default:value` — подставить значение по умолчанию если поле пусто/null.
 
 ---
 
-## 13. Validator::create + validate с мутацией
+## 13. Rule::object + validate с мутацией
 
 ```php
 $data = [
@@ -218,27 +209,25 @@ $data = [
     'extra' => 'will be removed',
 ];
 
-Validator::create([
-    'name' => Rule::create([
-        'rule'   => 'required|string|max:100',
-        'before' => function(&$value): bool { $value = trim($value); return true; },
-    ]),
+Rule::object([
+    'name' => Rule::create('required|string|max:100')
+        ->before(function(&$value): bool { $value = trim($value); return true; }),
     'age' => 'required|int|min:0',
 ])->validate($data);
 
-// $data['name']  === 'John' (обрезан trim)
+// $data['name']  === 'John' (обрезан trim через before)
 // $data['age']   === 25    (int, прокастован)
 // 'extra' удалено из $data — полей без правил нет
 ```
 
 ---
 
-## 14. Validator::check (статический шорткат)
+## 14. Rule::check (статический шорткат)
 
 ```php
 $data = ['email' => 'user@test.com', 'name' => 'Alice'];
 
-Validator::check([
+Rule::check([
     'email' => 'required|email',
     'name'  => 'nullable|string|max:255',
 ], $data);
@@ -248,12 +237,12 @@ Validator::check([
 
 ## 15. silent mode (умолчание)
 
-Исключения из `onError` перехватываются и сохраняются в `$validator->errors`.
+Исключения из `onError` перехватываются и сохраняются в `$v->errors`.
 
 ```php
 $data = ['test6' => 'not_a_number'];
 
-$v = Validator::create([
+$v = Rule::object([
     'test6' => Rule::create('int|required')
         ->onError(function($value) { throw new \Exception("Error Processing Request"); }),
 ]);
@@ -272,7 +261,7 @@ $v->validate($data);
 ```php
 $data = ['val' => ''];
 
-$v = Validator::create([
+$v = Rule::object([
     'val' => Rule::create('required|string')
         ->onError(function($value) { throw new \Exception("val is required!"); }),
 ]);
@@ -292,7 +281,7 @@ try {
 ```php
 $data = ['user' => ['name' => '', 'age' => 'abc']];
 
-$v = Validator::create([
+$v = Rule::object([
     'user' => Rule::object([
         'name' => 'required|string',
         'age'  => 'required|int',
@@ -316,7 +305,7 @@ $data = [
     'tags'  => ['php', 'validation'],
 ];
 
-Validator::create([
+Rule::object([
     'items' => ['required', 'array', Rule::forEach('string|required')],
     'tags'  => ['array', 'min:1', 'max:10'],
 ])->validate($data);
@@ -329,7 +318,7 @@ Validator::create([
 ```php
 $data = ['count' => '42', 'price' => '9.99', 'active' => 'true'];
 
-Validator::create([
+Rule::object([
     'count'  => 'required|int',
     'price'  => 'required|float',
     'active' => 'required|bool',
@@ -349,7 +338,7 @@ Validator::create([
 ```php
 $data = ['first' => 'John', 'last' => 'Doe'];
 
-Validator::create([
+Rule::object([
     'first' => 'required|string',
     'last'  => 'required|string',
 ])->validate($data, function(array &$data) {
@@ -403,7 +392,7 @@ Validator::create([
 ```php
 $data = ['email' => 'invalid'];
 
-$v = Validator::create(['email' => 'required|email']);
+$v = Rule::object(['email' => 'required|email']);
 $v->validate($data);
 
 $v->passes(); // false
@@ -417,7 +406,7 @@ $v->fails();  // true
 ```php
 $data = ['a' => '', 'b' => '', 'c' => 'ok'];
 
-$v = Validator::create([
+$v = Rule::object([
     'a' => 'required|string',
     'b' => 'required|string',
     'c' => 'required|string',
@@ -429,12 +418,12 @@ $v->validate($data);
 
 ---
 
-## 23. Новые правила: regex, digits, between
+## 23. regex, digits, between
 
 ```php
 $data = ['code' => '1234', 'price' => 50, 'hex' => '#ff0000'];
 
-Validator::create([
+Rule::object([
     'code'  => 'required|digits:4',
     'price' => 'required|int|between:1,1000',
     'hex'   => ['required', Rule::regex('/^#[0-9a-f]{6}$/i')],
@@ -454,7 +443,7 @@ $data = [
     'id'      => '550e8400-e29b-41d4-a716-446655440000',
 ];
 
-Validator::create([
+Rule::object([
     'created' => 'required|date_format:Y-m-d',
     'payload' => 'required|json',
     'id'      => 'required|uuid',
@@ -468,7 +457,7 @@ Validator::create([
 ```php
 $data = ['file' => 'image.png', 'url' => 'https://example.com'];
 
-Validator::create([
+Rule::object([
     'file' => 'required|string|ends_with:.png,.jpg,.webp',
     'url'  => 'required|string|starts_with:https://,http://',
 ])->validate($data);
@@ -481,14 +470,14 @@ Validator::create([
 ```php
 $data = ['password' => 'secret', 'password_confirm' => 'secret'];
 
-Validator::create([
+Rule::object([
     'password'         => 'required|string|min:6',
     'password_confirm' => 'required|same:password',
 ])->validate($data);
 // OK — значения совпадают
 
 $data2 = ['old' => 'abc', 'new' => 'xyz'];
-Validator::create([
+Rule::object([
     'old' => 'required|string',
     'new' => 'required|string|different:old',
 ])->validate($data2);
@@ -502,7 +491,7 @@ Validator::create([
 ```php
 $data = ['name' => '  John  ', 'code' => 'abc'];
 
-Validator::create([
+Rule::object([
     'name' => 'trim|required|string|max:100',
     'code' => 'trim|required|uppercase',
 ])->validate($data);
@@ -520,7 +509,7 @@ $rule = Rule::create('required|email')
     ->onError(fn($value, $field) => "Поле {$field}: ожидался email, получено " . var_export($value, true));
 
 $data = ['email' => 'invalid'];
-$v = Validator::create(['email' => $rule]);
+$v = Rule::object(['email' => $rule]);
 $v->validate($data);
 
 // $v->errors === ['email' => ['Поле email: ожидался email, получено \'invalid\'']]
