@@ -594,13 +594,9 @@ final class Rule {
     // ─── Schema mode (заменяет Validator) ────────────────────────────
 
     /** @return self */
-    public function silent(): self  { $this->isSilent = true;   return $this; }
+    public function silent($bool = true): self  { $this->isSilent = $bool;   return $this; }
     /** @return self */
-    public function loud(): self    { $this->isSilent = false;  return $this; }
-    /** @return self */
-    public function safe(): self    { $this->isSafe = true;     return $this; }
-    /** @return self */
-    public function unsafe(): self  { $this->isSafe = false;    return $this; }
+    public function safe($bool = true): self    { $this->isSafe = $bool;     return $this; }
     /** @return self */
     public function bail(): self    { $this->bailOnFirst = true; return $this; }
 
