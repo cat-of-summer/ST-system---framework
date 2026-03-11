@@ -1,6 +1,6 @@
 <?php
 
-namespace ST_system\API\Drivers;
+namespace ST_system\API\Drivers\CRM;
 
 use \ST_system\API\IntegrationDriver;
 

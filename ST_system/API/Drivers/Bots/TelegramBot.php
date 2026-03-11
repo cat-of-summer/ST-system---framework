@@ -1,6 +1,6 @@
 <?php
 
-namespace ST_system\API\Drivers;
+namespace ST_system\API\Drivers\Bots;
 
 use \ST_system\API\IntegrationDriver;
 
