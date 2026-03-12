@@ -1,6 +1,6 @@
 <?php
 
-namespace ST_system\API\Drivers\Bots;
+namespace ST_system\API\Drivers;
 
 use \ST_system\API\IntegrationDriver;
 
@@ -57,8 +57,16 @@ final class MaxBot extends IntegrationDriver {
 
             // Теги, полностью запрещённые — удалить вместе с содержимым
             'form'   => false,
-            'table'  => false,
             'img'    => false,
+
+            // Таблицы — теги убираем, текстовое содержимое сохраняем
+            'table'  => fn($content) => trim($content) !== '' ? "$content\n" : '',
+            'tbody'  => fn($content) => $content,
+            'thead'  => fn($content) => $content,
+            'tfoot'  => fn($content) => $content,
+            'tr'     => fn($content) => trim($content) !== '' ? trim($content) . "\n" : '',
+            'td'     => fn($content) => trim($content) !== '' ? trim($content) . ' ' : '',
+            'th'     => fn($content) => trim($content) !== '' ? '<b>' . trim($content) . '</b> ' : '',
 
             // Поддерживаемые форматирующие теги Max HTML — пропускать как есть
             'b'      => true,   // жирный
