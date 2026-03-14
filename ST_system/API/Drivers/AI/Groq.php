@@ -9,7 +9,7 @@ namespace ST_system\API\Drivers\AI;
  */
 final class Groq extends OpenAICompatibleDriver {
 
-    protected const DEFAULT_ENDPOINT = 'https://api.groq.com/openai/v1';
+    protected static array $CONFIG = ['endpoint' => 'https://api.groq.com/openai/v1', '];
 
     protected function defaultModel(): string {
         return 'llama-3.3-70b-versatile';

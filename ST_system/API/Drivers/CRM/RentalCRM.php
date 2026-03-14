@@ -12,13 +12,13 @@ final class RentalCRM extends IntegrationDriver {
 
         $this->on('__construct', function(array $PARAMS = []) {
             $errors = Rule::object([
-                'subdomain' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'РЗР°РґР°РЅ РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ СЃСƒР±РґРѕРјРµРЅ')->skip(true),
+                'subdomain' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => '��адан некорректный с�?бдомен')->skip(true),
                 'api_key'   => 'nullable|string',
             ])->apply($PARAMS);
             if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
             $PARAMS['endpoint'] = "https://{$PARAMS['subdomain']}.retailcrm.ru/api/v5";
             if (!filter_var($PARAMS['endpoint'], FILTER_VALIDATE_URL))
-                throw new \Exception("РЗР°РґР°РЅР° РЅРµРєРѕСЂСЂРµРєС‚РЅР°С С‚РѕСȇРєР° API");
+                throw new \Exception("��адана некорректна�? то�?ка API");
             unset($PARAMS['subdomain']);
             $this->SETTINGS = $PARAMS;
         });
@@ -31,7 +31,7 @@ final class RentalCRM extends IntegrationDriver {
             $params['apiKey'] = $this->SETTINGS['api_key'];
         });
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'orders' => [
                 'method' => 'GET',
                 'params' => [
@@ -39,26 +39,26 @@ final class RentalCRM extends IntegrationDriver {
                         if ($v === null) return true;
                         if (!is_array($v)) return false;
                         $errors = Rule::object([
-                            'ids' => Rule::create(fn(&$v) => $v === null || (is_array($v) && count($v) === count(array_filter($v, 'is_int'))))->handleError(fn($v) => 'ids РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РјР°СЃСЃРёРІРѕРј С†РµР»С‹С СȇРёСЃРµР»'),
+                            'ids' => Rule::create(fn(&$v) => $v === null || (is_array($v) && count($v) === count(array_filter($v, 'is_int'))))->handleError(fn($v) => 'ids должен быть массивом целы�? �?исел'),
                         ])->apply($v);
                         if (!empty($errors)) throw new \Exception($errors[0]);
                         return true;
-                    })->handleError(fn($v) => 'filter РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РјР°СЃСЃРёРІРѕРј'),
+                    })->handleError(fn($v) => 'filter должен быть массивом'),
                 ],
             ],
             'orders/create' => [
                 'method' => 'POST',
                 'params' => [
-                    'site'  => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ site')->skip(true),
+                    'site'  => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'Некорректный site')->skip(true),
                     'order' => Rule::create(function(&$v) {
                         if (!is_array($v)) return false;
                         $errors = Rule::object([
-                            'customer'        => Rule::create(fn(&$v) => $v === null || (is_array($v) && !empty(array_intersect(['externalId','id','browserId'], array_keys($v)))))->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ customer'),
+                            'customer'        => Rule::create(fn(&$v) => $v === null || (is_array($v) && !empty(array_intersect(['externalId','id','browserId'], array_keys($v)))))->handleError(fn($v) => 'Некорректный customer'),
                             'customerComment' => 'nullable|string',
                         ])->apply($v);
                         if (!empty($errors)) throw new \Exception($errors[0]);
                         return true;
-                    })->handleError(fn($v) => 'РќРµ РїРµСЂРµРґР°РЅ order')->skip(true),
+                    })->handleError(fn($v) => 'Не передан order')->skip(true),
                 ],
                 'on_prepare' => function(&$params) {
                     $params['order'] = json_encode($params['order']);
@@ -73,37 +73,37 @@ final class RentalCRM extends IntegrationDriver {
                         $errors = Rule::object(['name' => 'nullable|string'])->apply($v);
                         if (!empty($errors)) throw new \Exception($errors[0]);
                         return true;
-                    })->handleError(fn($v) => 'filter РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РјР°СЃСЃРёРІРѕРј'),
+                    })->handleError(fn($v) => 'filter должен быть массивом'),
                 ],
             ],
             'customers/create' => [
                 'method' => 'POST',
                 'params' => [
-                    'site'     => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ site')->skip(true),
+                    'site'     => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'Некорректный site')->skip(true),
                     'customer' => Rule::create(function(&$v) {
                         if (!is_array($v)) return false;
                         $errors = Rule::object([
                             'firstName'  => 'nullable|string',
                             'lastName'   => 'nullable|string',
                             'patronymic' => 'nullable|string',
-                            'email'      => Rule::create(fn(&$v) => $v === null || filter_var($v, FILTER_VALIDATE_EMAIL) !== false)->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ email'),
+                            'email'      => Rule::create(fn(&$v) => $v === null || filter_var($v, FILTER_VALIDATE_EMAIL) !== false)->handleError(fn($v) => 'Некорректный email'),
                             'phones'     => Rule::create(function(&$v) {
                                 if ($v === null) return true;
                                 if (!is_array($v)) return false;
                                 foreach ($v as &$phone) {
                                     $errors = Rule::object([
-                                        'number' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'РќРµ РїРµСЂРµРґР°РЅ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°')->skip(true),
+                                        'number' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'Не передан номер телефона')->skip(true),
                                     ])->apply($phone);
                                     if (!empty($errors)) throw new \Exception($errors[0]);
                                 }
                                 unset($phone);
                                 return true;
-                            })->handleError(fn($v) => 'phones РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РјР°СЃСЃРёРІРѕРј'),
-                            'tags'       => Rule::create(fn(&$v) => $v === null || (is_array($v) && count($v) === count(array_filter($v, 'is_string'))))->handleError(fn($v) => 'tags РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РјР°СЃСЃРёРІРѕРј СЃС‚СЂРѕРє'),
+                            })->handleError(fn($v) => 'phones должен быть массивом'),
+                            'tags'       => Rule::create(fn(&$v) => $v === null || (is_array($v) && count($v) === count(array_filter($v, 'is_string'))))->handleError(fn($v) => 'tags должен быть массивом строк'),
                         ])->apply($v);
                         if (!empty($errors)) throw new \Exception($errors[0]);
                         return true;
-                    })->handleError(fn($v) => 'РќРµ РїРµСЂРµРґР°РЅ customer')->skip(true),
+                    })->handleError(fn($v) => 'Не передан customer')->skip(true),
                 ],
                 'on_prepare' => function(&$params) {
                     $params['customer'] = json_encode($params['customer']);
@@ -113,7 +113,7 @@ final class RentalCRM extends IntegrationDriver {
                 'method' => 'POST',
                 'params' => [
                     'file' => Rule::create(fn(&$v) => is_string($v) && file_exists($v) && is_readable($v))
-                        ->handleError(fn($v) => 'РќРµ РїРµСЂРµРґР°РЅ file РёР»Рё С„Р°Р№Р» РЅРµРґРѕСЃС‚СѓРїРµРЅ')
+                        ->handleError(fn($v) => 'Не передан file или файл недоступен')
                         ->after(fn(&$v) => $v = new \CURLFile($v))
                         ->skip(true),
                 ],
@@ -124,19 +124,19 @@ final class RentalCRM extends IntegrationDriver {
             'tasks/create' => [
                 'method' => 'POST',
                 'params' => [
-                    'site' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ site')->skip(true),
+                    'site' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'Некорректный site')->skip(true),
                     'task' => Rule::create(function(&$v) {
                         if (!is_array($v)) return false;
                         $errors = Rule::object([
-                            'customer'    => Rule::create(fn(&$v) => $v === null || (is_array($v) && !empty(array_intersect(['externalId','id'], array_keys($v)))))->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ customer'),
-                            'order'       => Rule::create(fn(&$v) => $v === null || (is_array($v) && !empty(array_intersect(['externalId','id','number'], array_keys($v)))))->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ order'),
-                            'performerId' => Rule::create(fn(&$v) => is_int($v))->handleError(fn($v) => 'РќРµ РїРµСЂРµРґР°РЅ performerId')->skip(true),
+                            'customer'    => Rule::create(fn(&$v) => $v === null || (is_array($v) && !empty(array_intersect(['externalId','id'], array_keys($v)))))->handleError(fn($v) => 'Некорректный customer'),
+                            'order'       => Rule::create(fn(&$v) => $v === null || (is_array($v) && !empty(array_intersect(['externalId','id','number'], array_keys($v)))))->handleError(fn($v) => 'Некорректный order'),
+                            'performerId' => Rule::create(fn(&$v) => is_int($v))->handleError(fn($v) => 'Не передан performerId')->skip(true),
                             'text'        => 'nullable|string',
                             'commentary'  => 'nullable|string',
                         ])->apply($v);
                         if (!empty($errors)) throw new \Exception($errors[0]);
                         return true;
-                    })->handleError(fn($v) => 'РќРµ РїРµСЂРµРґР°РЅ task')->skip(true),
+                    })->handleError(fn($v) => 'Не передан task')->skip(true),
                 ],
                 'on_prepare' => function(&$params) {
                     $params['task'] = json_encode($params['task']);

@@ -7,7 +7,7 @@ use \ST_system\Rule;
 
 final class Isdayoff extends IntegrationDriver {
 
-    protected const DEFAULT_ENDPOINT = 'https://isdayoff.ru/api/';
+    protected static array $CONFIG = ['endpoint' => 'https://isdayoff.ru/api/'];
 
     private array $SETTINGS = [];
 
@@ -21,10 +21,10 @@ final class Isdayoff extends IntegrationDriver {
                 try {
                     $date = new \DateTime($v);
                 } catch (\Throwable $th) {
-                    throw new \Exception("РќРµРєРѕСЂСЂРµРєС‚РЅР°СЏ РґР°С‚Р° $v");
+                    throw new \Exception("������������ ���� $v");
                 }
                 if (!$date || !empty(\DateTime::getLastErrors()['error_count']))
-                    throw new \Exception("РќРµРєРѕСЂСЂРµРєС‚РЅР°СЏ РґР°С‚Р° $v");
+                    throw new \Exception("������������ ���� $v");
                 $v = $date->format('Ymd');
             });
 
@@ -34,7 +34,7 @@ final class Isdayoff extends IntegrationDriver {
                 'covid'     => 'nullable|bool',
                 'sd'        => 'nullable|bool',
                 'delimeter' => Rule::create(fn(&$v) => $v === null || (is_string($v) && $v !== '' && strlen($v) <= 7))
-                    ->handleError(fn($v) => 'delimeter РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ СЃС‚СЂРѕРєРѕР№ РґР»РёРЅРѕР№ РґРѕ 7 СЃРёРјРІРѕР»РѕРІ'),
+                    ->handleError(fn($v) => 'delimeter ������ ���� ������� ������ �� 7 ��������'),
             ])->apply($PARAMS);
             if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
             $PARAMS['pre']       = (bool)($PARAMS['pre']       ?? false);
@@ -43,7 +43,7 @@ final class Isdayoff extends IntegrationDriver {
             $this->SETTINGS = $PARAMS;
         });
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'getdata' => [
                 'params' => [
                     'year'      => Rule::create(fn(&$v) => $v === null || is_int($v))->after(fn(&$v) => $v = $v !== null ? sprintf('%04d', $v) : null),
@@ -55,7 +55,7 @@ final class Isdayoff extends IntegrationDriver {
                     'covid'     => 'nullable|bool',
                     'sd'        => 'nullable|bool',
                     'delimeter' => Rule::create(fn(&$v) => $v === null || (is_string($v) && $v !== '' && strlen($v) <= 7))
-                        ->handleError(fn($v) => 'delimeter РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ СЃС‚СЂРѕРєРѕР№ РґР»РёРЅРѕР№ РґРѕ 7 СЃРёРјРІРѕР»РѕРІ'),
+                        ->handleError(fn($v) => 'delimeter ������ ���� ������� ������ �� 7 ��������'),
                 ],
                 'on_prepare' => function(&$params) {
                     $params['pre']       ??= $this->SETTINGS['pre'];

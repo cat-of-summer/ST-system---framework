@@ -7,14 +7,13 @@ use \ST_system\Rule;
 
 final class Sdek extends IntegrationDriver {
 
-    protected const DEFAULT_ENDPOINT  = 'https://api.cdek.ru/v2/';
-    protected const CACHE_DIRECTORY   = '~/bitrix/cache/';
+    protected static array $CONFIG = ['endpoint' => 'https://api.cdek.ru/v2/', 'cache' => ['dir' => '~/cache/', 'ttl' => 3600]];
 
     private array $SETTINGS = [];
 
     protected function __init(): void {
 
-        // в”Ђв”Ђ Local Rule helpers в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+        // -- Local Rule helpers ----------------------------------------
 
         $r_location = Rule::create(function(&$v) {
             if (!is_array($v)) return false;
@@ -30,7 +29,7 @@ final class Sdek extends IntegrationDriver {
             ])->apply($v);
             if (!empty($errors)) throw new \Exception($errors[0]);
             return true;
-        })->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ CalculatorLocationDto')->skip(true);
+        })->handleError(fn($v) => '������������ CalculatorLocationDto')->skip(true);
 
         $r_packages = Rule::create(function(&$v) {
             if (!is_array($v)) return false;
@@ -45,9 +44,9 @@ final class Sdek extends IntegrationDriver {
             }
             unset($item);
             return true;
-        })->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ array_of_CalcPackageRequestDto')->skip(true);
+        })->handleError(fn($v) => '������������ array_of_CalcPackageRequestDto')->skip(true);
 
-        // в”Ђв”Ђ Common param groups в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+        // -- Common param groups ---------------------------------------
 
         $default_params = [
             'lang'         => 'nullable|string',
@@ -66,7 +65,7 @@ final class Sdek extends IntegrationDriver {
                 $params['size'] = 1000;
         };
 
-        // в”Ђв”Ђ Constructor / events в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+        // -- Constructor / events --------------------------------------
 
         $this->on('__construct', function(array $PARAMS) {
             $this->SETTINGS = array_intersect_key(
@@ -90,9 +89,9 @@ final class Sdek extends IntegrationDriver {
                 $meta['ttl'] = (int)$cache_ttl;
         });
 
-        // в”Ђв”Ђ Methods в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+        // -- Methods ---------------------------------------------------
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'oauth/token' => [
                 'method'    => 'POST',
                 'params'    => [

@@ -17,6 +17,11 @@ use \ST_system\Rule;
  */
 abstract class OpenAICompatibleDriver extends IntegrationDriver {
 
+    protected static array $CONFIG = [
+        'endpoint'  => '',
+        ',
+    ];
+
     private array $SETTINGS = [];
 
     abstract protected function defaultModel(): string;
@@ -25,6 +30,35 @@ abstract class OpenAICompatibleDriver extends IntegrationDriver {
     protected bool $supportsStreaming = true;
 
     protected function __init(): void {
+        // Register rule aliases (guarded, once per process)
+        if (!Rule::get('float_range'))
+            Rule::create(function(&$v, array $p): bool {
+                if ($v === null) return true;
+                $min = isset($p[0]) ? (float)$p[0] : PHP_INT_MIN;
+                $max = isset($p[1]) ? (float)$p[1] : PHP_INT_MAX;
+                return is_numeric($v) && (float)$v >= $min && (float)$v <= $max;
+            })
+            ->after(fn(&$v) => $v = $v === null ? null : (float)$v)
+            ->handleError(fn($v) => 'Value out of range')
+            ->alias('float_range');
+
+        if (!Rule::get('message'))
+            Rule::create(function(&$v): bool {
+                if (!is_array($v) || !isset($v['role']) || !array_key_exists('content', $v))
+                    throw new \Exception('Each message must be an array with keys role and content');
+                if (!in_array($v['role'], ['system', 'user', 'assistant', 'tool'], true))
+                    throw new \Exception('Message role must be one of: system, user, assistant, tool');
+                return true;
+            })
+            ->handleError(fn($v) => 'Invalid message object')
+            ->alias('message');
+
+        if (!Rule::get('array_of_messages'))
+            Rule::forEach(Rule::get('message'))
+                ->order(800)
+                ->handleError(fn($v) => 'The messages parameter is invalid or empty')
+                ->alias('array_of_messages');
+
         $this->on('__construct', function (array $PARAMS = []) {
             $errors = Rule::object(['api_key' => 'required|string'])->apply($PARAMS);
             if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
@@ -53,7 +87,7 @@ abstract class OpenAICompatibleDriver extends IntegrationDriver {
             return true;
         });
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'chat/completions' => [
                 'method'       => 'POST',
                 'content_type' => 'application/json',

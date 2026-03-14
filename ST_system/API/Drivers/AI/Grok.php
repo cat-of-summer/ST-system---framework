@@ -9,7 +9,7 @@ namespace ST_system\API\Drivers\AI;
  */
 final class Grok extends OpenAICompatibleDriver {
 
-    protected const DEFAULT_ENDPOINT = 'https://api.x.ai/v1';
+    protected static array $CONFIG = ['endpoint' => 'https://api.x.ai/v1', '];
 
     protected function defaultModel(): string {
         return 'grok-2';

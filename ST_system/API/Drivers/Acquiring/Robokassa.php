@@ -21,7 +21,7 @@ use \ST_system\Rule;
  */
 final class Robokassa extends IntegrationDriver
 {
-    protected const DEFAULT_ENDPOINT = 'https://auth.robokassa.ru/';
+    protected static array $CONFIG = ['endpoint' => 'https://auth.robokassa.ru/', '];
 
     private array $SETTINGS = [];
 
@@ -370,7 +370,7 @@ final class Robokassa extends IntegrationDriver
         // Register API methods
         // ------------------------------------------------------------------
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'Merchant/Recurring' => [
                 'params' => [
                     'InvoiceID'         => 'required|string',

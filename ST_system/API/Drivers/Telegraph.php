@@ -18,8 +18,13 @@ use \ST_system\Rule;
  */
 final class Telegraph extends IntegrationDriver {
 
-    protected const DEFAULT_ENDPOINT = 'https://api.telegra.ph';
-    protected const CACHE_DIRECTORY  = '~/cache/telegraph/';
+    protected static array $CONFIG = [
+        'endpoint'  => 'https://api.telegra.ph',
+        'cache' => [
+            'dir' => '~/cache/telegraph/',
+            'ttl' => -1,
+        ],
+    ];
 
     private string $access_token = '';
     private string $author_name  = '';
@@ -93,13 +98,7 @@ final class Telegraph extends IntegrationDriver {
             $PARAMS['author_url'] ??= $this->base_url;
             $PARAMS['author_name'] ??= '';
 
-            $cache_key = [
-                'telegraph_token',
-                md5(($PARAMS['short_name'] ?? '').'|'.($PARAMS['author_name'] ?? '').'|'.($PARAMS['author_url'] ?? '')),
-            ];
-            $this->initCache($cache_key, ['ttl' => -1]);
-
-            if ($this->cacheInstance()?->isValid()) {
+            if ($this->cache()?->isValid()) {
                 $this->access_token = (string)$this->cacheGet();
             } else {
                 $data = $this->call('createAccount', [
@@ -121,7 +120,7 @@ final class Telegraph extends IntegrationDriver {
         $content_rule = Rule::create(fn(&$v) => is_string($v) || is_array($v) || $v instanceof \DOMDocument)
             ->handleError(fn($v) => 'Content must be an HTML string, array of nodes, or DOMDocument');
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'createAccount' => [
                 'params' => [
                     'short_name'  => 'required|string',

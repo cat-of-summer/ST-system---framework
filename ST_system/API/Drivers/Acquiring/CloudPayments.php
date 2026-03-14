@@ -7,7 +7,7 @@ use \ST_system\Rule;
 
 final class CloudPayments extends IntegrationDriver {
 
-    protected const DEFAULT_ENDPOINT = 'https://api.cloudpayments.ru/';
+    protected static array $CONFIG = ['endpoint' => 'https://api.cloudpayments.ru/', '];
 
     private array $SETTINGS = [];
 
@@ -38,7 +38,7 @@ final class CloudPayments extends IntegrationDriver {
                 $raw_data['error'] = $raw_data['response'];
         });
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'test' => [],
             'payments/find' => [
                 'params' => [
@@ -48,7 +48,7 @@ final class CloudPayments extends IntegrationDriver {
             'orders/create' => [
                 'params' => [
                     'Amount'             => Rule::create(fn(&$v) => is_numeric($v) && $v > 0)
-                        ->handleError(fn($v) => 'Amount РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С‡РёСЃР»РѕРј')
+                        ->handleError(fn($v) => 'Amount ������ ���� ������������� ������')
                         ->after(fn(&$v) => $v = number_format((float)$v, 2, '.', ''))
                         ->skip(true),
                     'Currency'           => 'default:RUB|in:RUB,EUR,USD',
@@ -67,17 +67,17 @@ final class CloudPayments extends IntegrationDriver {
                 'content_type' => 'application/json',
                 'params' => [
                     'Type'       => Rule::create(fn(&$v) => in_array($v, ['Pay','Fail','Confirm','Refund','Recurrent','Cancel'], true))
-                        ->handleError(fn($v) => "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ С‚РёРї СѓРІРµРґРѕРјР»РµРЅРёСЏ")->skip(true),
+                        ->handleError(fn($v) => "������������ ��� �����������")->skip(true),
                     'Address'    => 'nullable|url',
                     'IsEnabled'  => 'nullable|bool',
                     'HttpMethod' => 'default:GET|in:GET,POST',
                     'Encoding'   => 'default:UTF8|in:UTF8,Windows1251',
                     'Format'     => Rule::create(fn(&$v) => $v === null || in_array($v, ['CloudPayments','QIWI','RT'], true))
-                        ->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ Format'),
+                        ->handleError(fn($v) => '������������ Format'),
                 ],
                 'on_prepare' => function($params) {
                     if ($params['IsEnabled'] == true && empty($params['Address']))
-                        throw new \Exception("РќРµ РїРµСЂРµРґР°РЅ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№ РїР°СЂР°РјРµС‚СЂ Address!");
+                        throw new \Exception("�� ������� ������������ �������� Address!");
                 },
             ],
         ]);

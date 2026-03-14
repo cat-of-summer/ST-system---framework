@@ -7,7 +7,7 @@ use \ST_system\Rule;
 
 final class SmsRu extends IntegrationDriver {
 
-    protected const DEFAULT_ENDPOINT = 'https://sms.ru/sms/';
+    protected static array $CONFIG = ['endpoint' => 'https://sms.ru/sms/', '];
 
     private string $api_id;
 
@@ -23,7 +23,7 @@ final class SmsRu extends IntegrationDriver {
             $params['api_id'] = $this->api_id;
         });
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'send' => [
                 'params' => [
                     'to'   => Rule::create(fn(&$v) => is_array($v) && count($v) > 0)

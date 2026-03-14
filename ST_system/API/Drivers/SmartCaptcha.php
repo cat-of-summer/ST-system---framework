@@ -6,7 +6,7 @@ use \ST_system\API\IntegrationDriver;
 
 final class SmartCaptcha extends IntegrationDriver {
 
-    protected const DEFAULT_ENDPOINT = 'https://smartcaptcha.yandexcloud.net/';
+    protected static array $CONFIG = ['endpoint' => 'https://smartcaptcha.yandexcloud.net/', '];
 
     private string $secret;
 
@@ -22,7 +22,7 @@ final class SmartCaptcha extends IntegrationDriver {
             $params['secret'] = $this->secret;
         });
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'validate' => [
                 'method' => 'POST',
                 'params' => [

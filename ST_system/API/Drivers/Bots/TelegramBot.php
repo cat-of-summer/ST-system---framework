@@ -55,7 +55,7 @@ final class TelegramBot extends IntegrationDriver {
 
     }
 
-    protected const DEFAULT_ENDPOINT = 'https://api.telegram.org/bot';
+    protected static array $CONFIG = ['endpoint' => 'https://api.telegram.org/bot', '];
 
     private string $token;
 
@@ -133,7 +133,7 @@ final class TelegramBot extends IntegrationDriver {
             'caption'    => 'nullable|string',
         ];
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'sendMessage' => [
                 'params' => [
                     'chat_id'      => 'required|int',

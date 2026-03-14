@@ -10,7 +10,7 @@ namespace ST_system\API\Drivers\AI;
  */
 final class DeepSeek extends OpenAICompatibleDriver {
 
-    protected const DEFAULT_ENDPOINT = 'https://api.deepseek.com/v1';
+    protected static array $CONFIG = ['endpoint' => 'https://api.deepseek.com/v1', '];
 
     protected function defaultModel(): string {
         return 'deepseek-chat';

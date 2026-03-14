@@ -7,7 +7,7 @@ use \ST_system\Rule;
 
 final class TBank extends IntegrationDriver {
 
-    protected const DEFAULT_ENDPOINT = 'https://securepay.tinkoff.ru/v2/';
+    protected static array $CONFIG = ['endpoint' => 'https://securepay.tinkoff.ru/v2/', '];
 
     private array $SETTINGS = [];
 
@@ -70,11 +70,11 @@ final class TBank extends IntegrationDriver {
                 $raw_data['error'] = $decoded['Message'] ?? $decoded['Details'] ?? json_encode($decoded);
         });
 
-        $this->register_methods_map([
+        $this->registerMethodsMap([
             'Init' => [
                 'params' => [
                     'Amount'          => Rule::create(fn(&$v) => is_numeric($v) && $v > 0)
-                        ->handleError(fn($v) => 'Amount РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С‡РёСЃР»РѕРј (РІ РєРѕРїРµР№РєР°С…)')
+                        ->handleError(fn($v) => 'Amount ������ ���� ������������� ������ (� ��������)')
                         ->after(fn(&$v) => $v = (int)$v)
                         ->skip(true),
                     'OrderId'         => 'required|string',
