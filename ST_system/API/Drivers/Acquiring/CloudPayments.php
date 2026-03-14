@@ -1,21 +1,25 @@
-<?php
+﻿<?php
 
 namespace ST_system\API\Drivers;
 
 use \ST_system\API\IntegrationDriver;
+use \ST_system\Rule;
 
 final class CloudPayments extends IntegrationDriver {
 
-    protected const DEFAULT_POINT = 'https://api.cloudpayments.ru/';
-    
-    private $SETTINGS = [];
-    
-    protected function __init() {
+    protected const DEFAULT_ENDPOINT = 'https://api.cloudpayments.ru/';
+
+    private array $SETTINGS = [];
+
+    protected function __init(): void {
+
         $this->on('__construct', function(array $PARAMS) {
-            $this->SETTINGS = static::prepare_params([
-                'public_id' => '*string',
-                'api_secret' => '*string'
-            ], $PARAMS);
+            $errors = Rule::object([
+                'public_id'  => 'required|string',
+                'api_secret' => 'required|string',
+            ])->apply($PARAMS);
+            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            $this->SETTINGS = $PARAMS;
         });
 
         $this->on('before_curl_init', function($r, $m, $p, &$config) {
@@ -25,12 +29,12 @@ final class CloudPayments extends IntegrationDriver {
         $this->on('curl_init', function($curl) {
             curl_setopt_array($curl, [
                 CURLOPT_HTTPAUTH => CURLAUTH_BASIC,
-                CURLOPT_USERPWD => "{$this->SETTINGS['public_id']}:{$this->SETTINGS['api_secret']}",
+                CURLOPT_USERPWD  => "{$this->SETTINGS['public_id']}:{$this->SETTINGS['api_secret']}",
             ]);
         });
 
         $this->on('prepare_response', function($method, $params, &$raw_data) {
-            if ($raw_data['http_code'] < 200 || $raw_data['http_code'] > 299) 
+            if ($raw_data['http_code'] < 200 || $raw_data['http_code'] > 299)
                 $raw_data['error'] = $raw_data['response'];
         });
 
@@ -38,41 +42,46 @@ final class CloudPayments extends IntegrationDriver {
             'test' => [],
             'payments/find' => [
                 'params' => [
-                    'InvoiceId' => '*string'
-                ]
+                    'InvoiceId' => 'required|string',
+                ],
             ],
             'orders/create' => [
                 'params' => [
-                    'Amount' => $this->extend_rule('*float', ['after' => fn($v) => number_format($v, 2, '.', '')]),
-                    'Currency' => ['RUB', fn($v) => in_array($v, ['RUB', 'EUR', 'USD'])],
-                    'Description' => '*string',
-                    'InvoiceId' => 'string',
-                    'AccountId' => 'string',
-                    'SuccessRedirectUrl' => 'url'
+                    'Amount'             => Rule::create(fn(&$v) => is_numeric($v) && $v > 0)
+                        ->handleError(fn($v) => 'Amount РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С‡РёСЃР»РѕРј')
+                        ->after(fn(&$v) => $v = number_format((float)$v, 2, '.', ''))
+                        ->skip(true),
+                    'Currency'           => 'default:RUB|in:RUB,EUR,USD',
+                    'Description'        => 'required|string',
+                    'InvoiceId'          => 'nullable|string',
+                    'AccountId'          => 'nullable|string',
+                    'SuccessRedirectUrl' => 'nullable|url',
                 ],
             ],
             'orders/cancel' => [
                 'params' => [
-                    'Id' => '*string'
-                ]
+                    'Id' => 'required|string',
+                ],
             ],
             'site/notifications/{Type}/update' => [
                 'content_type' => 'application/json',
                 'params' => [
-                    'Type' => [new \Exception("Не передан обязательный параметр 'Type'"), fn($v) => in_array($v, ['Pay', 'Fail', 'Confirm', 'Refund', 'Recurrent', 'Cancel'])],
-                    'Address' => 'url',
-                    'IsEnabled' => 'bool',
-                    'HttpMethod' => ['GET', fn($v) => in_array($v, ['GET', 'POST'])],
-                    'Encoding' => ['UTF8', fn($v) => in_array($v, ['UTF8', 'Windows1251'])],
-                    'Format' => ['CloudPayments', fn($v) => in_array($v, ['CloudPayments', 'QIWI', 'RT'])],
+                    'Type'       => Rule::create(fn(&$v) => in_array($v, ['Pay','Fail','Confirm','Refund','Recurrent','Cancel'], true))
+                        ->handleError(fn($v) => "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ С‚РёРї СѓРІРµРґРѕРјР»РµРЅРёСЏ")->skip(true),
+                    'Address'    => 'nullable|url',
+                    'IsEnabled'  => 'nullable|bool',
+                    'HttpMethod' => 'default:GET|in:GET,POST',
+                    'Encoding'   => 'default:UTF8|in:UTF8,Windows1251',
+                    'Format'     => Rule::create(fn(&$v) => $v === null || in_array($v, ['CloudPayments','QIWI','RT'], true))
+                        ->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ Format'),
                 ],
                 'on_prepare' => function($params) {
                     if ($params['IsEnabled'] == true && empty($params['Address']))
-                        throw new \Exception("Не передан обязательный параметр Address!");
-                }
+                        throw new \Exception("РќРµ РїРµСЂРµРґР°РЅ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Р№ РїР°СЂР°РјРµС‚СЂ Address!");
+                },
             ],
         ]);
-        
+
     }
 
 }

@@ -3,6 +3,7 @@
 namespace ST_system\API\Drivers\Bots;
 
 use \ST_system\API\IntegrationDriver;
+use \ST_system\Rule;
 
 final class TelegramBot extends IntegrationDriver {
 
@@ -16,7 +17,13 @@ final class TelegramBot extends IntegrationDriver {
             'br' => "\n",
             'div' => $line_break,
             'form' => false,
-            'table' => false,
+            'table'  => fn($content) => trim($content) !== '' ? "$content\n" : '',
+            'tbody'  => fn($content) => $content,
+            'thead'  => fn($content) => $content,
+            'tfoot'  => fn($content) => $content,
+            'tr'     => fn($content) => trim($content) !== '' ? trim($content)."\n" : '',
+            'td'     => fn($content) => trim($content) !== '' ? trim($content).' ' : '',
+            'th'     => fn($content) => trim($content) !== '' ? '<b>'.trim($content).'</b> ' : '',
             'img' => false,
             'b' => true,
             'strong' => true,
@@ -48,49 +55,63 @@ final class TelegramBot extends IntegrationDriver {
 
     }
 
-    protected const DEFAULT_POINT = 'https://api.telegram.org/bot';
+    protected const DEFAULT_ENDPOINT = 'https://api.telegram.org/bot';
 
     private string $token;
 
-    protected function __init() {
+    // ── Helper: process reply_markup array → JSON string ─────────────
+    private static function process_inline_keyboard(array $rows): array {
+        return array_map(fn($row) => array_map(function ($btn) {
+            $errors = Rule::object(['text' => 'required|string', 'url' => 'nullable|url', 'callback_data' => 'nullable|string'])->apply($btn);
+            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            if (!empty($btn['url'])) unset($btn['callback_data']);
+            return $btn;
+        }, $row), $rows);
+    }
 
-        static::register_rules_map([
-            'parse_mode' => [null, fn($v) => in_array($v, [null, 'HTML', 'Markdown', 'MarkdownV2'])],
-            'html' => array_merge(static::rule('string'), ['after' => fn($v, $k, $p) => ($p['parse_mode'] ?? '') == 'HTML' ? self::normalize_html($v) : $v]),
-            '*html' => array_merge(static::rule('*string'), ['after' => fn($v, $k, $p) => ($p['parse_mode'] ?? '') == 'HTML' ? self::normalize_html($v) : $v]),
-            'inline_keyboard' => [null, fn($v) => is_array($v), 'after' => fn($v) => array_map(fn($i) => array_map(fn($j) => static::prepare_params([
-                'text' => '*string',
-                'url' => 'url',
-                'callback_data' => 'string'
-            ], $j, function(&$params) {
-                if (!empty($params['url']))
-                    unset($params['callback_data']);
-            }), $i), $v)],
-            'keyboard' => [null, fn($v) => is_array($v), 'after' => fn($v) => array_map(fn($i) => array_map(fn($j) => static::prepare_params([
-                'text' => '*string',
-            ], $j), $i ?? []), $v ?? [])],
-            'reply_markup' => [null, fn($v) => is_array($v), 'after' => fn($v) => json_encode(static::prepare_params([
-                'inline_keyboard' => 'inline_keyboard',
-                'keyboard' => 'keyboard',
-                'resize_keyboard' => 'bool',
-                'one_time_keyboard' => 'bool',
-                'is_persistent' => 'bool'
-            ], $v, function(&$params) {
-                if (!empty($params['inline_keyboard'])) {
-                    unset($params['keyboard']);
-                    unset($params['resize_keyboard']);
-                    unset($params['one_time_keyboard']);
-                    unset($params['is_persistent']);
-                }
-            }))]
-        ]);
+    private static function process_keyboard(array $rows): array {
+        return array_map(fn($row) => array_map(function ($btn) {
+            $errors = Rule::object(['text' => 'required|string'])->apply($btn);
+            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            return $btn;
+        }, $row ?: []), $rows ?: []);
+    }
+
+    private static function process_reply_markup(array $v): string {
+        $schema = [
+            'inline_keyboard'   => Rule::create(fn(&$v) => is_array($v))->after(fn(&$v) => $v = self::process_inline_keyboard($v)),
+            'keyboard'          => Rule::create(fn(&$v) => is_array($v))->after(fn(&$v) => $v = self::process_keyboard($v)),
+            'resize_keyboard'   => 'nullable|bool',
+            'one_time_keyboard' => 'nullable|bool',
+            'is_persistent'     => 'nullable|bool',
+        ];
+        $errors = Rule::object($schema)->apply($v);
+        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+        if (!empty($v['inline_keyboard']))
+            unset($v['keyboard'], $v['resize_keyboard'], $v['one_time_keyboard'], $v['is_persistent']);
+        return json_encode($v);
+    }
+
+    protected function __init(): void {
+
+        // — Rule aliases (guarded) ————————————————————————————————
+        if (!Rule::get('tg_parse_mode'))
+            Rule::create(fn(&$v) => $v === null || in_array($v, ['HTML', 'Markdown', 'MarkdownV2'], true))
+                ->handleError(fn($v) => 'Invalid parse_mode')
+                ->alias('tg_parse_mode');
+
+        if (!Rule::get('tg_reply_markup'))
+            Rule::create(fn(&$v) => $v === null || is_array($v))
+                ->handleError(fn($v) => 'reply_markup must be an array')
+                ->after(fn(&$v) => $v = is_array($v) ? self::process_reply_markup($v) : $v)
+                ->alias('tg_reply_markup');
 
         $this->on('__construct', function(string $token) {
             $this->token = $token;
         });
 
-        $this->on('build_url', function (&$request_url, $point) {
-            $request_url = str_replace($point, "{$point}{$this->token}", $request_url);
+        $this->on('build_url', function (&$request_url, $endpoint) {
+            $request_url = str_replace($endpoint, "{$endpoint}{$this->token}", $request_url);
         });
 
         $this->on('before_call', function($method) {
@@ -98,73 +119,82 @@ final class TelegramBot extends IntegrationDriver {
                 throw new \Exception("Для доступа методу '{$method}' необходим авторизационный токен!");
         });
 
+        $html_on_prepare = function(&$params, string $field = 'text') {
+            if (($params['parse_mode'] ?? '') === 'HTML' && isset($params[$field]))
+                $params[$field] = self::normalize_html($params[$field]);
+        };
+
+        $media_schema = [
+            'type' => Rule::create(fn(&$v) => in_array($v, ['audio', 'document', 'photo', 'video'], true))
+                ->handleError(fn($v) => 'Не передан тип медиа-контента или он некорректен!'),
+            'parse_mode' => 'nullable|tg_parse_mode',
+            'media'      => 'required|url',
+            'thumbnail'  => 'nullable|url',
+            'caption'    => 'nullable|string',
+        ];
+
         $this->register_methods_map([
             'sendMessage' => [
                 'params' => [
-                    'parse_mode' => 'parse_mode',
-                    'chat_id' => '*int',
-                    'text' => '*html',
-                    'reply_markup' => 'reply_markup'
-                ]
+                    'chat_id'      => 'required|int',
+                    'text'         => 'required|string',
+                    'parse_mode'   => 'nullable|tg_parse_mode',
+                    'reply_markup' => 'nullable|tg_reply_markup',
+                ],
+                'on_prepare' => fn(&$p) => $html_on_prepare($p, 'text'),
             ],
             'sendPhoto' => [
                 'params' => [
-                    'parse_mode' => 'parse_mode',
-                    'chat_id' => '*int',
-                    'photo' => '*url',
-                    'caption' => 'html',
-                    'reply_markup' => 'reply_markup'
-                ]
+                    'chat_id'      => 'required|int',
+                    'photo'        => 'required|url',
+                    'caption'      => 'nullable|string',
+                    'parse_mode'   => 'nullable|tg_parse_mode',
+                    'reply_markup' => 'nullable|tg_reply_markup',
+                ],
+                'on_prepare' => fn(&$p) => $html_on_prepare($p, 'caption'),
             ],
             'sendVideo' => [
-              'params' => [
-                    'parse_mode' => 'parse_mode',
-                    'chat_id' => '*int',
-                    'video' => '*url',
-                    'thumbnail' => 'url',
-                    'caption' => 'html',
-                    'reply_markup' => 'reply_markup'
-                ]
+                'params' => [
+                    'chat_id'      => 'required|int',
+                    'video'        => 'required|url',
+                    'thumbnail'    => 'nullable|url',
+                    'caption'      => 'nullable|string',
+                    'parse_mode'   => 'nullable|tg_parse_mode',
+                    'reply_markup' => 'nullable|tg_reply_markup',
+                ],
+                'on_prepare' => fn(&$p) => $html_on_prepare($p, 'caption'),
             ],
             'sendMediaGroup' => [
                 'params' => [
-                    'chat_id' => '*int',
-                    'media' => [new \Exception("Не передан массив медиа-контента или он некорректен!"), fn($v) => is_array($v) && count($v) >= 2 && count($v) <= 10, 'after' => fn($v) => json_encode(array_map(fn($j) => static::prepare_params([
-                        'type' => [new \Exception("Не передан тип медиа-контента!"), fn($v) => in_array($v, ['audio', 'document', 'photo', 'video'])],
-                        'parse_mode' => 'parse_mode',
-                        'media' => '*url',
-                        'thumbnail' => 'url',
-                        'caption' => 'html',
-                    ], $j), $v))],
-                ]
+                    'chat_id' => 'required|int',
+                    'media'   => Rule::create(fn(&$v) => is_array($v) && count($v) >= 2 && count($v) <= 10)
+                        ->handleError(fn($v) => 'Не передан массив медиа-контента или он некорректен!'),
+                ],
+                'on_prepare' => function(&$params) use ($media_schema) {
+                    $params['media'] = json_encode(array_map(function($item) use ($media_schema) {
+                        $errors = Rule::object($media_schema)->apply($item);
+                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        if (($item['parse_mode'] ?? '') === 'HTML' && isset($item['caption']))
+                            $item['caption'] = self::normalize_html($item['caption']);
+                        return $item;
+                    }, $params['media']));
+                },
             ],
-            // 'editMessageText' => [
-            //     'params' => [
-            //         ...$this->method_config('sendMessage')['params'],
-            //         'message_id' => [new \Exception("Некорректный message_id"), fn($v) => is_int($v)],
-            //     ]
-            // ],
-            // 'deleteMessage' => [
-            //     'params' => [
-            //         'chat_id' => [new \Exception("Некорректный chat_id"), fn($v) => is_int($v)],
-            //         'message_id' => [new \Exception("Некорректный message_id"), fn($v) => is_int($v)],
-            //     ]
-            // ],
             'answerCallbackQuery' => [
                 'params' => [
-                    'callback_query_id' => '*string',
-                    'text' => 'string'
-                ]
+                    'callback_query_id' => 'required|string',
+                    'text'              => 'nullable|string',
+                ],
             ],
             'setWebhook' => [
                 'params' => [
-                    'url' => '*secure_url',
-                    'show_alert' => 'bool'
-                ]
+                    'url'        => 'required|secure_url',
+                    'show_alert' => 'nullable|bool',
+                ],
             ],
             'deleteWebhook' => [],
-            'getWebhookInfo' => []
+            'getWebhookInfo' => [],
         ]);
 
-    }    
+    }
 }

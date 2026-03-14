@@ -3,17 +3,18 @@
 namespace ST_system\API\Drivers;
 
 use \ST_system\API\IntegrationDriver;
+use \ST_system\Rule;
 
 final class SmsRu extends IntegrationDriver {
 
-    protected const DEFAULT_POINT = 'https://sms.ru/sms/';
+    protected const DEFAULT_ENDPOINT = 'https://sms.ru/sms/';
 
-    private $api_id;
+    private string $api_id;
 
-    protected function __init() {
+    protected function __init(): void {
         $this->on('__construct', function(string $api_id) {
             if (empty($api_id))
-                new \Exception("Передан некорректный api_id");
+                throw new \InvalidArgumentException('Передан некорректный api_id');
 
             $this->api_id = $api_id;
         });
@@ -25,15 +26,18 @@ final class SmsRu extends IntegrationDriver {
         $this->register_methods_map([
             'send' => [
                 'params' => [
-                    'to' => [new \Exception('Не передан список получателей'), fn($v) => is_array($v), fn($v) => array_filter($v, fn($v) => is_string($v))],
-                    'msg' => '*string',
-                    'json' => 'bool'
+                    'to'   => Rule::create(fn(&$v) => is_array($v) && count($v) > 0)
+                        ->handleError(fn($v) => 'Не передан список получателей')
+                        ->after(fn(&$v) => $v = array_values(array_filter($v, 'is_string')))
+                        ->skip(true),
+                    'msg'  => 'required|string',
+                    'json' => 'nullable|bool',
                 ],
                 'on_prepare' => function(&$params) {
                     if (isset($params['to']) && is_array($params['to']))
                         $params['to'] = implode(',', $params['to']);
-                }
-            ]
+                },
+            ],
         ]);
     }
 

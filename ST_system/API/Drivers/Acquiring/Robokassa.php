@@ -3,6 +3,7 @@
 namespace ST_system\API\Drivers\Acquiring;
 
 use ST_system\API\IntegrationDriver;
+use \ST_system\Rule;
 
 /**
  * Robokassa Acquiring API Driver.
@@ -20,7 +21,7 @@ use ST_system\API\IntegrationDriver;
  */
 final class Robokassa extends IntegrationDriver
 {
-    protected const DEFAULT_POINT = 'https://auth.robokassa.ru/';
+    protected const DEFAULT_ENDPOINT = 'https://auth.robokassa.ru/';
 
     private array $SETTINGS = [];
 
@@ -269,19 +270,21 @@ final class Robokassa extends IntegrationDriver
     // IntegrationDriver implementation
     // ------------------------------------------------------------------
 
-    protected function __init()
+    protected function __init(): void
     {
-        $this->on('__construct', function (array $PARAMS) {
-            $this->SETTINGS = static::prepare_params([
-                // Raw string rules — intentionally no htmlspecialchars.
-                // Passwords/login are used verbatim in HMAC signatures and must
-                // never be transformed, otherwise the signature will be wrong.
-                'merchant_login' => [fn($k) => throw new \Exception("Параметр {$k} обязателен"), fn($v) => is_string($v) && $v !== ''],
-                'password1'      => [fn($k) => throw new \Exception("Параметр {$k} обязателен"), fn($v) => is_string($v) && $v !== ''],
-                'password2'      => [fn($k) => throw new \Exception("Параметр {$k} обязателен"), fn($v) => is_string($v) && $v !== ''],
-                'hash_algo'      => ['md5', fn($v) => in_array($v, ['md5', 'sha1', 'sha256', 'sha384', 'sha512'], true)],
-                'test_mode'      => [false, 'after' => fn($v) => (bool) $v],
-            ], $PARAMS);
+        $this->on('__construct', function(array $PARAMS) {
+            $errors = Rule::object([
+                'merchant_login' => 'required|string',
+                'password1'      => 'required|string',
+                'password2'      => 'required|string',
+                'hash_algo'      => Rule::create(fn(&$v) => $v === null || in_array($v, ['md5','sha1','sha256','sha384','sha512'], true))
+                    ->handleError(fn($v) => 'Недопустимый алгоритм хеширования'),
+                'test_mode'      => 'nullable|bool',
+            ])->apply($PARAMS);
+            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            $PARAMS['hash_algo'] ??= 'md5';
+            $PARAMS['test_mode']   = (bool)($PARAMS['test_mode'] ?? false);
+            $this->SETTINGS = $PARAMS;
         });
 
         // ------------------------------------------------------------------
@@ -368,26 +371,23 @@ final class Robokassa extends IntegrationDriver
         // ------------------------------------------------------------------
 
         $this->register_methods_map([
-            // Recurring (child) payment — POST to /Merchant/Recurring
             'Merchant/Recurring' => [
                 'params' => [
-                    'InvoiceID'         => '*string',
-                    'PreviousInvoiceID' => '*string',
-                    'OutSum'            => $this->extend_rule('*string', [
-                        'after' => fn($v) => number_format((float) $v, 2, '.', ''),
-                    ]),
-                    'Description'       => 'string',
-                    'Email'             => 'email',
-                    // Shp_* params are passed through as-is
+                    'InvoiceID'         => 'required|string',
+                    'PreviousInvoiceID' => 'required|string',
+                    'OutSum'            => Rule::create(fn(&$v) => is_numeric($v) && $v > 0)
+                        ->handleError(fn($v) => 'OutSum должен быть положительным числом')
+                        ->after(fn(&$v) => $v = number_format((float)$v, 2, '.', ''))
+                        ->skip(true),
+                    'Description'       => 'nullable|string',
+                    'Email'             => 'nullable|email',
                 ],
             ],
-
-            // Check operation state — GET to /Merchant/WebService/Service.asmx/OpStateExt
             'Merchant/WebService/Service.asmx/OpStateExt' => [
                 'params' => [
-                    'MerchantLogin' => '*string',
-                    'InvoiceID'     => '*string',
-                    'Signature'     => '*string',
+                    'MerchantLogin' => 'required|string',
+                    'InvoiceID'     => 'required|string',
+                    'Signature'     => 'required|string',
                 ],
             ],
         ]);

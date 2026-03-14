@@ -1,15 +1,15 @@
-<?php
+﻿<?php
 
 namespace ST_system\API\Drivers\Bots;
 
 use \ST_system\API\IntegrationDriver;
+use \ST_system\Rule;
 
 final class VkBot extends IntegrationDriver {
 
-    protected const DEFAULT_POINT = 'https://api.vk.com/method';
-    protected const OAUTH_POINT = 'https://oauth.vk.com';
-
-    protected const API_VERSION = '5.258';
+    protected const DEFAULT_ENDPOINT = 'https://api.vk.com/method';
+    protected const OAUTH_POINT      = 'https://oauth.vk.com';
+    protected const API_VERSION      = '5.258';
 
     private $client_id;
     private $client_secret;
@@ -21,16 +21,16 @@ final class VkBot extends IntegrationDriver {
     private $code;
     private $access_token;
 
-    protected function __init() {
+    protected function __init(): void {
 
-        $this->on('__construct', function($params) {
+        $this->on('__construct', function(array $params) {
+            $errors = Rule::object([
+                'client_id'     => Rule::create(fn(&$v) => is_int($v))->handleError(fn($v) => 'РџРµСЂРµРґР°РЅ РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ client_id')->skip(true),
+                'client_secret' => Rule::create(fn(&$v) => is_string($v))->handleError(fn($v) => 'РџРµСЂРµРґР°РЅ РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ client_secret')->skip(true),
+            ])->apply($params);
+            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
 
-            self::prepare_params([
-                'client_id' => [new \Exception("Передан некорректный client_id"), fn($value) => is_int($value)],
-                'client_secret' => [new \Exception("Передан некорректный client_secret"), fn($value) => is_string($value)],
-            ], $params);
-
-            $this->client_id = $params['client_id'];
+            $this->client_id     = $params['client_id'];
             $this->client_secret = $params['client_secret'];
         });
 
@@ -40,166 +40,169 @@ final class VkBot extends IntegrationDriver {
 
         $this->on('call', function($method, &$params) {
             if (!$this->access_token)
-                throw new \Exception("Для доступа методу '{$method}' необходим авторизационный токен!");
-            
+                throw new \Exception("Р”Р»СЏ РґРѕСЃС‚СѓРїР° РјРµС‚РѕРґСѓ '{$method}' РЅРµРѕР±С…РѕРґРёРј Р°РІС‚РѕСЂРёР·Р°С†РёРѕРЅРЅС‹Р№ С‚РѕРєРµРЅ!");
+
             $params['access_token'] = $this->access_token;
         });
 
         $this->on('call', function($method) {
-            $meta = $this->method_config($method)['meta'] ?? [];
-            $array_diff = array_diff($meta['scope'], $this->scope);
+            $meta       = $this->methods_map[$method]['meta'] ?? [];
+            $array_diff = array_diff($meta['scope'] ?? [], $this->scope ?? []);
 
             if (!empty($array_diff))
-                throw new \Exception("Недостаточно прав для получения метода {$method}. Необходим доступ к ".implode(', ', $array_diff).".");
+                throw new \Exception("РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ РґР»СЏ РјРµС‚РѕРґР° {$method}. РќРµРѕР±С…РѕРґРёРј РґРѕСЃС‚СѓРї Рє ".implode(', ', $array_diff).".");
         });
 
-        $this->register_method('authorize', function ($params) {
+        $this->register_method('authorize', function(array $params) {
 
-            $request_url = $this->build_url('authorize', static::OAUTH_POINT)[0];
-            
-            self::prepare_params([
-                'redirect_uri' => [null, fn($value) => is_string($value) && !empty($value)],
-                'scope' => [[], fn($value) => is_array($value)],
-                'display' => ['page', fn($value) => is_string($value) && in_array($value, ['page', 'popup', 'mobile'])],
-                'response_type' => ['token', fn($value) => is_string($value) && in_array($value, ['code', 'token'])],
-                'client_id' => [$this->client_id, fn($v) => false],
-            ], $params);
+            [$request_url] = $this->build_url('authorize', static::OAUTH_POINT);
 
-            $this->code = null;
-            $this->access_token = null;
-            $this->auth_method = $params['response_type'];
-            $this->redirect_uri = $params['redirect_uri'];
-            $this->scope = $params['scope'];
+            $errors = Rule::object([
+                'redirect_uri'  => Rule::create(fn(&$v) => $v === null || (is_string($v) && $v !== ''))->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ redirect_uri'),
+                'scope'         => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'scope РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РјР°СЃСЃРёРІРѕРј'),
+                'display'       => Rule::create(fn(&$v) => $v === null || in_array($v, ['page', 'popup', 'mobile'], true))->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ display'),
+                'response_type' => Rule::create(fn(&$v) => $v === null || in_array($v, ['code', 'token'], true))->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ response_type'),
+            ])->apply($params);
+            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            $params['scope']         = $params['scope']         ?? [];
+            $params['display']       = $params['display']       ?? 'page';
+            $params['response_type'] = $params['response_type'] ?? 'token';
+            $params['client_id']     = $this->client_id;
 
-            $curl = $this->curl_init($request_url, 'GET', $params);
+            $this->code          = null;
+            $this->access_token  = null;
+            $this->auth_method   = $params['response_type'];
+            $this->redirect_uri  = $params['redirect_uri'] ?? null;
+            $this->scope         = $params['scope'];
 
-            return curl_getinfo($curl, CURLINFO_EFFECTIVE_URL);
+            $params = array_filter($params, fn($v) => $v !== null);
+            return $request_url . '?' . http_build_query($params);
         });
 
-        $this->register_method('access_token', function ($params) {
-            
+        $this->register_method('access_token', function(array $params) {
+
             $access_token = $this->load_token([
-                'user_id' => $params['user_id'] ?? null,
-                'client_id' => $this->client_id
+                'user_id'   => $params['user_id'] ?? null,
+                'client_id' => $this->client_id,
             ]);
 
             if ($access_token) {
-                $result = [
-                    'access_token' => $access_token,
-                    'user_id' => $params['user_id']
-                ];
+                $result = ['access_token' => $access_token, 'user_id' => $params['user_id'] ?? null];
             } else {
                 switch ($this->auth_method) {
-                    case 'code':                  
-                        $request_url = $this->build_url('access_token', static::OAUTH_POINT)[0];
+                    case 'code':
+                        [$request_url] = $this->build_url('access_token', static::OAUTH_POINT);
 
-                        self::prepare_params([
-                            'code' => [new \Exception("Некорректный код авторизации!"), fn($value) => is_string($value) && !empty($value)],
-                        ], $params);
+                        $errors = Rule::object([
+                            'code' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РєРѕРґ Р°РІС‚РѕСЂРёР·Р°С†РёРё!')->skip(true),
+                        ])->apply($params);
+                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
 
                         $curl = $this->curl_init($request_url, 'POST', [
-                            'redirect_uri' => $this->redirect_uri,
-                            'client_id' => $this->client_id,
+                            'redirect_uri'  => $this->redirect_uri,
+                            'client_id'     => $this->client_id,
                             'client_secret' => $this->client_secret,
-                            'code' => $params['code']
-                        ]);
+                            'code'          => $params['code'],
+                        ], ['method' => 'POST', 'content_type' => 'application/x-www-form-urlencoded', 'headers' => []]);
 
                         $response_data = $this->execute_curl($curl);
                         if ($response_data['error'])
-                            throw new \Exception("Ошибка при запросе к API: '{$response_data['error']}' в ".get_called_class());
+                            throw new \Exception("РћС€РёР±РєР° РїСЂРё Р·Р°РїСЂРѕСЃРµ Рє API: '{$response_data['error']}' РІ ".get_called_class());
 
-                        $response_data['response'] = @json_decode($response_data['response'], true);
-                        if (json_last_error() !== JSON_ERROR_NONE) 
-                            throw new \Exception("Ошибка при декодировании ответа: '".json_last_error_msg()."' в ".get_called_class());
-                                            
-                        $result = $response_data['response'];
-
+                        $result = @json_decode($response_data['response'], true);
+                        if (json_last_error() !== JSON_ERROR_NONE)
+                            throw new \Exception("РћС€РёР±РєР° РїСЂРё РґРµРєРѕРґРёСЂРѕРІР°РЅРёРё РѕС‚РІРµС‚Р°: '".json_last_error_msg()."' РІ ".get_called_class());
                         break;
                     case 'token':
                     default:
                         $result = $params;
-
                         break;
                 }
 
-                self::prepare_params([
-                    'access_token' => [new \Exception("Некорректный параметр access_token"), fn($value) => is_string($value) && !empty($value)],
-                    'user_id' => [new \Exception("Некорректный параметр user_id"), fn($value) => is_int($value) && $value > 0],
-                    'expires_in' => [new \Exception("Некорректный параметр expires_in"), fn($value) => is_int($value)],
-                ], $result);
-                
+                $errors = Rule::object([
+                    'access_token' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РїР°СЂР°РјРµС‚СЂ access_token')->skip(true),
+                    'user_id'      => Rule::create(fn(&$v) => is_int($v) && $v > 0)->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РїР°СЂР°РјРµС‚СЂ user_id')->skip(true),
+                    'expires_in'   => Rule::create(fn(&$v) => is_int($v))->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РїР°СЂР°РјРµС‚СЂ expires_in')->skip(true),
+                ])->apply($result);
+                if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+
                 $this->save_token($result['access_token'], [
                     'expires_in' => $result['expires_in'],
-                    'user_id' => $result['user_id'],
-                    'client_id' => $this->client_id
-                ]);                
+                    'user_id'    => $result['user_id'],
+                    'client_id'  => $this->client_id,
+                ]);
             }
 
             $this->access_token = $result['access_token'];
-            $this->user_id = $result['user_id'];
+            $this->user_id      = $result['user_id'];
         });
 
         $this->register_methods_map([
             'users.getFollowers' => [
-                'meta' => [
-                    'scope' => ['friends']
-                ],
+                'meta'   => ['scope' => ['friends']],
                 'params' => [
-                    'user_id' => [$this->user_id, fn($value) => is_null($value) || (is_int($value) && $value > 0)],
-                    'count'   => [100, fn($value) => is_int($value) && $value > 0],
-                    'offset'  => [0, fn($value) => is_int($value) && $value >= 0],
-                    'fields'  => [[], fn($value) => is_array($value)],
+                    'user_id' => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v > 0))->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ user_id'),
+                    'count'   => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v > 0))->handleError(fn($v) => 'count РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ > 0'),
+                    'offset'  => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v >= 0))->handleError(fn($v) => 'offset РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ >= 0'),
+                    'fields'  => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'fields РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РјР°СЃСЃРёРІРѕРј'),
                 ],
+                'on_prepare' => function(&$params) {
+                    $params['user_id'] = $params['user_id'] ?? $this->user_id;
+                    $params['count']   ??= 100;
+                    $params['offset']  ??= 0;
+                    $params['fields']  ??= [];
+                },
             ],
             'users.get' => [
-                'meta' => [
-                    'scope' => []
-                ],
+                'meta'   => ['scope' => []],
                 'params' => [
-                    'user_ids' => [[], fn($value) => is_array($value)],
-                    'fields'   => [[], fn($value) => is_array($value)],
+                    'user_ids' => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'user_ids РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РјР°СЃСЃРёРІРѕРј'),
+                    'fields'   => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'fields РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РјР°СЃСЃРёРІРѕРј'),
                 ],
+                'on_prepare' => function(&$params) {
+                    $params['user_ids'] ??= [];
+                    $params['fields']   ??= [];
+                },
             ],
             'account.ban' => [
-                'meta' => [
-                    'scope' => ['account']
-                ],
+                'meta'   => ['scope' => ['account']],
                 'params' => [
-                    'owner_id' => [new \Exception("Некорректный owner_id"), fn($value) => is_scalar($value) && !empty($value)],
+                    'owner_id' => Rule::create(fn(&$v) => is_scalar($v) && $v !== '')->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ owner_id')->skip(true),
                 ],
             ],
             'friends.delete' => [
-                'meta' => [
-                    'scope' => ['friends']
-                ],
+                'meta'   => ['scope' => ['friends']],
                 'params' => [
-                    'user_id' => [new \Exception("Некорректный user_id"), fn($value) => is_scalar($value) && !empty($value)],
+                    'user_id' => Rule::create(fn(&$v) => is_scalar($v) && $v !== '')->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ user_id')->skip(true),
                 ],
             ],
             'friends.getSuggestions' => [
-                'meta' => [
-                    'scope' => ['friends']
-                ],
+                'meta'   => ['scope' => ['friends']],
                 'params' => [
-                    'filter' => [null, fn($value) => is_string($value) && in_array($value, ['mutual'])],
-                    'count'   => [100, fn($value) => is_int($value) && $value > 0],
-                    'offset'  => [0, fn($value) => is_int($value) && $value >= 0],
-                    'fields' => [[], fn($value) => is_array($value)],
+                    'filter' => Rule::create(fn(&$v) => $v === null || ($v === 'mutual'))->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ filter'),
+                    'count'  => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v > 0))->handleError(fn($v) => 'count РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ > 0'),
+                    'offset' => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v >= 0))->handleError(fn($v) => 'offset РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ >= 0'),
+                    'fields' => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'fields РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РјР°СЃСЃРёРІРѕРј'),
                 ],
+                'on_prepare' => function(&$params) {
+                    $params['count']  ??= 100;
+                    $params['offset'] ??= 0;
+                    $params['fields'] ??= [];
+                },
             ],
             'friends.add' => [
-                'meta' => [
-                    'scope' => ['friends']
-                ],
+                'meta'   => ['scope' => ['friends']],
                 'params' => [
-                    'user_id' => [new \Exception("Некорректный user_id"), fn($value) => is_scalar($value) && !empty($value)],
-                    'text'    => [null, fn($value) => is_string($value)],
-                    'follow'  => [false, fn($value) => is_bool($value)],
+                    'user_id' => Rule::create(fn(&$v) => is_scalar($v) && $v !== '')->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ user_id')->skip(true),
+                    'text'    => 'nullable|string',
+                    'follow'  => 'nullable|bool',
                 ],
+                'on_prepare' => function(&$params) {
+                    $params['follow'] ??= false;
+                },
             ],
         ]);
-        
+
     }
 
-    
 }

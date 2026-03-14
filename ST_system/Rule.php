@@ -740,8 +740,7 @@ final class Rule {
         // json
         (static::create(function(&$v): bool {
             if (!is_string($v)) return false;
-            if (function_exists('json_validate')) return \json_validate($v);
-            json_decode($v);
+            @json_decode($v);
             return json_last_error() === JSON_ERROR_NONE;
         }))->order(500)->handleError(fn($v) => 'Invalid JSON')->alias('json');
 

@@ -6,14 +6,14 @@ use \ST_system\API\IntegrationDriver;
 
 final class SmartCaptcha extends IntegrationDriver {
 
-    protected const DEFAULT_POINT = 'https://smartcaptcha.yandexcloud.net/';
+    protected const DEFAULT_ENDPOINT = 'https://smartcaptcha.yandexcloud.net/';
 
-    private $secret;
+    private string $secret;
 
-    protected function __init() {
+    protected function __init(): void {
         $this->on('__construct', function(string $secret) {
             if (empty($secret))
-                new \Exception("Передан некорректный api_id");
+                throw new \InvalidArgumentException('Передан некорректный secret');
 
             $this->secret = $secret;
         });
@@ -26,19 +26,17 @@ final class SmartCaptcha extends IntegrationDriver {
             'validate' => [
                 'method' => 'POST',
                 'params' => [
-                    'token' => '*string',
-                    'ip' => 'string'
-                ]
-            ]
+                    'token' => 'required|string',
+                    'ip'    => 'nullable|string',
+                ],
+            ],
         ]);
     }
 
-    public function validate($params) {
+    public function validate($params): mixed {
         if (!is_array($params))
-            $params = [
-                'token' => (string)$params
-            ];
-            
+            $params = ['token' => (string)$params];
+
         return $this->call('validate', $params);
     }
 

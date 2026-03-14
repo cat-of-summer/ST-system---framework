@@ -1,147 +1,204 @@
-<?php
+﻿<?php
 
 namespace ST_system\API\Drivers\CRM;
 
 use \ST_system\API\IntegrationDriver;
-use \ST_system\API\Traits\Overridable;
+use \ST_system\Rule;
 
 final class Bitrix24 extends IntegrationDriver {
-    use Overridable;
 
-    private $SETTINGS = [];
+    private array $SETTINGS = [];
 
-    protected function __init() {
+    protected function __init(): void {
+
+        // ── Rule aliases (guarded) ────────────────────────────────────────────
+
+        // b24_date: string / DateTimeInterface → 'Y-m-d'
+        if (!Rule::get('b24_date'))
+            Rule::create(fn(&$v) => $v === null || $v instanceof \DateTimeInterface || is_string($v))
+                ->after(function(&$v) {
+                    if ($v === null) return;
+                    if ($v instanceof \DateTimeInterface) { $v = $v->format('Y-m-d'); return; }
+                    try {
+                        $date = new \DateTime($v);
+                    } catch (\Throwable $th) {
+                        throw new \Exception("екорректная дата $v");
+                    }
+                    if (!$date || !empty(\DateTime::getLastErrors()['error_count']))
+                        throw new \Exception("екорректная дата $v");
+                    $v = $date->format('Y-m-d');
+                })
+                ->alias('b24_date');
+
+        // b24_bool: bool / Y / N → Y / N
+        if (!Rule::get('b24_bool'))
+            Rule::create(fn(&$v) => $v === null || is_bool($v) || in_array($v, ['Y', 'N'], true))
+                ->handleError(fn($v) => 'Must be boolean or Y/N')
+                ->after(fn(&$v) => $v = ($v === null) ? null : (is_bool($v) ? ($v ? 'Y' : 'N') : $v))
+                ->alias('b24_bool');
+
+        // b24_multifield: CRM array of {ID, TYPE_ID, VALUE, VALUE_TYPE}
+        if (!Rule::get('b24_multifield')) {
+            $crm_item_rule = Rule::object([
+                'ID'         => Rule::create(fn(&$v) => $v === null || is_int($v)),
+                'TYPE_ID'    => Rule::create(fn(&$v) => $v === null || in_array($v, ['PHONE','EMAIL','WEB','IM','LINK'], true))
+                    ->handleError(fn($v) => 'Invalid TYPE_ID'),
+                'VALUE'      => Rule::create(fn(&$v) => is_string($v) && $v !== '')
+                    ->handleError(fn($v) => 'е передан VALUE')->skip(true),
+                'VALUE_TYPE' => Rule::create(fn(&$v) => is_string($v) && in_array($v, [
+                        'WORK','MOBILE','FAX','HOME','PAGER','MAILING','OTHER','FACEBOOK','VK',
+                        'LIVEJOURNAL','TWITTER','TELEGRAM','SKYPE','VIBER','INSTAGRAM','BITRIX24',
+                        'OPENLINE','IMOL','ICQ','MSN','JABBER',
+                    ], true))->handleError(fn($v) => 'е передан VALUE_TYPE')->skip(true),
+            ]);
+            Rule::create(function(&$v) use ($crm_item_rule): bool {
+                if ($v === null) return true;
+                if (!is_array($v)) return false;
+                $errors = Rule::forEach($crm_item_rule)->apply($v);
+                if (!empty($errors)) throw new \Exception(reset($errors));
+                return true;
+            })
+            ->handleError(fn($v) => 'екорректный b24_multifield')
+            ->alias('b24_multifield');
+        }
+
+        // ── Constructor / events ──────────────────────────────────────────────
 
         $this->on('__construct', function(array $PARAMS = []) {
-            $this->SETTINGS = $this->prepare_params([
-                'point' => [new \Exception("Задана некорректная точка API"), fn($v) => filter_var($v, FILTER_VALIDATE_URL), fn($v) => rtrim($v, '/')],
-            ], $PARAMS);
+            $errors = Rule::object([
+                'endpoint' => Rule::create(fn(&$v) => filter_var($v, FILTER_VALIDATE_URL) !== false)
+                    ->handleError(fn($v) => 'адана некорректная точка API')
+                    ->after(fn(&$v) => $v = rtrim($v, '/'))
+                    ->skip(true),
+            ])->apply($PARAMS);
+            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            $this->SETTINGS = $PARAMS;
         });
 
         $this->on('build_url', function(string &$request_url) {
-            $request_url = $this->SETTINGS['point'].$request_url;
+            $request_url = ($this->SETTINGS['endpoint'] ?? '') . $request_url;
         });
 
-        $this->register_rules_map([
-            'date' => [null, 'after' => function($v) {
-                if ($v instanceof \DateTimeInterface) return $v->format('Y-m-d');
-
-                try {
-                    $date = new \DateTime($v);
-                } catch (\Throwable $th) {
-                    throw new \Exception("Некорректная дата $v");
-                }
-
-                if (!$date || !empty(\DateTime::getLastErrors()['error_count']))
-                    throw new \Exception("Некорректная дата $v");
-                
-                return $date->format('Y-m-d');
-            }],
-            'string' => [null, fn($v) => is_string($v)],
-            'bool' => [null, fn($v) => is_bool($v) || in_array($v, ['Y', 'N']), fn($v) => is_bool($v) ? ($v ? 'Y' : 'N') : $v],
-            'crm_multifield' => [null, fn($v) => is_array($v), fn($v) => array_map(fn($i) => $this->prepare_params([
-                'ID' => [null, fn($v) => is_int($v)],
-                'TYPE_ID' => [null, fn($v) => is_string($v) && in_array($v, ['PHONE', 'EMAIL', 'WEB', 'IM', 'LINK'])],
-                'VALUE' => [new \Exception("Не передан VALUE"), fn($v) => is_string($v)],
-                'VALUE_TYPE' => [new \Exception("Не передан VALUE_TYPE"), fn($v) => is_string($v) && in_array($v, ['WORK', 'MOBILE', 'FAX', 'HOME', 'PAGER', 'MAILING', 'OTHER', 'FACEBOOK', 'VK', 'LIVEJOURNAL', 'TWITTER', 'TELEGRAM', 'SKYPE', 'VIBER', 'INSTAGRAM', 'BITRIX24', 'OPENLINE', 'IMOL', 'ICQ', 'MSN', 'JABBER'])],
-            ], $i), $v)]
-        ]);
+        // ── Methods ───────────────────────────────────────────────────────────
 
         $this->register_methods_map([
             'calendar.event.get' => [
                 'params' => [
-                    'type' => [new \Exception("Не передан тип календаря"), fn($v) => in_array($v, ['user', 'group', 'company_calendar'])],
-                    'ownerId' => [new \Exception("Не передан идентификатор владельца календаря"), fn($v) => is_integer($v)],
-                    'section' => [null, fn($v) => (is_array($v) && count($v) == count(array_filter($v, 'is_string'))) || is_string($v), 'before' => fn($v) => is_string($v) ? [$v] : $v],
-                    'from' => 'date',
-                    'to' => 'date',
+                    'type'    => Rule::create(fn(&$v) => in_array($v, ['user', 'group', 'company_calendar'], true))
+                        ->handleError(fn($v) => 'е передан тип календаря')->skip(true),
+                    'ownerId' => Rule::create(fn(&$v) => is_int($v))
+                        ->handleError(fn($v) => 'е передан идентификатор владельца календаря')->skip(true),
+                    'section' => Rule::create(fn(&$v) => $v === null || (is_array($v) && count($v) === count(array_filter($v, 'is_string'))))
+                        ->before(fn(&$v) => $v = is_string($v) ? [$v] : $v)
+                        ->handleError(fn($v) => 'section должен быть строкой или массивом строк'),
+                    'from' => 'nullable|b24_date',
+                    'to'   => 'nullable|b24_date',
                 ],
                 'on_prepare' => function(&$params) {
                     if (isset($params['section'])) {
                         $params['section[]'] = implode(',', $params['section']);
                         unset($params['section']);
                     }
-                }
+                },
             ],
             'crm.contact.list' => [
                 'method' => 'POST',
                 'params' => [
-                    'SELECT' => [null, fn($v) => is_array($v)],
-                    'FILTER' => [null, fn($v) => is_array($v)],
-                    'ORDER' => [null, fn($v) => is_array($v)],
-                    'START' => [null, fn($v) => is_int($v)],
-                    'PAGE' => [null, fn($v, $k, $p) => is_null($p['START']) && is_int($v)]
+                    'SELECT' => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'екорректный SELECT'),
+                    'FILTER' => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'екорректный FILTER'),
+                    'ORDER'  => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'екорректный ORDER'),
+                    'START'  => Rule::create(fn(&$v) => $v === null || is_int($v))->handleError(fn($v) => 'START должен быть целым числом'),
+                    'PAGE'   => Rule::create(fn(&$v) => $v === null || is_int($v))->handleError(fn($v) => 'PAGE должен быть целым числом'),
                 ],
                 'on_prepare' => function(&$params) {
                     if (isset($params['PAGE'])) {
-                        $params['START'] = $params['PAGE'] * 50;
+                        $params['START'] = ($params['PAGE'] ?? 0) * 50;
                         unset($params['PAGE']);
                     }
-
                     if (isset($params['FILTER']['PHONE']))
                         $params['FILTER']['PHONE'] = preg_replace('/\D/', '', $params['FILTER']['PHONE']);
-                }
+                },
             ],
             'crm.contact.add' => [
                 'method' => 'POST',
                 'params' => [
-                    'FIELDS' => [null, fn($v) => is_array($v), fn($v) => $this->prepare_params([
-                        'NAME' => 'string',
-                        'PHONE' => 'crm_multifield',
-                        'EMAIL' => 'crm_multifield',
-                    ], $v)],
-                    'PARAMS' => [null, fn($v) => is_array($v), fn($v) => $this->prepare_params([
-                        'REGISTER_SONET_EVENT' => 'bool',
-                    ], $v)]
+                    'FIELDS' => Rule::create(function(&$v): bool {
+                        if ($v === null) return true;
+                        if (!is_array($v)) return false;
+                        $errors = Rule::object([
+                            'NAME'  => 'nullable|string',
+                            'PHONE' => 'nullable|b24_multifield',
+                            'EMAIL' => 'nullable|b24_multifield',
+                        ])->apply($v);
+                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        return true;
+                    })->handleError(fn($v) => 'екорректный FIELDS'),
+                    'PARAMS' => Rule::create(function(&$v): bool {
+                        if ($v === null) return true;
+                        if (!is_array($v)) return false;
+                        $errors = Rule::object(['REGISTER_SONET_EVENT' => 'nullable|b24_bool'])->apply($v);
+                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        return true;
+                    })->handleError(fn($v) => 'екорректный PARAMS'),
                 ],
                 'on_prepare' => function(&$params) {
                     if (isset($params['FIELDS']['PHONE']['VALUE']))
                         $params['FIELDS']['PHONE']['VALUE'] = preg_replace('/\D/', '', $params['FIELDS']['PHONE']['VALUE']);
-                }
+                },
             ],
             'crm.deal.add' => [
                 'method' => 'POST',
                 'params' => [
-                    'FIELDS' => [null, fn($v) => is_array($v), fn($v) => $this->prepare_params([
-                        'TITLE' => 'string',
-                        'TYPE_ID' => [null],
-                        'CATEGORY_ID' => [null, fn($v) => is_int($v) && $v >= 0],
-                        'STAGE_ID' => [null],
-                        'IS_RECURRING' => 'bool',
-                        'IS_RETURN_CUSTOMER' => 'bool',
-                        'IS_REPEATED_APPROACH' => 'bool',
-                        'PROBABILITY' => [null, fn($v) => is_int($v) && $v >= 0 && $v <= 100],
-                        'CURRENCY_ID' => [null],
-                        'OPPORTUNITY' => [null, fn($v) => is_double($v)],
-                        'IS_MANUAL_OPPORTUNITY' => 'bool',
-                        'TAX_VALUE' => [null, fn($v) => is_double($v)],
-                        'COMPANY_ID' => [null],
-                        'CONTACT_ID' => [null],
-                        'CONTACT_IDS' => [null, fn($v) => is_array($v)],
-                        'BEGINDATE' => 'date',
-                        'CLOSEDATE' => 'date',
-                        'OPENED' => 'bool',
-                        'CLOSED' => 'bool',
-                        'COMMENTS' => 'string',
-                        'ASSIGNED_BY_ID' => [null],
-                        'SOURCE_ID' => [null],
-                        'SOURCE_DESCRIPTION' => 'string',
-                        'ADDITIONAL_INFO' => 'string',
-                        'LOCATION_ID' => [null],
-                        'ORIGINATOR_ID' => 'string',
-                        'ORIGIN_ID' => 'string',
-                        'UTM_SOURCE' => 'string',
-                        'UTM_MEDIUM' => [null, fn($v) => is_string($v) && in_array($v, ['CPC', 'CPM'])],
-                        'UTM_CAMPAIGN' => 'string',
-                        'UTM_CONTENT' => 'string',
-                        'UTM_TERM' => 'string',
-                        'TRACE' => 'string',
-                    ], $v)],
-                    'PARAMS' => [null, fn($v) => is_array($v), fn($v) => $this->prepare_params([
-                        'REGISTER_SONET_EVENT' => 'bool',
-                    ], $v)]
-                ]
-            ]
+                    'FIELDS' => Rule::create(function(&$v): bool {
+                        if ($v === null) return true;
+                        if (!is_array($v)) return false;
+                        $errors = Rule::object([
+                            'TITLE'                 => 'nullable|string',
+                            'TYPE_ID'               => Rule::create(fn(&$v) => true),
+                            'CATEGORY_ID'           => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v >= 0)),
+                            'STAGE_ID'              => Rule::create(fn(&$v) => true),
+                            'IS_RECURRING'          => 'nullable|b24_bool',
+                            'IS_RETURN_CUSTOMER'    => 'nullable|b24_bool',
+                            'IS_REPEATED_APPROACH'  => 'nullable|b24_bool',
+                            'PROBABILITY'           => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v >= 0 && $v <= 100)),
+                            'CURRENCY_ID'           => Rule::create(fn(&$v) => true),
+                            'OPPORTUNITY'           => Rule::create(fn(&$v) => $v === null || is_float($v)),
+                            'IS_MANUAL_OPPORTUNITY' => 'nullable|b24_bool',
+                            'TAX_VALUE'             => Rule::create(fn(&$v) => $v === null || is_float($v)),
+                            'COMPANY_ID'            => Rule::create(fn(&$v) => true),
+                            'CONTACT_ID'            => Rule::create(fn(&$v) => true),
+                            'CONTACT_IDS'           => Rule::create(fn(&$v) => $v === null || is_array($v)),
+                            'BEGINDATE'             => 'nullable|b24_date',
+                            'CLOSEDATE'             => 'nullable|b24_date',
+                            'OPENED'                => 'nullable|b24_bool',
+                            'CLOSED'                => 'nullable|b24_bool',
+                            'COMMENTS'              => 'nullable|string',
+                            'ASSIGNED_BY_ID'        => Rule::create(fn(&$v) => true),
+                            'SOURCE_ID'             => Rule::create(fn(&$v) => true),
+                            'SOURCE_DESCRIPTION'    => 'nullable|string',
+                            'ADDITIONAL_INFO'       => 'nullable|string',
+                            'LOCATION_ID'           => Rule::create(fn(&$v) => true),
+                            'ORIGINATOR_ID'         => 'nullable|string',
+                            'ORIGIN_ID'             => 'nullable|string',
+                            'UTM_SOURCE'            => 'nullable|string',
+                            'UTM_MEDIUM'            => Rule::create(fn(&$v) => $v === null || in_array($v, ['CPC', 'CPM'], true)),
+                            'UTM_CAMPAIGN'          => 'nullable|string',
+                            'UTM_CONTENT'           => 'nullable|string',
+                            'UTM_TERM'              => 'nullable|string',
+                            'TRACE'                 => 'nullable|string',
+                        ])->apply($v);
+                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        return true;
+                    })->handleError(fn($v) => 'екорректный FIELDS'),
+                    'PARAMS' => Rule::create(function(&$v): bool {
+                        if ($v === null) return true;
+                        if (!is_array($v)) return false;
+                        $errors = Rule::object(['REGISTER_SONET_EVENT' => 'nullable|b24_bool'])->apply($v);
+                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        return true;
+                    })->handleError(fn($v) => 'екорректный PARAMS'),
+                ],
+            ],
         ]);
 
     }

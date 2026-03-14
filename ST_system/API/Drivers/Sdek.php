@@ -1,61 +1,82 @@
-<?php
+﻿<?php
 
 namespace ST_system\API\Drivers;
 
 use \ST_system\API\IntegrationDriver;
+use \ST_system\Rule;
 
 final class Sdek extends IntegrationDriver {
 
-    protected const DEFAULT_POINT = 'https://api.cdek.ru/v2/';
-    protected const CACHE_DIRECTORY = '~/bitrix/cache/';
+    protected const DEFAULT_ENDPOINT  = 'https://api.cdek.ru/v2/';
+    protected const CACHE_DIRECTORY   = '~/bitrix/cache/';
 
-    private $SETTINGS = [];
-    
-    protected function __init() {
-        static::register_rules_map([
-            'CalculatorLocationDto' => [fn($k) => new \Exception("Не передан параметр {$k}"), fn($v) => is_array($v), fn($v) => static::prepare_params([
-                'code' => '*int',
-                'postal_code' => '*string',
-                'country_code' => '*string',
-                'city' => '*string',
-                'address' => '*string',
-                'contragent_type' => ['INDIVIDUAL', fn($v) => is_string($v) && in_array($v, ['LEGAL_ENTITY', 'INDIVIDUAL'])],
-                'longitude' => '*string',
-                'latitude' => '*string',
-            ], $v)],
-            'array_of_CalcPackageRequestDto' => [fn($k) => new \Exception("Не передан параметр {$k}"), fn($v) => is_array($v), fn($v) => array_map(fn($i) => static::prepare_params([
-                'weight' => '*int',
-                'length' => 'int',
-                'width' => 'int',
-                'height' => 'int',
-            ], $i), $v)],
-        ]);
-        
-        $params = [
-            'pagination' => [
-                'page' => 'int',
-                'size' => [null, fn($v) => is_int($v), fn($v, $k, $p) => (isset($p['page']) && empty($v)) ? 1000 : $v],
-            ],
-            'default' => [
-                'lang' => 'string',
-                'country_code' => 'string',
-                'region_code' => 'int',
-                'city_code' => 'int',
-            ],
+    private array $SETTINGS = [];
+
+    protected function __init(): void {
+
+        // в”Ђв”Ђ Local Rule helpers в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+
+        $r_location = Rule::create(function(&$v) {
+            if (!is_array($v)) return false;
+            $errors = Rule::object([
+                'code'             => 'nullable|int',
+                'postal_code'      => 'nullable|string',
+                'country_code'     => 'nullable|string',
+                'city'             => 'nullable|string',
+                'address'          => 'nullable|string',
+                'contragent_type'  => 'default:INDIVIDUAL|in:LEGAL_ENTITY,INDIVIDUAL',
+                'longitude'        => 'nullable|string',
+                'latitude'         => 'nullable|string',
+            ])->apply($v);
+            if (!empty($errors)) throw new \Exception($errors[0]);
+            return true;
+        })->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ CalculatorLocationDto')->skip(true);
+
+        $r_packages = Rule::create(function(&$v) {
+            if (!is_array($v)) return false;
+            foreach ($v as &$item) {
+                $errors = Rule::object([
+                    'weight' => 'required|int',
+                    'length' => 'nullable|int',
+                    'width'  => 'nullable|int',
+                    'height' => 'nullable|int',
+                ])->apply($item);
+                if (!empty($errors)) throw new \Exception($errors[0]);
+            }
+            unset($item);
+            return true;
+        })->handleError(fn($v) => 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ array_of_CalcPackageRequestDto')->skip(true);
+
+        // в”Ђв”Ђ Common param groups в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+
+        $default_params = [
+            'lang'         => 'nullable|string',
+            'country_code' => 'nullable|string',
+            'region_code'  => 'nullable|int',
+            'city_code'    => 'nullable|int',
         ];
+
+        $pagination_params = [
+            'page' => 'nullable|int',
+            'size' => 'nullable|int',
+        ];
+
+        $pagination_on_prepare = function(&$params) {
+            if (isset($params['page']) && !isset($params['size']))
+                $params['size'] = 1000;
+        };
+
+        // в”Ђв”Ђ Constructor / events в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
         $this->on('__construct', function(array $PARAMS) {
             $this->SETTINGS = array_intersect_key(
-                $this->call('oauth/token', $PARAMS), 
-                array_flip([
-                    'access_token',
-                    'token_type',
-                    'jti'
-                ]));
+                $this->call('oauth/token', $PARAMS),
+                array_flip(['access_token', 'token_type', 'jti'])
+            );
         });
 
         $this->on('prepare_response', function($method, $params, &$raw_data) {
-            if ($raw_data['http_code'] < 200 || $raw_data['http_code'] > 299) 
+            if ($raw_data['http_code'] < 200 || $raw_data['http_code'] > 299)
                 $raw_data['error'] = $raw_data['response'];
         });
 
@@ -65,63 +86,67 @@ final class Sdek extends IntegrationDriver {
         });
 
         $this->on('save_cache', function($m, $p, $response, &$meta) {
-            if ($cache_ttl = $response['expires_in'])
-                $meta['cache_expires_in'] = time() + (int)$cache_ttl;
+            if ($cache_ttl = $response['expires_in'] ?? null)
+                $meta['ttl'] = (int)$cache_ttl;
         });
+
+        // в”Ђв”Ђ Methods в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
         $this->register_methods_map([
             'oauth/token' => [
-                'method' => 'POST',
-                'params' => [
-                    'grant_type' => ['client_credentials', fn($v) => is_string($v) && in_array($v, ['client_credentials'])],
-                    'client_id' => '*string',
-                    'client_secret' => '*string',
+                'method'    => 'POST',
+                'params'    => [
+                    'grant_type'    => 'default:client_credentials|in:client_credentials',
+                    'client_id'     => 'required|string',
+                    'client_secret' => 'required|string',
                 ],
-                'cache_ttl' => 3600
+                'cache_ttl' => 3600,
             ],
             'location/suggest/cities' => [
-                'params' => [
-                    'name' => '*string',
-                    'country_code' => 'string',
+                'params'    => [
+                    'name'         => 'required|string',
+                    'country_code' => 'nullable|string',
                 ],
-                'cache_ttl' => 3600
+                'cache_ttl' => 3600,
             ],
             'location/cities' => [
-                'params' => array_merge(
-                    array_diff_key($params['default'], array_flip(['city_code'])),
-                    $params['pagination'],
+                'params'    => array_merge(
+                    array_diff_key($default_params, ['city_code' => null]),
+                    $pagination_params
                 ),
-                'cache_ttl' => 3600
+                'on_prepare' => $pagination_on_prepare,
+                'cache_ttl' => 3600,
             ],
             'deliverypoints' => [
-                'params' => array_merge(
-                    ['type' => ['ALL', fn($v) => is_string($v) && in_array($v, ['PVZ', 'ALL', 'POSTAMAT'])]],
-                    $params['default'],
-                    $params['pagination'],
+                'params'    => array_merge(
+                    ['type' => 'default:ALL|in:PVZ,ALL,POSTAMAT'],
+                    $default_params,
+                    $pagination_params
                 ),
-                'cache_ttl' => 3600
+                'on_prepare' => $pagination_on_prepare,
+                'cache_ttl' => 3600,
             ],
             'calculator/tariff' => [
-                'method' => 'POST',
+                'method'       => 'POST',
                 'content_type' => 'application/json',
-                'params' => [
-                    'tariff_code'=> '*int',
-                    'type' => [1, fn($v) => is_int($v) && in_array($v, [1, 2])],
-                    'from_location'=> 'CalculatorLocationDto',
-                    'to_location'=> 'CalculatorLocationDto',
-                    'packages'=> 'array_of_CalcPackageRequestDto',
+                'params'       => [
+                    'tariff_code'   => 'required|int',
+                    'type'          => 'default:1|in:1,2',
+                    'from_location' => $r_location,
+                    'to_location'   => $r_location,
+                    'packages'      => $r_packages,
                 ],
             ],
-            'orders'=>[
-                'params'=>[
-                    'cdek_number' => '*string',
+            'orders' => [
+                'params' => [
+                    'cdek_number' => 'required|string',
                 ],
             ],
             'calculator/alltariffs' => [
-                'cache_ttl' => 3600
-            ]
+                'cache_ttl' => 3600,
+            ],
         ]);
-        
+
     }
 
 }
