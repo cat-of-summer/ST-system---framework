@@ -327,7 +327,10 @@ final class Rule {
         }
 
         if (!empty($flatSpec)) {
-            $tree = self::buildDotTree($flatSpec);
+            $tree = [];
+            foreach ($flatSpec as $path => $spec)
+                self::insertIntoTree($tree, explode('.', (string)$path), $spec);
+        
             foreach ($tree as $topKey => $node) {
                 if (array_key_exists($topKey, $regular)) {
                     throw new \RuntimeException(
@@ -434,44 +437,6 @@ final class Rule {
     }
 
     /**
-     * Строит дерево из плоского массива dot-notation ключей.
-     */
-    private static function buildDotTree(array $schema): array {
-        $root = [];
-        foreach ($schema as $path => $spec) {
-            $parts = explode('.', (string)$path);
-            self::insertIntoTree($root, $parts, $spec);
-        }
-        return $root;
-    }
-
-    /**
-     * Конвертирует узел дерева, который находится под ключом '*',
-     * в Rule::forEach(…).
-     * Если узел — leaf, создаёт Rule::forEach($spec).
-     * Если узел — subtree, создаёт Rule::forEach(Rule::object(…)).
-     *
-     * @param array $starNode  содержимое $node['*']
-     */
-    private static function treeForEachNode(array $starNode): Rule {
-        // Leaf под *
-        if (array_key_exists('__spec__', $starNode)) {
-            $spec = $starNode['__spec__'];
-            if ($spec instanceof self) {
-                return self::forEach($spec);
-            }
-            return self::forEach((string)$spec);
-        }
-
-        // Subtree под * → forEach(object(…))
-        $innerSchema = [];
-        foreach ($starNode as $childKey => $childNode) {
-            $innerSchema[$childKey] = self::treeNodeToRule($childNode);
-        }
-        return self::forEach(self::object($innerSchema));
-    }
-
-    /**
      * Рекурсивно превращает узел дерева в Rule.
      *
      * @param array $node
@@ -496,7 +461,19 @@ final class Rule {
         }
 
         if ($hasWildcard) {
-            return self::treeForEachNode($node['*']);
+            if (array_key_exists('__spec__', $node['*'])) {
+                $spec = $node['*']['__spec__'];
+                if ($spec instanceof self) {
+                    return self::forEach($spec);
+                }
+                return self::forEach((string)$spec);
+            }
+
+            $innerSchema = [];
+            foreach ($node['*'] as $childKey => $childNode) {
+                $innerSchema[$childKey] = self::treeNodeToRule($childNode);
+            }
+            return self::forEach(self::object($innerSchema));
         }
 
         // Ordinary object
@@ -518,7 +495,7 @@ final class Rule {
         $UNDEFINED = self::$undefined;
 
         $rule = new self(function(&$v) use ($fn, $UNDEFINED): bool {
-            if (!$fn()) return true;
+            if (!$fn($v)) return true;
             return $v !== $UNDEFINED && $v !== null && $v !== '';
         });
         $rule->order = 100;
@@ -536,7 +513,7 @@ final class Rule {
         $UNDEFINED = self::$undefined;
 
         $rule = new self(function(&$v) use ($fn, $UNDEFINED): bool {
-            if (!$fn()) return true;
+            if (!$fn($v)) return true;
             return $v === $UNDEFINED || $v === null || $v === '';
         });
         $rule->order = 100;
@@ -554,7 +531,7 @@ final class Rule {
         $UNDEFINED = self::$undefined;
 
         $rule = new self(function(&$v) use ($fn, $UNDEFINED): bool {
-            if (!$fn()) return true;
+            if (!$fn($v)) return true;
             $v = $UNDEFINED;
             return false;
         });
@@ -632,10 +609,8 @@ final class Rule {
             return true;
         }))->order(50)->alias('default');
 
-        // required (order 100, skip=true)
-        (static::create(function(&$v) use ($UNDEFINED): bool {
-            return $v !== $UNDEFINED && $v !== null && $v !== '';
-        }))->order(100)->skip(true)->handleError(fn($v) => 'This field is required')->alias('required');
+        // required (order 100, skip=true) — алиас requiredIf(true)
+        static::requiredIf(true)->alias('required');
 
         // nullable (order 100, skip=true — если null/'' => пропускаем остальные правила без ошибки)
         (static::create(function(&$v) use ($UNDEFINED): bool {
