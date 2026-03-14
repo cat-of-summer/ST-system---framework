@@ -2,11 +2,9 @@
 
 namespace ST_system\HTTP;
 
-use ST_system\Traits\HasValidatableParams;
+use ST_system\Rule;
 
 class Request {
-
-    use HasValidatableParams;
 
     private static $instance;
 
@@ -34,32 +32,16 @@ class Request {
     private $data = [];
 
     protected function __init(): void {}
-    protected function __validate(): array { return []; }
+    protected function __schema(): array { return []; }
 
     private function __construct(array $query_params = []) {
-        static::register_rules_map([
-            'mixed' => [null],
-            '*mixed' => [fn($k) => new \Exception("Переданный параметр {$k} не должен быть пуст!"), fn($v) => !empty($v)],
-            'string' => ['', fn($v) => is_string($v), fn($v) => htmlspecialchars($v)],
-            '*string' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть строкой!"), fn($v) => is_string($v), fn($v) => htmlspecialchars($v)],
-            'bool' => [false, 'after' => fn($v) => (bool)$v],
-            '*bool' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть булевым значением!"), fn($v) => !is_null($v), 'after' => fn($v) => (bool)$v],
-            'int' => [0, fn($v) => is_int($v), fn($v) => (int)$v],
-            '*int' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть числом!"), fn($v) => is_int($v), fn($v) => (int)$v],
-            'email' => ['', fn($v) => filter_var($v, FILTER_VALIDATE_EMAIL)],
-            '*email' => [fn($k) => new \Exception("Переданный параметр {$k} не является электронной почтой!"), fn($v) => filter_var($v, FILTER_VALIDATE_EMAIL)],
-            'array' => [null, fn($v) => is_array($v)],
-            '*array' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть массивом!"), fn($v) => is_array($v)],
-            'files' => [null, fn($v) => !empty($v)],
-            '*files' => [fn($k) => new \Exception("Переданный параметр {$k} должен быть файлом!"), fn($v) => !empty($v)],
-            'files--images' => [[], fn($v) => is_array($v), 'after' => fn($v) => array_values(array_filter($v, fn($f) => in_array($f['extenstion'], ['png', 'jpg', 'webp'])))],
-            'files--documents' => [[], fn($v) => is_array($v), 'after' => fn($v) => array_values(array_filter($v, fn($f) => in_array($f['extenstion'], ['doc', 'docx', 'odt', 'pdf'])))],
-        ]);
+        Rule::init(true);
 
         $this->data['query'] = $query_params;
 
-        if (!empty($this->__validate()))
-            $this->validate($this->__validate());
+        $schema = $this->__schema();
+        if (!empty($schema))
+            $this->validate($schema);
 
         $this->__init();
     }
@@ -80,26 +62,21 @@ class Request {
         return $this;
     }
 
-    private function validate(array $params) {
+    private function validate(array $schema): array {
         $this->data();
 
-        static::prepare_params($params, $this->data['data']);
+        $errors = Rule::object($schema)->apply($this->data['data']);
 
-        foreach (['get', 'post', 'query', 'files'] as $key)
-            foreach ($this->data[$key] as $k => $v)
-                if ($v == null) {
+        foreach (['get', 'post', 'query', 'files'] as $key) {
+            foreach (array_keys($this->data[$key]) as $k) {
+                if (array_key_exists($k, $this->data['data']))
+                    $this->data[$key][$k] = $this->data['data'][$k];
+                else
                     unset($this->data[$key][$k]);
-                    unset($this->data['data'][$k]);
-                }
-        
-        return $this;
-    }
+            }
+        }
 
-    private function filter(array $params) {
-        $this->data();
-
-        //Тоже самое что validate, но не удаляет неиспользованные ключи
-        return $this;
+        return $errors;
     }
 
     final public function __call(string $name, array $arguments) {
