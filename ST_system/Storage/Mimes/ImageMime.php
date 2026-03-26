@@ -434,10 +434,36 @@ class ImageMime extends Mime {
                 $image->writeImage($config['file']);
             break;
             case 'gd':
-                static::config('formats.gd')[$config['extension']]['function'](...[
+                $function = static::config('formats.gd')[$config['extension']]['function'];
+
+                if ($config['extension'] === 'webp' && !imageistruecolor($image)) {
+
+                    $trueColor = imagecreatetruecolor(
+                        imagesx($image),
+                        imagesy($image)
+                    );
+
+                    imagealphablending($trueColor, false);
+                    imagesavealpha($trueColor, true);
+
+                    imagecopy(
+                        $trueColor,
+                        $image,
+                        0, 0, 0, 0,
+                        imagesx($image),
+                        imagesy($image)
+                    );
+
+                    $image = $trueColor;
+                }
+
+                $function(...[
                     $image,
                     $config['file'],
-                    ...(!static::config('formats.gd')[$config['extension']]['has_quality'] ? [] : [$config['quality']])
+                    ...(!static::config('formats.gd')[$config['extension']]['has_quality']
+                        ? []
+                        : [$config['quality']]
+                    )
                 ]);
             break;
         }
