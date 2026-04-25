@@ -57,30 +57,29 @@ final class Config {
         $cacheKey = static::configKey() . '.' . $key;
 
         $cached = static::getFromCache($cacheKey);
-        
-        if ($cached !== static::sentinel())
-            return $cached;
 
-        if (static::$configPath !== '') {
-            if (is_dir(static::$configPath)) {
-                $fileKey = explode('.', $key)[0];
-                if (!array_key_exists($fileKey, static::$cache[static::configKey()] ?? [])) {
-                    $base = rtrim(static::$configPath, '/\\') . DIRECTORY_SEPARATOR . $fileKey;
-                    foreach ([$base . '.php', $base . '.json', $base] as $path) {
-                        if (file_exists($path) && is_file($path)) {
-                            static::$cache[static::configKey()][$fileKey] = static::parseFile($path);
-                            break;
-                        }
+        if ($cached !== static::sentinel()) return $cached;
+
+        if (static::$configPath === '') return $default;
+
+        if (is_dir(static::$configPath)) {
+            $fileKey = explode('.', $key)[0];
+            if (!array_key_exists($fileKey, static::$cache[static::configKey()] ?? [])) {
+                $base = rtrim(static::$configPath, '/\\') . DIRECTORY_SEPARATOR . $fileKey;
+                foreach ([$base . '.php', $base . '.json', $base] as $path) {
+                    if (file_exists($path) && is_file($path)) {
+                        static::$cache[static::configKey()][$fileKey] = static::parseFile($path);
+                        break;
                     }
                 }
-            } elseif (is_file(static::$configPath) && !array_key_exists(static::fileKey(), static::$cache[static::configKey()] ?? [])) {
-                $data = static::parseFile(static::$configPath);
-                static::$cache[static::configKey()] = array_merge(
-                    static::$cache[static::configKey()] ?? [],
-                    $data,
-                    [static::fileKey() => true]
-                );
             }
+        } elseif (is_file(static::$configPath) && !array_key_exists(static::fileKey(), static::$cache[static::configKey()] ?? [])) {
+            $data = static::parseFile(static::$configPath);
+            static::$cache[static::configKey()] = array_merge(
+                static::$cache[static::configKey()] ?? [],
+                $data,
+                [static::fileKey() => true]
+            );
         }
 
         $cached = static::getFromCache($cacheKey);
