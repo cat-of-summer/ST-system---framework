@@ -10,9 +10,9 @@ final class Config {
     private static string $configPath = '';
 
     public static function init(array $params = []): void {
-        static $inited = false;
+        static $initialized = false;
 
-        if ($inited)
+        if ($initialized)
             throw new \LogicException('Config::init() может быть вызван только один раз.');
 
         $configPath = $params['config_path'] ?? '';
@@ -32,7 +32,7 @@ final class Config {
             \Dotenv\Dotenv::createImmutable($dotenvDir)->safeLoad();
 
         static::$configPath = $configPath;
-        $inited = true;
+        $initialized = true;
     }
 
     public static function reload(): void {
