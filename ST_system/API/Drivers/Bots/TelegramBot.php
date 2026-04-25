@@ -133,7 +133,11 @@ final class TelegramBot extends IntegrationDriver {
         };
 
         $this->registerMethodsMap([
-            'getUpdates' => [],
+            'getUpdates' => [
+                'params' => [
+                    'offset'       => 'sometimes|int'
+                ]
+            ],
             'sendMessage' => [
                 'params' => [
                     'chat_id'      => 'required|int',
@@ -195,6 +199,31 @@ final class TelegramBot extends IntegrationDriver {
             'deleteWebhook' => [],
             'getWebhookInfo' => [],
         ]);
-
     }
+
+    public function handleMessage(callable $a): void {
+        static $offset = 0;
+
+        $response = $this->call('getUpdates', [
+            'offset' => $offset + 1
+        ]);
+
+        if (!$response['ok']) return;
+        
+        $last_update_id = $offset;
+
+        $updates = $response['result'] ?? [];
+
+        foreach ($updates as $update) {
+            try {
+                if (!$a($update)) break;
+                
+                $last_update_id = $update['update_id'];
+
+            } catch (\Throwable $th) { break; }
+        }
+
+        $offset = $last_update_id;
+    }
+
 }
