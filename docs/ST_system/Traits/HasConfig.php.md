@@ -1,0 +1,1 @@
+# HasConfig.php

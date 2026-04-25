@@ -1,0 +1,1 @@
+# yandex-medical-feed.php

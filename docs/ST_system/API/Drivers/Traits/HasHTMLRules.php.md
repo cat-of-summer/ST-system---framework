@@ -1,0 +1,1 @@
+# HasHTMLRules.php

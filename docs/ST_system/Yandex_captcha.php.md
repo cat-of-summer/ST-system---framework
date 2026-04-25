@@ -1,0 +1,1 @@
+# Yandex_captcha.php

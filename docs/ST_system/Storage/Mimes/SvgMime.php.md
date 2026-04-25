@@ -1,0 +1,1 @@
+# SvgMime.php
