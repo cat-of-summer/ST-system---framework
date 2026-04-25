@@ -11,45 +11,47 @@ final class File {
 
     use HasConfig;
 
-    private static array $CONFIG = [
-        'cache' => [
-            'dir' => '~/cache/',
-            'ttl' => 3600
-        ],
-        'mimes' => [
-            'extensions' => [
-                'js' => 'application/javascript',
-                'json' => 'application/json',
-                'css' => 'text/css',
-                'woff2' => 'font/woff2',
-                'woff' => 'font/woff',
-                'ttf' => 'font/ttf',
-                'eot' => 'font/eot',
-                'otf' => 'font/otf',
-                'svg' => 'image/svg+xml'
+    protected static function getDefaultConfig(): array {
+        return [
+            'cache' => [
+                'dir' => '~/cache/',
+                'ttl' => 3600
             ],
-            'services' => [
-                'image/svg+xml' => Mimes\SvgMime::class,
-                'text/plain' => Mimes\TextPlainMime::class,
-                'text/css' => Mimes\CssMime::class,
-                'application/javascript' => Mimes\JavaScriptMime::class,
-                'application/json' => Mimes\JsonMime::class,
-                'font/' => Mimes\FontMime::class,
-                'image/' => Mimes\ImageMime::class,
+            'mimes' => [
+                'extensions' => [
+                    'js' => 'application/javascript',
+                    'json' => 'application/json',
+                    'css' => 'text/css',
+                    'woff2' => 'font/woff2',
+                    'woff' => 'font/woff',
+                    'ttf' => 'font/ttf',
+                    'eot' => 'font/eot',
+                    'otf' => 'font/otf',
+                    'svg' => 'image/svg+xml'
+                ],
+                'services' => [
+                    'image/svg+xml' => Mimes\SvgMime::class,
+                    'text/plain' => Mimes\TextPlainMime::class,
+                    'text/css' => Mimes\CssMime::class,
+                    'application/javascript' => Mimes\JavaScriptMime::class,
+                    'application/json' => Mimes\JsonMime::class,
+                    'font/' => Mimes\FontMime::class,
+                    'image/' => Mimes\ImageMime::class,
+                ]
+            ],
+            'fetch' => [
+                'connect_timeout' => 10,
+                'timeout' => 300,
+                'max_attempts' => 15,
+            ],
+            'find' => [
+                'max_files' => 50,
+                'sym_links' => false,
+                'recursive' => true,
+                'hidden_files' => false,
             ]
-        ],
-        'fetch' => [
-            'connect_timeout' => 10,
-            'timeout' => 300,
-            'max_attempts' => 15,
-        ],
-        'find' => [
-            'max_files' => 50,
-            'sym_links' => false,
-            'recursive' => true,
-            'hidden_files' => false,
-        ]
-    ];
+        ];
+    }
 
     public static function make(string $path) { return new static($path); }
 

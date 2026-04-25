@@ -10,13 +10,15 @@ abstract class IntegrationDriver {
 
     use HasConfig;
 
-    protected static array $CONFIG = [
-        'endpoint'  => '',
-        'cache' => [
-            'dir' => '',
-            'ttl' => 3600,
-        ],
-    ];
+    protected static function getDefaultConfig(): array {
+        return [
+            'endpoint'  => '',
+            'cache' => [
+                'dir' => '',
+                'ttl' => 3600,
+            ],
+        ];
+    }
 
     private array $listeners   = [];
     private array $methods_map = [];

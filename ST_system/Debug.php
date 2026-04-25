@@ -9,13 +9,15 @@ final class Debug {
 
     use HasConfig;
 
-    protected static array $CONFIG = [
-        'timestamp_format_output' => 'd-m-Y H:i:s',
-        'timestamp_format_file' => 'd-m-Y~H-i-s',
-        'dir' => '~logs',
-        'file' => 'log.html',
-        'output_type' => 'json_encode'
-    ];
+    protected static function getDefaultConfig(): array {
+        return [
+            'timestamp_format_output' => 'd-m-Y H:i:s',
+            'timestamp_format_file' => 'd-m-Y~H-i-s',
+            'dir' => '~logs',
+            'file' => 'log.html',
+            'output_type' => 'json_encode'
+        ];
+    }
 
     private static array $dumper_counter = [];
     private static array $timers = [];

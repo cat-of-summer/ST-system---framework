@@ -97,6 +97,10 @@ final class Config {
         return static::getFromCache($key . '.' . $subKey);
     }
 
+    public static function hasImmutableConfig(string $key, string $subKey): bool {
+        return static::getFromCache($key . '.' . $subKey) !== static::sentinel();
+    }
+
     public static function setImmutableConfig(string $key, string $subKey, $value): void {
         static::writeTo($key . '.' . $subKey, $value);
     }

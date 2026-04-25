@@ -3,23 +3,18 @@
 namespace ST_system;
 
 use ST_system\Traits\HasConfig;
-use ST_system\Traits\HasValidatableParams;
 
 final class Access {
 
     use HasConfig;
-    use HasValidatableParams;
 
-    private static array $CONFIG = [
-        'password_name' => 'pass',
-        'request_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
-    ];
+    protected static function getDefaultConfig(): array {
+        return [
+            'password_name' => 'pass',
+            'request_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
+        ];
+    }
     
-    private const config = [
-        'password_name' => 'pass',
-        'request_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
-    ];
-
     private static $block_password = [
         'name' => null,
         'value' => null
@@ -40,7 +35,7 @@ final class Access {
             ]
         */
 
-        $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config['password_name'];
+        $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config('password_name');
         $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm');
         $onFail_func = (($PARAMS['onFail'] ?? null) instanceof \Closure)
             ? $PARAMS['onFail'] 
@@ -63,7 +58,7 @@ final class Access {
             ]
         */
 
-        $login = isset($PARAMS['login']) ? htmlspecialchars($PARAMS['login']) : self::config['password_name'];
+        $login = isset($PARAMS['login']) ? htmlspecialchars($PARAMS['login']) : self::config('password_name');
         $password = isset($PARAMS['password']) ? htmlspecialchars($PARAMS['password']) : date('dm');
         
         if (
@@ -79,7 +74,7 @@ final class Access {
     }
 
     public static function call(callable $f, array $PARAMS = []) {
-        $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config['password_name'];
+        $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config('password_name');
         $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm');
 
         if (isset($_REQUEST[$password_name]) && ($_REQUEST[$password_name] == $password_value))
@@ -95,7 +90,7 @@ final class Access {
         */
 
         self::$block_password = [
-            'name' => isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config['password_name'],
+            'name' => isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config('password_name'),
             'value' => isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm')
         ];
 
@@ -172,8 +167,8 @@ final class Access {
             : [];
 
         $allowed_methods = (isset($PARAMS['methods']) && is_array($PARAMS['methods'])) 
-            ? array_intersect(array_map('strtoupper', $PARAMS['methods']), self::config['request_methods'])
-            : self::config['request_methods'];
+            ? array_intersect(array_map('strtoupper', $PARAMS['methods']), self::config('request_methods'))
+            : self::config('request_methods');
 
         $allowed_headers = (isset($PARAMS['headers']) && is_array($PARAMS['headers'])) 
             ? array_map('htmlspecialchars', $PARAMS['headers']) 

@@ -560,10 +560,12 @@ final class Assets {
 
     use HasConfig;
 
-    protected static array $CONFIG = [
-        'default_buffer' => 'head',
-        'bufferization' => true
-    ];
+    protected static function getDefaultConfig(): array {
+        return [
+            'default_buffer' => 'head',
+            'bufferization' => true
+        ];
+    }
 
     private static $buffers = [];
     private static $stack = [];

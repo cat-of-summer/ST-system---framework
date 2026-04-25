@@ -9,11 +9,13 @@ final class Cache {
 
     use HasConfig;
 
-    private static array $CONFIG = [
-        'dir' => '~/cache/',
-        'file' => 'data',
-        'ttl' => 3600
-    ];
+    protected static function getDefaultConfig(): array {
+        return [
+            'dir' => '~/cache/',
+            'file' => 'data',
+            'ttl' => 3600
+        ];
+    }
 
     private string $base_dir;
     private $raw_key;

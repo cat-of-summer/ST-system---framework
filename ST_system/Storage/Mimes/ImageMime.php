@@ -11,92 +11,94 @@ class ImageMime extends Mime {
 
     use HasConfig;
 
-    protected static array $CONFIG = [
-        'cache_dir' => '~/cache/',
-        'convert' => [
-            'config' => [
-                'quality' => 90,
-                'force' => false
+    protected static function getDefaultConfig(): array {
+        return [
+            'cache_dir' => '~/cache/',
+            'convert' => [
+                'config' => [
+                    'quality' => 90,
+                    'force' => false
+                ]
+            ],
+            'formats' => [
+                'gd' => [
+                    'jpg'  => [
+                        'has_quality' => true, 
+                        'function' => 'imagejpeg'
+                    ],
+                    'jpeg' => [
+                        'has_quality' => true, 
+                        'function' => 'imagejpeg'
+                    ],
+                    'png'  => [
+                        'has_quality' => false, 
+                        'function' => 'imagepng'
+                    ],
+                    // 'gif'  => [
+                    //     'has_quality' => false, 
+                    //     'function' => 'imagegif'
+                    // ],
+                    'webp' => [
+                        'has_quality' => true, 
+                        'function' => 'imagewebp'
+                    ],
+                    'bmp'  => [
+                        'has_quality' => false, 
+                        'function' => 'imagebmp'
+                    ],
+                    'gd'   => [
+                        'has_quality' => false, 
+                        'function' => 'imagegd'
+                    ],
+                    'gd2'  => [
+                        'has_quality' => false, 
+                        'function' => 'imagegd2'
+                    ],
+                ],
+                'imagick' => [
+                    'jpg' => true,
+                    'jpeg' => true,
+                    // 'gif' => true,
+                    'webp' => true,
+                    'bmp' => true,
+                    'tiff' => true,
+                    'ico' => true,
+                    'gd' => true,
+                    'gd2' => true,
+                ]
+            ],
+            'resize' => [
+                'config' => [
+                    'force' => false,
+                    'object-fit' => 'fill'
+                ],
+                'viewports' => [
+                    'xs' => 359.98,
+                    'sm' => 767.98,
+                    'md' => 1023.98,
+                    'lp' => 1279.98,
+                    'lg' => 1535.98,
+                    'dt' => 1919.98,
+                    'xl' => false,
+                ],
+                'sizes' => [
+                    'tiny' => 64,
+                    'small' => 128,
+                    'thumb' => 256,
+                    'preview' => 480,
+                    'medium' => 720,
+                    'large' => 1280,
+                    'huge' => 1600,
+                    'hd' => 1920
+                ],
+                'object-fit' => [
+                    'cover',
+                    'contain',
+                    'fill'
+                ]
             ]
-        ],
-        'formats' => [
-            'gd' => [
-                'jpg'  => [
-                    'has_quality' => true, 
-                    'function' => 'imagejpeg'
-                ],
-                'jpeg' => [
-                    'has_quality' => true, 
-                    'function' => 'imagejpeg'
-                ],
-                'png'  => [
-                    'has_quality' => false, 
-                    'function' => 'imagepng'
-                ],
-                // 'gif'  => [
-                //     'has_quality' => false, 
-                //     'function' => 'imagegif'
-                // ],
-                'webp' => [
-                    'has_quality' => true, 
-                    'function' => 'imagewebp'
-                ],
-                'bmp'  => [
-                    'has_quality' => false, 
-                    'function' => 'imagebmp'
-                ],
-                'gd'   => [
-                    'has_quality' => false, 
-                    'function' => 'imagegd'
-                ],
-                'gd2'  => [
-                    'has_quality' => false, 
-                    'function' => 'imagegd2'
-                ],
-            ],
-            'imagick' => [
-                'jpg' => true,
-                'jpeg' => true,
-                // 'gif' => true,
-                'webp' => true,
-                'bmp' => true,
-                'tiff' => true,
-                'ico' => true,
-                'gd' => true,
-                'gd2' => true,
-            ]
-        ],
-        'resize' => [
-            'config' => [
-                'force' => false,
-                'object-fit' => 'fill'
-            ],
-            'viewports' => [
-                'xs' => 359.98,
-                'sm' => 767.98,
-                'md' => 1023.98,
-                'lp' => 1279.98,
-                'lg' => 1535.98,
-                'dt' => 1919.98,
-                'xl' => false,
-            ],
-            'sizes' => [
-                'tiny' => 64,
-                'small' => 128,
-                'thumb' => 256,
-                'preview' => 480,
-                'medium' => 720,
-                'large' => 1280,
-                'huge' => 1600,
-                'hd' => 1920
-            ],
-            'object-fit' => [
-                'cover',
-                'contain',
-                'fill'
-            ]
-        ]
-    ];
+        ];
+    }
 
     private static string $IMAGE_DRIVER = '';
 

@@ -9,30 +9,32 @@ class FontMime extends Mime {
 
     use HasConfig;
 
-    protected static array $CONFIG = [
-        'weight' => [
-            'thin' => 100,
-            'extralight' => 200,
-            'light' => 300,
-            'regular' => 400,
-            'medium' => 500,
-            'semibold' => 600,
-            'extrabold' => 800,
-            'bold' => 700,
-            'black' => 900,
-        ],
-        'style' => [
-            'italic' => 'italic',
-            'oblique' => 'oblique'
-        ],
-        'format' => [
-            'woff2' => 'woff2',
-            'woff'  => 'woff',
-            'ttf'   => 'truetype',
-            'otf'   => 'opentype',
-            'eot'   => 'embedded-opentype'
-        ]
-    ];
+    protected static function getDefaultConfig(): array {
+        return [
+            'weight' => [
+                'thin' => 100,
+                'extralight' => 200,
+                'light' => 300,
+                'regular' => 400,
+                'medium' => 500,
+                'semibold' => 600,
+                'extrabold' => 800,
+                'bold' => 700,
+                'black' => 900,
+            ],
+            'style' => [
+                'italic' => 'italic',
+                'oblique' => 'oblique'
+            ],
+            'format' => [
+                'woff2' => 'woff2',
+                'woff'  => 'woff',
+                'ttf'   => 'truetype',
+                'otf'   => 'opentype',
+                'eot'   => 'embedded-opentype'
+            ]
+        ];
+    }
 
     public function parseFilename(): array {
         $file = $this->file->getBasename();
