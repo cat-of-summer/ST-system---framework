@@ -7,7 +7,7 @@ final class Config {
     private static array $cache = [];
     private static string $configPath = '';
 
-    public static function init(array $params): void {
+    public static function init(array $params = []): void {
         static $inited = false;
 
         if ($inited)
