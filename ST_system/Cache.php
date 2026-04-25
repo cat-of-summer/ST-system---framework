@@ -111,15 +111,10 @@ final class Cache {
     private static function make(...$args): static { return new static(...$args); }
 
     public function __construct($key, array $config = []) {
-        // Rule::object([
-        //     'dir'  => 'default:' . static::config('dir')  . '|string',
-        //     'file' => 'default:' . static::config('file') . '|string',
-        //     'ttl'  => 'default:' . static::config('ttl')  . '|int',
-        // ])->apply($config);
+        static::hasConfigInit();
 
-        $config['dir'] = ($config['dir'] ?? false) ?: static::config('dir');
-        $config['file'] = ($config['file'] ?? false) ?: static::config('file');
-        $config['ttl'] = ($config['ttl'] ?? false) ?: static::config('ttl');
+        // foreach (array_keys(static::getDefaultConfig()) as $k)
+        //     Rule::get("defaultConfig:{$k}")->apply($config[$k] ??= null);
 
         $this->base_dir = Main::preparePath($config['dir'], 3);
         

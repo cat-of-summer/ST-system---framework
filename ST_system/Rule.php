@@ -23,8 +23,8 @@ final class Rule {
     private $params = [];
     /** @var bool */
     private $frozen = false;
-    /** @var bool Видит ли правило UNDEFINED-сентинел (true) или null (false) */
-    private bool $seesUndefined = false;
+    /** @var bool Видит ли правило sentinel (true) или null (false) */
+    private bool $seesSentinel = false;
 
     private function __construct(?\Closure $callback = null) {
         self::init(false);
@@ -82,6 +82,12 @@ final class Rule {
         return $this;
     }
 
+    public function seesSentinel(bool $s = true): self {
+        $this->guardFrozen();
+        $this->seesSentinel = $s;
+        return $this;
+    }
+
     // ─── copy (private) ──────────────────────────────────────────────
 
     private function copy(): self {
@@ -117,8 +123,7 @@ final class Rule {
      * @return array{0: bool, 1: string[]}
      */
     private function execute(&$data): array {
-        $UNDEFINED = self::sentinel();
-        if (!$this->seesUndefined && $data === $UNDEFINED) {
+        if (!$this->seesSentinel && Rule::isSentinel($data)) {
             $masked = null;
             $result = $this->executeRaw($masked);
             if ($masked !== null) $data = $masked;
@@ -285,8 +290,7 @@ final class Rule {
                 return $subRules[0];
             }
 
-            // create(string) composite: >1 правил, sub-rules сами решают маскировку
-            $composite = new self(function(&$data) use ($subRules): array {
+            return new self(function(&$data) use ($subRules): array {
                 $errors = [];
                 foreach ($subRules as $rule) {
                     [$passed, $ruleErrors] = $rule->execute($data);
@@ -296,9 +300,7 @@ final class Rule {
                     if (!$passed && $rule->skip) break;
                 }
                 return $errors;
-            });
-            $composite->seesUndefined = true;
-            return $composite;
+            })->seesSentinel();
         }
 
         if (is_array($spec)) {
@@ -311,8 +313,7 @@ final class Rule {
                 return $subRules[0];
             }
 
-            // create(array) composite: >1 правил, sub-rules сами решают маскировку
-            $composite = new self(function(&$data) use ($subRules): array {
+            return new self(function(&$data) use ($subRules): array {
                 $errors = [];
                 foreach ($subRules as $rule) {
                     [$passed, $ruleErrors] = $rule->execute($data);
@@ -322,9 +323,7 @@ final class Rule {
                     if (!$passed && $rule->skip) break;
                 }
                 return $errors;
-            });
-            $composite->seesUndefined = true;
-            return $composite;
+            })->seesSentinel();
         }
 
         throw new \InvalidArgumentException('Rule::create() expects string, Closure, or array');
@@ -370,16 +369,15 @@ final class Rule {
             $compiled[$key] = self::compileFieldRules($spec);
         }
 
-        $objectRule = new self(function(&$data) use ($compiled): array {
+        return self::create(function(&$data) use ($compiled): array {
             if (is_object($data)) $data = (array)$data;
             if (!is_array($data)) return ['Expected array or object'];
 
             $errors = [];
             $result = [];
-            $UNDEFINED = self::sentinel();
 
             foreach ($compiled as $key => $rules) {
-                $temp = array_key_exists($key, $data) ? $data[$key] : $UNDEFINED;
+                $temp = array_key_exists($key, $data) ? $data[$key] : self::sentinel();
 
                 foreach ($rules as $rule) {
                     [$passed, $ruleErrors] = $rule->execute($temp);
@@ -389,16 +387,14 @@ final class Rule {
                     if (!$passed && $rule->skip) break;
                 }
 
-                if ($temp !== $UNDEFINED) {
+                if (!self::isSentinel($temp)) {
                     $result[$key] = $temp;
                 }
             }
 
             $data = $result;
             return $errors;
-        });
-        $objectRule->seesUndefined = true;
-        return $objectRule;
+        })->seesSentinel();
     }
 
     /**
@@ -421,7 +417,7 @@ final class Rule {
             throw new \InvalidArgumentException('Rule::forEach() expects string, Closure, or Rule');
         }
 
-        $forEachRule = new self(function(&$data) use ($rules): array {
+        return self::create(function(&$data) use ($rules): array {
             if (!is_array($data) && !($data instanceof \Traversable)) {
                 return ['Expected iterable'];
             }
@@ -438,9 +434,7 @@ final class Rule {
             }
             unset($item);
             return $errors;
-        });
-        $forEachRule->seesUndefined = true;
-        return $forEachRule;
+        })->seesSentinel();
     }
 
     // ─── Плоская (dot-notation) схема ────────────────────────────────
@@ -520,17 +514,15 @@ final class Rule {
     public static function requiredIf($cond): Rule {
         self::init(false);
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
-        $UNDEFINED = self::sentinel();
 
-        $rule = new self(function(&$v) use ($fn, $UNDEFINED): bool {
+        return self::create(function(&$v) use ($fn): bool {
             if (!$fn($v)) return true;
-            return $v !== $UNDEFINED && $v !== null && $v !== '';
-        });
-        $rule->order = 100;
-        $rule->skip  = true;
-        $rule->handleError = fn($v) => 'This field is required';
-        $rule->seesUndefined = true;
-        return $rule;
+            return !self::isSentinel($v) && $v !== null && $v !== '';
+        })
+        ->order(100)
+        ->skip()
+        ->seesSentinel()
+        ->handleError(fn($v) => 'This field is required');
     }
 
     /**
@@ -539,17 +531,15 @@ final class Rule {
     public static function prohibitedIf($cond): Rule {
         self::init(false);
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
-        $UNDEFINED = self::sentinel();
 
-        $rule = new self(function(&$v) use ($fn, $UNDEFINED): bool {
+        return self::create(function(&$v) use ($fn): bool {
             if (!$fn($v)) return true;
-            return $v === $UNDEFINED || $v === null || $v === '';
-        });
-        $rule->order = 100;
-        $rule->skip  = true;
-        $rule->handleError = fn($v) => 'This field is not allowed';
-        $rule->seesUndefined = true;
-        return $rule;
+            return Rule::isSentinel($v) || $v === null || $v === '';
+        })
+        ->order(100)
+        ->skip()
+        ->seesSentinel()
+        ->handleError(fn($v) => 'This field is not allowed');
     }
 
     /**
@@ -558,17 +548,15 @@ final class Rule {
     public static function excludeIf($cond): Rule {
         self::init(false);
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
-        $UNDEFINED = self::sentinel();
 
-        $rule = new self(function(&$v) use ($fn, $UNDEFINED): bool {
+        return self::create(function(&$v) use ($fn): bool {
             if (!$fn($v)) return true;
-            $v = $UNDEFINED;
+            $v = self::sentinel();
             return false;
-        });
-        $rule->order = 0;
-        $rule->skip  = true;
-        $rule->seesUndefined = true;
-        return $rule;
+        })
+        ->order(0)
+        ->skip()
+        ->seesSentinel();
     }
 
     /**
@@ -580,7 +568,7 @@ final class Rule {
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
         $thenRule = is_string($spec) ? self::create($spec) : $spec;
 
-        return new self(function(&$v) use ($fn, $thenRule) {
+        return self::create(function(&$v) use ($fn, $thenRule) {
             if (!$fn()) return true;
             $errors = $thenRule->apply($v);
             return empty($errors) ? true : $errors;
@@ -589,16 +577,16 @@ final class Rule {
 
     public static function in(array $values): Rule {
         self::init(false);
-        $rule = new self(fn(&$v) => in_array($v, $values, false));
-        $rule->handleError = fn($v) => 'Not a valid option';
-        return $rule;
+
+        return self::create(fn(&$v) => in_array($v, $values, false))
+        ->handleError(fn($v) => 'Not a valid option');
     }
 
     public static function notIn(array $values): Rule {
         self::init(false);
-        $rule = new self(fn(&$v) => !in_array($v, $values, false));
-        $rule->handleError = fn($v) => 'Value is not allowed';
-        return $rule;
+
+        return self::create(fn(&$v) => !in_array($v, $values, false))
+        ->handleError(fn($v) => 'Value is not allowed');
     }
 
     /**
@@ -614,16 +602,13 @@ final class Rule {
      */
     public static function default($value): Rule {
         self::init(false);
-        $UNDEFINED = self::sentinel();
-        $rule = new self(function(&$v) use ($value, $UNDEFINED): bool {
-            if ($v === $UNDEFINED || $v === null || $v === '') {
+
+        return self::create(function(&$v) use ($value): bool {
+            if (Rule::isSentinel($v) || $v === null || $v === '')
                 $v = $value;
-            }
+
             return true;
-        });
-        $rule->order = -1;
-        $rule->seesUndefined = true;
-        return $rule;
+        })->order(-1)->seesSentinel();
     }
 
     /**
@@ -631,9 +616,12 @@ final class Rule {
      */
     public static function regex(string $pattern): Rule {
         self::init(false);
-        $rule = new self(fn(&$v) => is_string($v) && @preg_match($pattern, $v) === 1);
-        $rule->handleError = fn($v) => 'Invalid format';
-        return $rule;
+        return self::create(fn(&$v) => is_string($v) && @preg_match($pattern, $v) === 1)
+        ->handleError(fn($v) => 'Invalid format');
+    }
+
+    public static function isSentinel($value): bool {
+        return $value === self::sentinel();
     }
 
     // ─── Sentinel ────────────────────────────────────────────────────
@@ -658,43 +646,56 @@ final class Rule {
         if ($done) return;
         $done = true;
 
-        $UNDEFINED = self::sentinel();
-
         // sometimes (order 0, skip=true, без handleError — поле пропускается если отсутствует)
-        (static::create(function(&$v) use ($UNDEFINED): bool {
-            return $v !== $UNDEFINED;
-        }))->order(0)->skip(true)->alias('sometimes')
-            ->seesUndefined = true;
+        (static::create(function(&$v): bool {
+            return !self::isSentinel($v);
+        }))
+        ->order(0)
+        ->skip()
+        ->seesSentinel()
+        ->alias('sometimes');
 
-        // default (order -1 — подставляет значение если undefined/null/'';
+        // default (order -1 — подставляет значение если sentinel/null/'';
         //          запускается ДО sometimes, чтобы 'sometimes|default:x|...' работало)
-        (static::create(function(&$v, array $p) use ($UNDEFINED): bool {
-            if ($v === $UNDEFINED || $v === null || $v === '') {
+        (static::create(function(&$v, array $p): bool {
+            if (Rule::isSentinel($v) || $v === null || $v === '') {
                 $v = $p[0] ?? null;
             }
             return true;
-        }))->order(-1)->alias('default')
-            ->seesUndefined = true;
+        }))
+        ->order(-1)
+        ->seesSentinel()
+        ->alias('default');
 
         // required (order 100, skip=true) — алиас requiredIf(true)
         static::requiredIf(true)->alias('required');
 
         // nullable (order 100, skip=true — если null/'' => пропускаем остальные правила без ошибки)
-        (static::create(function(&$v) use ($UNDEFINED): bool {
-            return !($v === null || $v === '' || $v === $UNDEFINED);
-        }))->order(100)->skip(true)->alias('nullable')
-            ->seesUndefined = true;
+        (static::create(function(&$v): bool {
+            return !($v === null || $v === '' || Rule::isSentinel($v));
+        }))
+        ->order(100)
+        ->skip()
+        ->seesSentinel()
+        ->alias('nullable');
 
         // present (order 100, skip=true — поле должно существовать, пустое допустимо)
-        (static::create(function(&$v) use ($UNDEFINED): bool {
-            return $v !== $UNDEFINED;
-        }))->order(100)->skip(true)->handleError(fn($v) => 'This field must be present')->alias('present')
-            ->seesUndefined = true;
+        (static::create(function(&$v): bool {
+            return !self::isSentinel($v);
+        }))
+        ->order(100)
+        ->skip()
+        ->seesSentinel()
+        ->handleError(fn($v) => 'This field must be present')
+        ->alias('present');
 
         // string
         (static::create(function(&$v): bool {
             return is_string($v);
-        }))->order(500)->handleError(fn($v) => 'Must be a string')->alias('string');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be a string')
+        ->alias('string');
 
         // int / integer (проверка + каст)
         (static::create(function(&$v): bool {
@@ -704,7 +705,11 @@ final class Rule {
                 return true;
             }
             return false;
-        }))->order(500)->handleError(fn($v) => 'Must be an integer')->alias('int')->alias('integer');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be an integer')
+        ->alias('int')
+        ->alias('integer');
 
         // float (проверка + каст)
         (static::create(function(&$v): bool {
@@ -714,7 +719,10 @@ final class Rule {
                 return true;
             }
             return false;
-        }))->order(500)->handleError(fn($v) => 'Must be a number')->alias('float');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be a number')
+        ->alias('float');
 
         // bool (проверка + каст)
         (static::create(function(&$v): bool {
@@ -724,22 +732,34 @@ final class Rule {
                 return true;
             }
             return false;
-        }))->order(500)->handleError(fn($v) => 'Must be a boolean')->alias('bool');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be a boolean')
+        ->alias('bool');
 
         // email
         (static::create(function(&$v): bool {
             return is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) !== false;
-        }))->order(500)->handleError(fn($v) => 'Invalid email address')->alias('email');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Invalid email address')
+        ->alias('email');
 
         // url
         (static::create(function(&$v): bool {
             return is_string($v) && filter_var($v, FILTER_VALIDATE_URL) !== false;
-        }))->order(500)->handleError(fn($v) => 'Invalid URL')->alias('url');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Invalid URL')
+        ->alias('url');
 
         // array
         (static::create(function(&$v): bool {
             return is_array($v);
-        }))->order(500)->handleError(fn($v) => 'Must be an array')->alias('array');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be an array')
+        ->alias('array');
 
         // max:n
         (static::create(function(&$v, array $p): bool {
@@ -749,7 +769,10 @@ final class Rule {
             if (is_string($v)) return mb_strlen($v) <= $l;
             if (is_array($v))  return count($v) <= $l;
             return is_numeric($v) && (float)$v <= $l;
-        }))->order(700)->handleError(fn($v) => 'Value is too large')->alias('max');
+        }))
+        ->order(700)
+        ->handleError(fn($v) => 'Value is too large')
+        ->alias('max');
 
         // min:n
         (static::create(function(&$v, array $p): bool {
@@ -759,30 +782,46 @@ final class Rule {
             if (is_string($v)) return mb_strlen($v) >= $l;
             if (is_array($v))  return count($v) >= $l;
             return is_numeric($v) && (float)$v >= $l;
-        }))->order(700)->handleError(fn($v) => 'Value is too small')->alias('min');
+        }))
+        ->order(700)
+        ->handleError(fn($v) => 'Value is too small')
+        ->alias('min');
 
         // in:a,b,c
         (static::create(function(&$v, array $p): bool {
             return in_array($v, $p, false);
-        }))->order(700)->handleError(fn($v) => 'Not a valid option')->alias('in');
+        }))
+        ->order(700)
+        ->handleError(fn($v) => 'Not a valid option')
+        ->alias('in');
 
         // notIn / not_in
         (static::create(function(&$v, array $p): bool {
             return !in_array($v, $p, false);
-        }))->order(700)->handleError(fn($v) => 'Value is not allowed')->alias('notIn')->alias('not_in');
+        }))
+        ->order(700)
+        ->handleError(fn($v) => 'Value is not allowed')
+        ->alias('notIn')
+        ->alias('not_in');
 
         // regex:pattern
         (static::create(function(&$v, array $p): bool {
             $pattern = $p[0] ?? '';
             if (!is_string($v)) return false;
             return @preg_match($pattern, $v) === 1;
-        }))->order(700)->handleError(fn($v) => 'Invalid format')->alias('regex');
+        }))
+        ->order(700)
+        ->handleError(fn($v) => 'Invalid format')
+        ->alias('regex');
 
         // digits:n
         (static::create(function(&$v, array $p): bool {
             $n = (int)($p[0] ?? 0);
             return is_string($v) && ctype_digit($v) && strlen($v) === $n;
-        }))->order(700)->handleError(fn($v) => 'Must be digits only')->alias('digits');
+        }))
+        ->order(700)
+        ->handleError(fn($v) => 'Must be digits only')
+        ->alias('digits');
 
         // between:min,max
         (static::create(function(&$v, array $p): bool {
@@ -791,12 +830,18 @@ final class Rule {
             if (is_string($v)) { $s = mb_strlen($v); return $s >= $min && $s <= $max; }
             if (is_array($v))  { $c = count($v);     return $c >= $min && $c <= $max; }
             return is_numeric($v) && (float)$v >= $min && (float)$v <= $max;
-        }))->order(700)->handleError(fn($v) => 'Value is out of range')->alias('between');
+        }))
+        ->order(700)
+        ->handleError(fn($v) => 'Value is out of range')
+        ->alias('between');
 
         // date
         (static::create(function(&$v): bool {
             return is_string($v) && strtotime($v) !== false;
-        }))->order(500)->handleError(fn($v) => 'Invalid date')->alias('date');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Invalid date')
+        ->alias('date');
 
         // date_format:format
         (static::create(function(&$v, array $p): bool {
@@ -804,20 +849,20 @@ final class Rule {
             if (!is_string($v)) return false;
             $d = \DateTime::createFromFormat($fmt, $v);
             return $d !== false && $d->format($fmt) === $v;
-        }))->order(500)->handleError(fn($v) => 'Invalid date format')->alias('date_format');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Invalid date format')
+        ->alias('date_format');
 
         // json
         (static::create(function(&$v): bool {
             if (!is_string($v)) return false;
             @json_decode($v);
             return json_last_error() === JSON_ERROR_NONE;
-        }))->order(500)->handleError(fn($v) => 'Invalid JSON')->alias('json');
-
-        // uuid
-        (static::create(function(&$v): bool {
-            return is_string($v)
-                && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $v) === 1;
-        }))->order(500)->handleError(fn($v) => 'Invalid UUID')->alias('uuid');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Invalid JSON')
+        ->alias('json');
 
         // starts_with:prefix
         (static::create(function(&$v, array $p): bool {
@@ -826,7 +871,10 @@ final class Rule {
                 if (strncmp($v, $prefix, strlen($prefix)) === 0) return true;
             }
             return false;
-        }))->order(700)->handleError(fn($v) => 'Invalid prefix')->alias('starts_with');
+        }))
+        ->order(700)
+        ->handleError(fn($v) => 'Invalid prefix')
+        ->alias('starts_with');
 
         // ends_with:suffix
         (static::create(function(&$v, array $p): bool {
@@ -836,7 +884,10 @@ final class Rule {
                 if ($len === 0 || substr($v, -$len) === $suffix) return true;
             }
             return false;
-        }))->order(700)->handleError(fn($v) => 'Invalid suffix')->alias('ends_with');
+        }))
+        ->order(700)
+        ->handleError(fn($v) => 'Invalid suffix')
+        ->alias('ends_with');
 
         // contains:substring
         (static::create(function(&$v, array $p): bool {
@@ -845,35 +896,50 @@ final class Rule {
                 if (strpos($v, $sub) !== false) return true;
             }
             return false;
-        }))->order(700)->handleError(fn($v) => 'Must contain')->alias('contains');
+        }))
+        ->order(700)
+        ->handleError(fn($v) => 'Must contain')
+        ->alias('contains');
 
         // trim (order -1, трансформер)
         (static::create(function(&$v): bool {
             if (is_string($v)) $v = trim($v);
             return true;
-        }))->order(-1)->alias('trim');
+        }))
+        ->order(-1)
+        ->alias('trim');
 
         // uppercase (order 1000, трансформер)
         (static::create(function(&$v): bool {
             if (is_string($v)) $v = mb_strtoupper($v);
             return true;
-        }))->order(1000)->alias('uppercase');
+        }))
+        ->order(1000)
+        ->alias('uppercase');
 
         // lowercase (order 1000, трансформер)
         (static::create(function(&$v): bool {
             if (is_string($v)) $v = mb_strtolower($v);
             return true;
-        }))->order(1000)->alias('lowercase');
+        }))
+        ->order(1000)
+        ->alias('lowercase');
 
         // accepted
         (static::create(function(&$v): bool {
             return in_array($v, [true, 1, '1', 'yes', 'on', 'true'], true);
-        }))->order(500)->handleError(fn($v) => 'Must be accepted')->alias('accepted');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be accepted')
+        ->alias('accepted');
 
         // declined
         (static::create(function(&$v): bool {
             return in_array($v, [false, 0, '0', 'no', 'off', 'false'], true);
-        }))->order(500)->handleError(fn($v) => 'Must be declined')->alias('declined');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be declined')
+        ->alias('declined');
 
         // file
         (static::create(function(&$v): bool {
@@ -881,7 +947,10 @@ final class Rule {
                 && isset($v['tmp_name'], $v['error'], $v['size'], $v['name'])
                 && $v['error'] === UPLOAD_ERR_OK
                 && is_uploaded_file($v['tmp_name']);
-        }))->order(500)->handleError(fn($v) => 'Invalid file upload')->alias('file');
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Invalid file upload')
+        ->alias('file');
 
         // mimes:image/jpeg,image/png
         (static::create(function(&$v, array $p): bool {
@@ -890,20 +959,29 @@ final class Rule {
             $finfo = new \finfo(FILEINFO_MIME_TYPE);
             $mime  = $finfo->file($v['tmp_name']);
             return in_array($mime, $p, true);
-        }))->order(600)->handleError(fn($v) => 'Invalid MIME type')->alias('mimes');
+        }))
+        ->order(600)
+        ->handleError(fn($v) => 'Invalid MIME type')
+        ->alias('mimes');
 
         // extension:jpg,png
         (static::create(function(&$v, array $p): bool {
             if (!is_array($v) || !isset($v['name'])) return false;
             $ext = strtolower(pathinfo($v['name'], PATHINFO_EXTENSION));
             return in_array($ext, array_map('strtolower', $p), true);
-        }))->order(600)->handleError(fn($v) => 'Invalid file extension')->alias('extension');
+        }))
+        ->order(600)
+        ->handleError(fn($v) => 'Invalid file extension')
+        ->alias('extension');
 
         // filesize:2048 (килобайты)
         (static::create(function(&$v, array $p): bool {
             if (!is_array($v) || !isset($v['size'])) return false;
             $maxKb = (float)($p[0] ?? 0);
             return $v['size'] <= $maxKb * 1024;
-        }))->order(600)->handleError(fn($v) => 'File exceeds size limit')->alias('filesize');
+        }))
+        ->order(600)
+        ->handleError(fn($v) => 'File exceeds size limit')
+        ->alias('filesize');
     }
 }
