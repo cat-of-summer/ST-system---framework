@@ -11,6 +11,10 @@ final class Mistral extends OpenAICompatibleDriver {
     protected static function getDefaultConfig(): array {
         return [
             'endpoint' => 'https://api.mistral.ai/v1/chat/',
+            'cache' => [
+                'dir' => '',
+                'ttl' => -1,
+            ],
             'models' => [
                 "mistral-small-latest",
                 "mistral-medium-latest",
@@ -29,8 +33,9 @@ final class Mistral extends OpenAICompatibleDriver {
             ]
         ];
     }
-    
+
     private string $token = '';
+    private string $alias = '';
     private array $conversation = [];
     private array $usage = [];
 
@@ -57,6 +62,9 @@ final class Mistral extends OpenAICompatibleDriver {
                     throw new \Exception("Алиас '{$config['alias']}' уже занят в " . static::class);
 
                 static::$INSTANCES[$config['alias']] = $this;
+
+                $this->alias = $config['alias'];
+                $this->conversation = $this->alias ? ($this->cache()->make(static::class)->get($this->alias) ?? []) : [];
             } else {
                 static::$INSTANCES[] = $this;
             }
@@ -82,7 +90,7 @@ final class Mistral extends OpenAICompatibleDriver {
 
     public function ask($input, array $options = []): string {
         static $rule = null;
-        
+
         if ($rule === null)
             $rule = Rule::create(function(&$v) {
                 if (is_string($v))
@@ -91,7 +99,7 @@ final class Mistral extends OpenAICompatibleDriver {
                     $v = [$v];
                 elseif (!is_array($v))
                     return false;
-                
+
                 return Rule::forEach(Rule::object([
                     'role'    => 'required|string|in:assistant,system,user',
                     'content' => 'required|string',
@@ -101,18 +109,48 @@ final class Mistral extends OpenAICompatibleDriver {
 
         $rule->apply($input);
 
-        array_push($this->conversation, ...$input);
+        $conversation = $options['conversation'] ?? false;
 
-        $response = $this->call('completions', array_merge($options, ['messages' => ($options['conversation'] ?? false) ? $input : $this->conversation]));
+        if ($conversation)
+            array_push($this->conversation, ...$input);
 
-        array_push($this->conversation, $response['choices'][0]['message'] ?? []);
+        $response = $this->call('completions', array_merge($options, ['messages' => !$conversation ? $input : $this->conversation]));
+
+        if ($conversation) {
+            array_push($this->conversation, $response['choices'][0]['message'] ?? []);
+
+            if ($this->alias)
+                $this->cache()->make(static::class)->set($this->conversation, 0, $this->alias);
+        }
 
         if (!empty($response['usage']))
             $this->usage[] = array_merge([
                 'id' => $response['id'],
                 'created' => $response['created'],
             ], $response['usage']);
-        
+
         return $response['choices'][0]['message']['content'] ?? '';
+    }
+
+    public function getHistory(int $count = 0, int $start = 0): array {
+        return array_slice($this->conversation, $start, $count ?: null);
+    }
+
+    public function getHistorySize(string $unit = 'b'): int|float {
+        $bytes = mb_strlen(json_encode($this->conversation), '8bit');
+
+        return ($divisor = ['kb' => 1024, 'mb' => 1048576][strtolower($unit)] ?? null)
+            ? $bytes / $divisor
+            : $bytes;
+    }
+
+    public function clearHistory(int $count = 0, int $start = 0): void {
+        if ($count === 0)
+            $this->conversation = [];
+        else
+            array_splice($this->conversation, $start, $count);
+
+        if ($this->alias)
+            $this->cache()->make(static::class)->set($this->conversation, 0, $this->alias);
     }
 }

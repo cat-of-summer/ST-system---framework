@@ -122,9 +122,6 @@ final class File {
             case 'getType':
                 if ($this->isUri()) return 'uri';
                 break;
-            case 'getSize':
-                if ($this->isUri()) return (int)$this->getMeta()['content-length'];
-                break;
             case 'getBasename':
                 if (empty($args)) {
                     $key = Main::serialize(['getBasename', []]);
@@ -434,6 +431,16 @@ final class File {
         }
 
         throw $th;
+    }
+
+    public function getSize(string $unit = 'b'): int|float {
+        $bytes = $this->isUri()
+            ? (int)$this->getMeta()['content-length']
+            : $this->info->getSize();
+
+        return ($divisor = ['kb' => 1024, 'mb' => 1048576, 'gb' => 1073741824][strtolower($unit)] ?? null)
+            ? $bytes / $divisor
+            : $bytes;
     }
 
     public function isUri(): bool {
