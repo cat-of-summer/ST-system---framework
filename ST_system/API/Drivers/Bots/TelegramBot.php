@@ -112,7 +112,7 @@ final class TelegramBot extends IntegrationDriver {
                 'thumbnail'  => 'nullable|url',
                 'caption'    => 'nullable|string',
             ])
-            ->alias('tg_reply_markup');
+            ->alias('tg_media_group');
 
         $this->on('__construct', function(string $token) {
             $this->token = $token;
