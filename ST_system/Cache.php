@@ -113,8 +113,11 @@ final class Cache {
     public function __construct($key, array $config = []) {
         static::hasConfigInit();
 
-        // foreach (array_keys(static::getDefaultConfig()) as $k)
-        //     Rule::get("defaultConfig:{$k}")->apply($config[$k] ??= null);
+        Rule::object([
+            'dir' => 'string|defaultConfig:'.static::class.','.'dir',
+            'file' => 'string|defaultConfig:'.static::class.','.'file',
+            'ttl' => 'int|defaultConfig:'.static::class.','.'ttl'
+        ])->apply($config);
 
         $this->base_dir = Main::preparePath($config['dir'], 3);
         

@@ -22,29 +22,18 @@ trait HasConfig {
     }
 
     public static function hasConfigInit(): void {
-        static $inited = [];
+        static $initialized = [];
 
-        if (isset($inited[static::class])) return;
+        if (isset($initialized[static::class])) return;
 
-        $inited[static::class] = true;
+        $initialized[static::class] = true;
 
-        // Rule::create(function(&$v, array $p): bool {
-        //     $class = $p[0];
-        //     $key = $p[1];
-
-        //     return in_array($v, $p, false);
-
-        //     if ($v === self::sentinel() || $v === null || $v === '') {
-        //         $v = $value;
-        //     }
-
-        //     if 
-
-        //     return true;
-        // })->seesSentinel()->order(-1)->alias('defaultConfig');
-
-        // foreach (array_keys(static::config()) as $key)
-        //     Rule::default(static::config($key))->alias("defaultConfig:{$key}", 1);
+        Rule::create(function(&$v, array $p): bool {
+            if (self::isSentinel($v) || $v === null || $v === '') {
+                $v = $p[0]::config($p[1]);
+            }
+            return true;
+        })->seesSentinel()->order(-1)->alias('defaultConfig');
     }
 
     protected static function getDefaultConfig(): array {

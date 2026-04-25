@@ -123,7 +123,7 @@ final class Rule {
      * @return array{0: bool, 1: string[]}
      */
     private function execute(&$data): array {
-        if (!$this->seesSentinel && Rule::isSentinel($data)) {
+        if (!$this->seesSentinel && self::isSentinel($data)) {
             $masked = null;
             $result = $this->executeRaw($masked);
             if ($masked !== null) $data = $masked;
@@ -138,7 +138,7 @@ final class Rule {
      */
     private function executeRaw(&$data): array {
         if ($this->before !== null) {
-            ($this->before)($data);
+            ($this->before)($data, $this->params);
         }
 
         $errors = [];
@@ -148,7 +148,7 @@ final class Rule {
             try {
                 $result = ($this->callback)($data, $this->params);
             } catch (\Throwable $th) {
-                if ($this->after !== null) ($this->after)($data);
+                if ($this->after !== null) ($this->after)($data, $this->params);
                 return [false, [$th->getMessage()]];
             }
 
@@ -171,7 +171,7 @@ final class Rule {
         }
 
         if ($this->after !== null) {
-            ($this->after)($data);
+            ($this->after)($data, $this->params);
         }
 
         return [$passed, $errors];
@@ -534,7 +534,7 @@ final class Rule {
 
         return self::create(function(&$v) use ($fn): bool {
             if (!$fn($v)) return true;
-            return Rule::isSentinel($v) || $v === null || $v === '';
+            return self::isSentinel($v) || $v === null || $v === '';
         })
         ->order(100)
         ->skip()
@@ -604,7 +604,7 @@ final class Rule {
         self::init(false);
 
         return self::create(function(&$v) use ($value): bool {
-            if (Rule::isSentinel($v) || $v === null || $v === '')
+            if (self::isSentinel($v) || $v === null || $v === '')
                 $v = $value;
 
             return true;
@@ -647,7 +647,7 @@ final class Rule {
         $done = true;
 
         // sometimes (order 0, skip=true, без handleError — поле пропускается если отсутствует)
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             return !self::isSentinel($v);
         }))
         ->order(0)
@@ -657,8 +657,8 @@ final class Rule {
 
         // default (order -1 — подставляет значение если sentinel/null/'';
         //          запускается ДО sometimes, чтобы 'sometimes|default:x|...' работало)
-        (static::create(function(&$v, array $p): bool {
-            if (Rule::isSentinel($v) || $v === null || $v === '') {
+        (self::create(function(&$v, array $p): bool {
+            if (self::isSentinel($v) || $v === null || $v === '') {
                 $v = $p[0] ?? null;
             }
             return true;
@@ -668,11 +668,11 @@ final class Rule {
         ->alias('default');
 
         // required (order 100, skip=true) — алиас requiredIf(true)
-        static::requiredIf(true)->alias('required');
+        self::requiredIf(true)->alias('required');
 
         // nullable (order 100, skip=true — если null/'' => пропускаем остальные правила без ошибки)
-        (static::create(function(&$v): bool {
-            return !($v === null || $v === '' || Rule::isSentinel($v));
+        (self::create(function(&$v): bool {
+            return !($v === null || $v === '' || self::isSentinel($v));
         }))
         ->order(100)
         ->skip()
@@ -680,7 +680,7 @@ final class Rule {
         ->alias('nullable');
 
         // present (order 100, skip=true — поле должно существовать, пустое допустимо)
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             return !self::isSentinel($v);
         }))
         ->order(100)
@@ -690,7 +690,7 @@ final class Rule {
         ->alias('present');
 
         // string
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             return is_string($v);
         }))
         ->order(500)
@@ -698,7 +698,7 @@ final class Rule {
         ->alias('string');
 
         // int / integer (проверка + каст)
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             if (is_int($v)) return true;
             if (is_string($v) && ctype_digit(ltrim($v, '-'))) {
                 $v = (int)$v;
@@ -712,7 +712,7 @@ final class Rule {
         ->alias('integer');
 
         // float (проверка + каст)
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             if (is_float($v)) return true;
             if (is_numeric($v)) {
                 $v = (float)$v;
@@ -725,7 +725,7 @@ final class Rule {
         ->alias('float');
 
         // bool (проверка + каст)
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             if (is_bool($v)) return true;
             if (in_array($v, ['0', '1', 0, 1, 'true', 'false', 'checked'], true)) {
                 $v = is_string($v) ? filter_var($v, FILTER_VALIDATE_BOOLEAN) : (bool)$v;
@@ -738,7 +738,7 @@ final class Rule {
         ->alias('bool');
 
         // email
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             return is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) !== false;
         }))
         ->order(500)
@@ -746,7 +746,7 @@ final class Rule {
         ->alias('email');
 
         // url
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             return is_string($v) && filter_var($v, FILTER_VALIDATE_URL) !== false;
         }))
         ->order(500)
@@ -754,7 +754,7 @@ final class Rule {
         ->alias('url');
 
         // array
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             return is_array($v);
         }))
         ->order(500)
@@ -762,7 +762,7 @@ final class Rule {
         ->alias('array');
 
         // max:n
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             $l = $p[0] ?? null;
             if ($l === null) return true;
             $l = (float)$l;
@@ -775,7 +775,7 @@ final class Rule {
         ->alias('max');
 
         // min:n
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             $l = $p[0] ?? null;
             if ($l === null) return true;
             $l = (float)$l;
@@ -788,7 +788,7 @@ final class Rule {
         ->alias('min');
 
         // in:a,b,c
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             return in_array($v, $p, false);
         }))
         ->order(700)
@@ -796,7 +796,7 @@ final class Rule {
         ->alias('in');
 
         // notIn / not_in
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             return !in_array($v, $p, false);
         }))
         ->order(700)
@@ -805,7 +805,7 @@ final class Rule {
         ->alias('not_in');
 
         // regex:pattern
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             $pattern = $p[0] ?? '';
             if (!is_string($v)) return false;
             return @preg_match($pattern, $v) === 1;
@@ -815,7 +815,7 @@ final class Rule {
         ->alias('regex');
 
         // digits:n
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             $n = (int)($p[0] ?? 0);
             return is_string($v) && ctype_digit($v) && strlen($v) === $n;
         }))
@@ -824,7 +824,7 @@ final class Rule {
         ->alias('digits');
 
         // between:min,max
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             $min = (float)($p[0] ?? 0);
             $max = (float)($p[1] ?? 0);
             if (is_string($v)) { $s = mb_strlen($v); return $s >= $min && $s <= $max; }
@@ -836,7 +836,7 @@ final class Rule {
         ->alias('between');
 
         // date
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             return is_string($v) && strtotime($v) !== false;
         }))
         ->order(500)
@@ -844,7 +844,7 @@ final class Rule {
         ->alias('date');
 
         // date_format:format
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             $fmt = $p[0] ?? '';
             if (!is_string($v)) return false;
             $d = \DateTime::createFromFormat($fmt, $v);
@@ -855,7 +855,7 @@ final class Rule {
         ->alias('date_format');
 
         // json
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             if (!is_string($v)) return false;
             @json_decode($v);
             return json_last_error() === JSON_ERROR_NONE;
@@ -865,7 +865,7 @@ final class Rule {
         ->alias('json');
 
         // starts_with:prefix
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             if (!is_string($v)) return false;
             foreach ($p as $prefix) {
                 if (strncmp($v, $prefix, strlen($prefix)) === 0) return true;
@@ -877,7 +877,7 @@ final class Rule {
         ->alias('starts_with');
 
         // ends_with:suffix
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             if (!is_string($v)) return false;
             foreach ($p as $suffix) {
                 $len = strlen($suffix);
@@ -890,7 +890,7 @@ final class Rule {
         ->alias('ends_with');
 
         // contains:substring
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             if (!is_string($v)) return false;
             foreach ($p as $sub) {
                 if (strpos($v, $sub) !== false) return true;
@@ -902,7 +902,7 @@ final class Rule {
         ->alias('contains');
 
         // trim (order -1, трансформер)
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             if (is_string($v)) $v = trim($v);
             return true;
         }))
@@ -910,7 +910,7 @@ final class Rule {
         ->alias('trim');
 
         // uppercase (order 1000, трансформер)
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             if (is_string($v)) $v = mb_strtoupper($v);
             return true;
         }))
@@ -918,7 +918,7 @@ final class Rule {
         ->alias('uppercase');
 
         // lowercase (order 1000, трансформер)
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             if (is_string($v)) $v = mb_strtolower($v);
             return true;
         }))
@@ -926,7 +926,7 @@ final class Rule {
         ->alias('lowercase');
 
         // accepted
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             return in_array($v, [true, 1, '1', 'yes', 'on', 'true'], true);
         }))
         ->order(500)
@@ -934,7 +934,7 @@ final class Rule {
         ->alias('accepted');
 
         // declined
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             return in_array($v, [false, 0, '0', 'no', 'off', 'false'], true);
         }))
         ->order(500)
@@ -942,7 +942,7 @@ final class Rule {
         ->alias('declined');
 
         // file
-        (static::create(function(&$v): bool {
+        (self::create(function(&$v): bool {
             return is_array($v)
                 && isset($v['tmp_name'], $v['error'], $v['size'], $v['name'])
                 && $v['error'] === UPLOAD_ERR_OK
@@ -953,7 +953,7 @@ final class Rule {
         ->alias('file');
 
         // mimes:image/jpeg,image/png
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             if (!is_array($v) || !isset($v['tmp_name']) || $v['error'] !== UPLOAD_ERR_OK) return false;
             if (!is_uploaded_file($v['tmp_name'])) return false;
             $finfo = new \finfo(FILEINFO_MIME_TYPE);
@@ -965,7 +965,7 @@ final class Rule {
         ->alias('mimes');
 
         // extension:jpg,png
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             if (!is_array($v) || !isset($v['name'])) return false;
             $ext = strtolower(pathinfo($v['name'], PATHINFO_EXTENSION));
             return in_array($ext, array_map('strtolower', $p), true);
@@ -975,7 +975,7 @@ final class Rule {
         ->alias('extension');
 
         // filesize:2048 (килобайты)
-        (static::create(function(&$v, array $p): bool {
+        (self::create(function(&$v, array $p): bool {
             if (!is_array($v) || !isset($v['size'])) return false;
             $maxKb = (float)($p[0] ?? 0);
             return $v['size'] <= $maxKb * 1024;
