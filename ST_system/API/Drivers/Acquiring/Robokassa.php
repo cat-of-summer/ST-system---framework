@@ -3,7 +3,7 @@
 namespace ST_system\API\Drivers\Acquiring;
 
 use ST_system\API\IntegrationDriver;
-use \ST_system\Rule;
+use ST_system\Rule;
 
 /**
  * Robokassa Acquiring API Driver.

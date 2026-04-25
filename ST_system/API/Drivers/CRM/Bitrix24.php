@@ -2,8 +2,8 @@
 
 namespace ST_system\API\Drivers\CRM;
 
-use \ST_system\API\IntegrationDriver;
-use \ST_system\Rule;
+use ST_system\API\IntegrationDriver;
+use ST_system\Rule;
 
 final class Bitrix24 extends IntegrationDriver {
 

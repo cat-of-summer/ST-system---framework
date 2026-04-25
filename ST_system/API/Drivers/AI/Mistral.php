@@ -2,7 +2,7 @@
 
 namespace ST_system\API\Drivers\AI;
 
-use \ST_system\Rule;
+use ST_system\Rule;
 
 final class Mistral extends OpenAICompatibleDriver {
 

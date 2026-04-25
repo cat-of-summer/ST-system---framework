@@ -2,7 +2,7 @@
 
 namespace ST_system;
 
-use \ST_system\Config;
+use ST_system\Config;
 
 final class Main {
 

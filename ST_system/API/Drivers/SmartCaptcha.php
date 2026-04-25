@@ -2,7 +2,7 @@
 
 namespace ST_system\API\Drivers;
 
-use \ST_system\API\IntegrationDriver;
+use ST_system\API\IntegrationDriver;
 
 final class SmartCaptcha extends IntegrationDriver {
 

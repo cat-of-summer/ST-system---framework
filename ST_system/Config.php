@@ -2,6 +2,8 @@
 
 namespace ST_system;
 
+use ST_system\Main;
+
 final class Config {
 
     private static array $cache = [];

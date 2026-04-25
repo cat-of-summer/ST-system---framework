@@ -2,12 +2,12 @@
 
 namespace ST_system\API\Drivers\Bots;
 
-use \ST_system\API\IntegrationDriver;
-use \ST_system\Rule;
+use ST_system\API\IntegrationDriver;
+use ST_system\Rule;
 
 final class TelegramBot extends IntegrationDriver {
 
-    use \ST_system\API\Drivers\Traits\HasHTMLRules;
+    use ST_system\API\Drivers\Traits\HasHTMLRules;
     
     protected static function getHtmlRules(): array {
 
