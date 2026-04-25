@@ -1,0 +1,14 @@
+{
+    "name": "cat-of-summer/php-classes",
+    "description": "ST_system PHP library",
+    "type": "library",
+    "require": {
+        "php": ">=8.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "ST_system\\": "ST_system/"
+        }
+    },
+    "minimum-stability": "dev"
+}
