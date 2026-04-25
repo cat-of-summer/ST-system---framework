@@ -2,6 +2,8 @@
 
 namespace ST_system;
 
+use \ST_system\Config;
+
 final class Main {
 
     public static function timestamp(string $format = ''): string {
@@ -144,7 +146,7 @@ final class Main {
 
     public static function preparePath(string $path, int $depth = 0): string {
         if (strpos($path, '~') === 0)
-            $path = $_SERVER['DOCUMENT_ROOT'].'/'.trim($path, '/~');
+            $path = (Config::env('DOCUMENT_ROOT') ?: Config::env('COMPOSER_ROOT')).'/'.trim($path, '/~');
         elseif (strpos($path, '/') !== 0)
             $path = dirname(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS)[$depth]['file']).'/'.trim($path, '/');
                 

@@ -7,9 +7,6 @@ final class Rule {
     /** @var array<string, Rule> */
     private static $registry = [];
 
-    /** @var object|null  Sentinel: поле не существует */
-    private static $undefined = null;
-
     /** @var \Closure|null */
     private $callback;
     /** @var \Closure|null */
@@ -120,7 +117,7 @@ final class Rule {
      * @return array{0: bool, 1: string[]}
      */
     private function execute(&$data): array {
-        $UNDEFINED = self::$undefined;
+        $UNDEFINED = self::sentinel();
         if (!$this->seesUndefined && $data === $UNDEFINED) {
             $masked = null;
             $result = $this->executeRaw($masked);
@@ -379,7 +376,7 @@ final class Rule {
 
             $errors = [];
             $result = [];
-            $UNDEFINED = self::$undefined;
+            $UNDEFINED = self::sentinel();
 
             foreach ($compiled as $key => $rules) {
                 $temp = array_key_exists($key, $data) ? $data[$key] : $UNDEFINED;
@@ -523,7 +520,7 @@ final class Rule {
     public static function requiredIf($cond): Rule {
         self::init(false);
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
-        $UNDEFINED = self::$undefined;
+        $UNDEFINED = self::sentinel();
 
         $rule = new self(function(&$v) use ($fn, $UNDEFINED): bool {
             if (!$fn($v)) return true;
@@ -542,7 +539,7 @@ final class Rule {
     public static function prohibitedIf($cond): Rule {
         self::init(false);
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
-        $UNDEFINED = self::$undefined;
+        $UNDEFINED = self::sentinel();
 
         $rule = new self(function(&$v) use ($fn, $UNDEFINED): bool {
             if (!$fn($v)) return true;
@@ -561,7 +558,7 @@ final class Rule {
     public static function excludeIf($cond): Rule {
         self::init(false);
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
-        $UNDEFINED = self::$undefined;
+        $UNDEFINED = self::sentinel();
 
         $rule = new self(function(&$v) use ($fn, $UNDEFINED): bool {
             if (!$fn($v)) return true;
@@ -617,7 +614,7 @@ final class Rule {
      */
     public static function default($value): Rule {
         self::init(false);
-        $UNDEFINED = self::$undefined;
+        $UNDEFINED = self::sentinel();
         $rule = new self(function(&$v) use ($value, $UNDEFINED): bool {
             if ($v === $UNDEFINED || $v === null || $v === '') {
                 $v = $value;
@@ -639,21 +636,29 @@ final class Rule {
         return $rule;
     }
 
+    // ─── Sentinel ────────────────────────────────────────────────────
+
+    private static function sentinel(): object {
+        static $sentinel = null;
+
+        if ($sentinel === null) $sentinel = new \stdClass();
+
+        return $sentinel;
+    }
+
     // ─── Инициализация стандартных правил ─────────────────────────────
 
     public static function init(bool $refresh = true): void {
         static $done = false;
 
         if ($refresh) {
-            $done            = false;
-            self::$registry  = [];
-            self::$undefined = null;
+            $done           = false;
+            self::$registry = [];
         }
         if ($done) return;
         $done = true;
 
-        self::$undefined = new \stdClass();
-        $UNDEFINED = self::$undefined;
+        $UNDEFINED = self::sentinel();
 
         // sometimes (order 0, skip=true, без handleError — поле пропускается если отсутствует)
         (static::create(function(&$v) use ($UNDEFINED): bool {
