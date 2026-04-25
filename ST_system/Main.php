@@ -16,7 +16,7 @@ final class Main {
         return $ts;
     }
 
-    public static function plural_form($n, $forms) { //(1, ["яблоко", "яблока", "яблок"]);
+    public static function pluralForm($n, $forms) { //(1, ["яблоко", "яблока", "яблок"]);
         $n = (int)$n;
         return $forms[($n % 10 == 1 && $n % 100 != 11) ? 0 : (($n % 10 >= 2 && $n % 10 <= 4 && ($n % 100 < 10 || $n % 100 >= 20)) ? 1 : 2)];
     }

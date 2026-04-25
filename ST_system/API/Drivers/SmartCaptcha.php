@@ -6,7 +6,7 @@ use \ST_system\API\IntegrationDriver;
 
 final class SmartCaptcha extends IntegrationDriver {
 
-    protected static array $CONFIG = ['endpoint' => 'https://smartcaptcha.yandexcloud.net/', '];
+    protected static array $CONFIG = ['endpoint' => 'https://smartcaptcha.yandexcloud.net/'];
 
     private string $secret;
 

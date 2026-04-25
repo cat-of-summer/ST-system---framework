@@ -55,7 +55,7 @@ final class TelegramBot extends IntegrationDriver {
 
     }
 
-    protected static array $CONFIG = ['endpoint' => 'https://api.telegram.org/bot', '];
+    protected static array $CONFIG = ['endpoint' => 'https://api.telegram.org/bot'];
 
     private string $token;
 

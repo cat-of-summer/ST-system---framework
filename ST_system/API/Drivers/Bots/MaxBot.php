@@ -85,7 +85,7 @@ final class MaxBot extends IntegrationDriver {
 
     }
 
-    protected static array $CONFIG = ['endpoint' => 'https://platform-api.max.ru', '];
+    protected static array $CONFIG = ['endpoint' => 'https://platform-api.max.ru'];
 
     private string $token;
 

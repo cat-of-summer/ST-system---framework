@@ -7,7 +7,7 @@ use \ST_system\Rule;
 
 final class CloudPayments extends IntegrationDriver {
 
-    protected static array $CONFIG = ['endpoint' => 'https://api.cloudpayments.ru/', '];
+    protected static array $CONFIG = ['endpoint' => 'https://api.cloudpayments.ru/'];
 
     private array $SETTINGS = [];
 

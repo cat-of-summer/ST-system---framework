@@ -21,7 +21,7 @@ use \ST_system\Rule;
  */
 final class Robokassa extends IntegrationDriver
 {
-    protected static array $CONFIG = ['endpoint' => 'https://auth.robokassa.ru/', '];
+    protected static array $CONFIG = ['endpoint' => 'https://auth.robokassa.ru/'];
 
     private array $SETTINGS = [];
 

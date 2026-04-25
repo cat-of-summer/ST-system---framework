@@ -7,7 +7,7 @@ use \ST_system\Rule;
 
 final class TBank extends IntegrationDriver {
 
-    protected static array $CONFIG = ['endpoint' => 'https://securepay.tinkoff.ru/v2/', '];
+    protected static array $CONFIG = ['endpoint' => 'https://securepay.tinkoff.ru/v2/'];
 
     private array $SETTINGS = [];
 
