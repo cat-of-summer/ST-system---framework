@@ -111,6 +111,12 @@ final class Cache {
     private static function make(...$args): static { return new static(...$args); }
 
     public function __construct($key, array $config = []) {
+        // Rule::object([
+        //     'dir'  => 'default:' . static::config('dir')  . '|string',
+        //     'file' => 'default:' . static::config('file') . '|string',
+        //     'ttl'  => 'default:' . static::config('ttl')  . '|int',
+        // ])->apply($config);
+
         $config['dir'] = ($config['dir'] ?? false) ?: static::config('dir');
         $config['file'] = ($config['file'] ?? false) ?: static::config('file');
         $config['ttl'] = ($config['ttl'] ?? false) ?: static::config('ttl');

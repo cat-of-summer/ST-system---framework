@@ -12,20 +12,12 @@ trait HasConfig {
     }
 
     final public static function config(string $key = '') {
-        if ($key === '')
-            return array_merge(static::getDefaultConfig(), Config::getImmutableConfig(static::class));
-
-        if (Config::hasImmutableConfig(static::class, $key))
-            return Config::getImmutableConfig(static::class, $key);
-
-        $segments = explode('.', $key);
-        $current = static::getDefaultConfig();
-        foreach ($segments as $segment) {
-            if (!is_array($current) || !array_key_exists($segment, $current))
-                return null;
-            $current = $current[$segment];
+        static $initialized = [];
+        if (!isset($initialized[static::class])) {
+            Config::fillImmutableConfig(static::class, '', static::getDefaultConfig());
+            $initialized[static::class] = true;
         }
-        return $current;
+        return Config::getImmutableConfig(static::class, $key);
     }
 
     protected static function getDefaultConfig(): array {

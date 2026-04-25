@@ -56,7 +56,7 @@ final class Config {
 
         $cacheKey = static::configKey() . '.' . $key;
 
-        $cached = static::getFromCache($cacheKey);
+        $cached = Main::dotGet(static::$cache, $cacheKey, static::sentinel());
 
         if ($cached !== static::sentinel()) return $cached;
 
@@ -82,41 +82,50 @@ final class Config {
             );
         }
 
-        $cached = static::getFromCache($cacheKey);
+        $cached = Main::dotGet(static::$cache, $cacheKey, static::sentinel());
         return ($cached !== static::sentinel()) ? $cached : $default;
     }
 
     public static function setConfig(string $key, $value): void {
-        static::writeTo(static::configKey() . '.' . $key, $value);
+        Main::dotSet(static::$cache, static::configKey() . '.' . $key, $value);
     }
 
     public static function getImmutableConfig(string $key, string $subKey = '') {
         if ($subKey === '')
             return static::$cache[$key] ?? [];
 
-        return static::getFromCache($key . '.' . $subKey);
-    }
-
-    public static function hasImmutableConfig(string $key, string $subKey): bool {
-        return static::getFromCache($key . '.' . $subKey) !== static::sentinel();
+        return Main::dotGet(static::$cache, $key . '.' . $subKey, static::sentinel());
     }
 
     public static function setImmutableConfig(string $key, string $subKey, $value): void {
-        static::writeTo($key . '.' . $subKey, $value);
+        Main::dotSet(static::$cache, $key . '.' . $subKey, $value);
     }
 
-    private static function writeTo(string $key, $value): void {
-        $segments = explode('.', $key);
-        $current = &static::$cache;
-
-        foreach ($segments as $i => $segment) {
-            if ($i === count($segments) - 1) {
-                $current[$segment] = $value;
-            } else {
-                if (!isset($current[$segment]) || !is_array($current[$segment]))
-                    $current[$segment] = [];
-                $current = &$current[$segment];
+    public static function fillConfig(string $key, $value): void {
+        if (is_array($value)) {
+            foreach (Main::dotFlatten($value, $key) as $path => $v) {
+                $cacheKey = static::configKey() . '.' . $path;
+                if (Main::dotGet(static::$cache, $cacheKey, static::sentinel()) === static::sentinel())
+                    Main::dotSet(static::$cache, $cacheKey, $v);
             }
+        } else {
+            $cacheKey = static::configKey() . '.' . $key;
+            if (Main::dotGet(static::$cache, $cacheKey, static::sentinel()) === static::sentinel())
+                Main::dotSet(static::$cache, $cacheKey, $value);
+        }
+    }
+
+    public static function fillImmutableConfig(string $key, string $subKey, $value): void {
+        if (is_array($value)) {
+            foreach (Main::dotFlatten($value, $subKey) as $path => $v) {
+                $cacheKey = $key . '.' . $path;
+                if (Main::dotGet(static::$cache, $cacheKey, static::sentinel()) === static::sentinel())
+                    Main::dotSet(static::$cache, $cacheKey, $v);
+            }
+        } else {
+            $cacheKey = $subKey !== '' ? $key . '.' . $subKey : $key;
+            if (Main::dotGet(static::$cache, $cacheKey, static::sentinel()) === static::sentinel())
+                Main::dotSet(static::$cache, $cacheKey, $value);
         }
     }
 
@@ -162,30 +171,6 @@ final class Config {
         static $k = null;
         if ($k === null) $k = "\0" . bin2hex(random_bytes(6));
         return $k;
-    }
-
-    private static function getFromCache(string $key) {
-        $segments = explode('.', $key);
-        $current = static::$cache;
-
-        foreach ($segments as $segment) {
-            if (!is_array($current))
-                return static::sentinel();
-
-            if (array_key_exists($segment, $current)) {
-                $current = $current[$segment];
-                continue;
-            }
-
-            if (ctype_digit((string)$segment) && array_key_exists((int)$segment, $current)) {
-                $current = $current[(int)$segment];
-                continue;
-            }
-
-            return static::sentinel();
-        }
-
-        return $current;
     }
 
     private static function parseFile(string $path): array {

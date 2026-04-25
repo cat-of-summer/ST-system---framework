@@ -144,6 +144,44 @@ final class Main {
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
     }
 
+    public static function dotGet(array $data, string $path, $default = null) {
+        foreach (explode('.', $path) as $segment) {
+            if (!is_array($data)) return $default;
+            if (array_key_exists($segment, $data)) { $data = $data[$segment]; continue; }
+            if (ctype_digit($segment) && array_key_exists((int)$segment, $data)) { $data = $data[(int)$segment]; continue; }
+            return $default;
+        }
+        return $data;
+    }
+
+    public static function dotSet(array &$data, string $path, $value): void {
+        $segments = explode('.', $path);
+        $current = &$data;
+        foreach ($segments as $i => $segment) {
+            if ($i === count($segments) - 1) {
+                $current[$segment] = $value;
+            } else {
+                if (!isset($current[$segment]) || !is_array($current[$segment]))
+                    $current[$segment] = [];
+                $current = &$current[$segment];
+            }
+        }
+    }
+
+    public static function dotFlatten(array $data, string $prefix = ''): array {
+        $result = [];
+        foreach ($data as $k => $v) {
+            $path = $prefix !== '' ? $prefix . '.' . $k : (string)$k;
+            if (is_array($v) && !empty($v)) {
+                foreach (self::dotFlatten($v, $path) as $fk => $fv)
+                    $result[$fk] = $fv;
+            } else {
+                $result[$path] = $v;
+            }
+        }
+        return $result;
+    }
+
     public static function preparePath(string $path, int $depth = 0): string {
         if (strpos($path, '~') === 0)
             $path = (Config::env('DOCUMENT_ROOT') ?: Config::env('COMPOSER_ROOT')).'/'.trim($path, '/~');
