@@ -4,28 +4,19 @@
 
 ---
 
-## 1. Создать GitHub Personal Access Token
-
-1. GitHub → Settings → Developer settings → Personal access tokens → **Tokens (classic)**
-2. Нажать **Generate new token (classic)**
-3. Отметить scope: **`repo`** (даёт доступ к приватным репозиториям)
-4. Сохрани токен — он показывается только один раз
-
----
-
-## 2. Авторизовать Composer
+## 1. Авторизовать Composer
 
 Выполни в терминале (один раз на машине, токен сохранится в `~/.composer/auth.json`):
 
 ```bash
-composer config --global github-oauth.github.com <ВАШ_ТОКЕН>
+composer config --global github-oauth.github.com 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
 ```
 
 В репозиторий проекта этот файл **не попадёт** — он лежит глобально.
 
 ---
 
-## 3. Добавить репозиторий в `composer.json` проекта
+## 2. Добавить репозиторий в `composer.json` проекта
 
 ```json
 {
@@ -46,7 +37,7 @@ composer config --global github-oauth.github.com <ВАШ_ТОКЕН>
 
 ---
 
-## 4. Установить пакет
+## 3. Установить пакет
 
 ```bash
 composer require cat-of-summer/php-classes:dev-main
@@ -56,7 +47,7 @@ Composer скачает библиотеку в `vendor/cat-of-summer/php-classe
 
 ---
 
-## 5. Использование в коде
+## 4. Использование в коде
 
 ```php
 <?php
@@ -72,7 +63,7 @@ use ST_system\HTTP\Request;
 
 ---
 
-## 6. Обновление библиотеки
+## 5. Обновление библиотеки
 
 После пуша изменений в репозиторий библиотеки выполни в проекте:
 
