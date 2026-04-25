@@ -27,8 +27,8 @@ final class VkBot extends IntegrationDriver {
 
         $this->on('__construct', function(array $params) {
             $errors = Rule::object([
-                'client_id'     => Rule::create(fn(&$v) => is_int($v))->handleError(fn($v) => '������� ������������ client_id')->skip(true),
-                'client_secret' => Rule::create(fn(&$v) => is_string($v))->handleError(fn($v) => '������� ������������ client_secret')->skip(true),
+                'client_id'     => Rule::create(fn(&$v) => is_int($v))->handleError(fn($v) => 'Передан некорректный client_id')->skip(true),
+                'client_secret' => Rule::create(fn(&$v) => is_string($v))->handleError(fn($v) => 'Передан некорректный client_secret')->skip(true),
             ])->apply($params);
             if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
 
@@ -42,7 +42,7 @@ final class VkBot extends IntegrationDriver {
 
         $this->on('call', function($method, &$params) {
             if (!$this->access_token)
-                throw new \Exception("��� ������� ������ '{$method}' ��������� ��������������� �����!");
+                throw new \Exception("Для доступа методу '{$method}' необходим авторизационный токен!");
 
             $params['access_token'] = $this->access_token;
         });
@@ -52,7 +52,7 @@ final class VkBot extends IntegrationDriver {
             $array_diff = array_diff($meta['scope'] ?? [], $this->scope ?? []);
 
             if (!empty($array_diff))
-                throw new \Exception("������������ ���� ��� ������ {$method}. ��������� ������ � ".implode(', ', $array_diff).".");
+                throw new \Exception("Недостаточно прав для метода {$method}. Необходим доступ к ".implode(', ', $array_diff).".");
         });
 
         $this->registerMethod('authorize', function(array $params) {
@@ -60,10 +60,10 @@ final class VkBot extends IntegrationDriver {
             [$request_url] = $this->build_url('authorize', (string)static::config('oauth_point'));
 
             $errors = Rule::object([
-                'redirect_uri'  => Rule::create(fn(&$v) => $v === null || (is_string($v) && $v !== ''))->handleError(fn($v) => '������������ redirect_uri'),
-                'scope'         => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'scope ������ ���� ��������'),
-                'display'       => Rule::create(fn(&$v) => $v === null || in_array($v, ['page', 'popup', 'mobile'], true))->handleError(fn($v) => '������������ display'),
-                'response_type' => Rule::create(fn(&$v) => $v === null || in_array($v, ['code', 'token'], true))->handleError(fn($v) => '������������ response_type'),
+                'redirect_uri'  => Rule::create(fn(&$v) => $v === null || (is_string($v) && $v !== ''))->handleError(fn($v) => 'Некорректный redirect_uri'),
+                'scope'         => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'scope должен быть массивом'),
+                'display'       => Rule::create(fn(&$v) => $v === null || in_array($v, ['page', 'popup', 'mobile'], true))->handleError(fn($v) => 'Некорректный display'),
+                'response_type' => Rule::create(fn(&$v) => $v === null || in_array($v, ['code', 'token'], true))->handleError(fn($v) => 'Некорректный response_type'),
             ])->apply($params);
             if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
             $params['scope']         = $params['scope']         ?? [];
@@ -96,7 +96,7 @@ final class VkBot extends IntegrationDriver {
                         [$request_url] = $this->build_url('access_token', (string)static::config('oauth_point'));
 
                         $errors = Rule::object([
-                            'code' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => '������������ ��� �����������!')->skip(true),
+                            'code' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'Некорректный код авторизации!')->skip(true),
                         ])->apply($params);
                         if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
 
@@ -109,11 +109,11 @@ final class VkBot extends IntegrationDriver {
 
                         $response_data = $this->execute_curl($curl);
                         if ($response_data['error'])
-                            throw new \Exception("������ ��� ������� � API: '{$response_data['error']}' � ".get_called_class());
+                            throw new \Exception("Ошибка при запросе к API: '{$response_data['error']}' в ".get_called_class());
 
                         $result = @json_decode($response_data['response'], true);
                         if (json_last_error() !== JSON_ERROR_NONE)
-                            throw new \Exception("������ ��� ������������� ������: '".json_last_error_msg()."' � ".get_called_class());
+                            throw new \Exception("Ошибка при декодировании ответа: '".json_last_error_msg()."'в ".get_called_class());
                         break;
                     case 'token':
                     default:
@@ -122,9 +122,9 @@ final class VkBot extends IntegrationDriver {
                 }
 
                 $errors = Rule::object([
-                    'access_token' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => '������������ �������� access_token')->skip(true),
-                    'user_id'      => Rule::create(fn(&$v) => is_int($v) && $v > 0)->handleError(fn($v) => '������������ �������� user_id')->skip(true),
-                    'expires_in'   => Rule::create(fn(&$v) => is_int($v))->handleError(fn($v) => '������������ �������� expires_in')->skip(true),
+                    'access_token' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'Некорректный параметр access_token')->skip(true),
+                    'user_id'      => Rule::create(fn(&$v) => is_int($v) && $v > 0)->handleError(fn($v) => 'Некорректный параметр user_id')->skip(true),
+                    'expires_in'   => Rule::create(fn(&$v) => is_int($v))->handleError(fn($v) => 'Некорректный параметр expires_in')->skip(true),
                 ])->apply($result);
                 if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
 
@@ -143,10 +143,10 @@ final class VkBot extends IntegrationDriver {
             'users.getFollowers' => [
                 'meta'   => ['scope' => ['friends']],
                 'params' => [
-                    'user_id' => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v > 0))->handleError(fn($v) => '������������ user_id'),
-                    'count'   => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v > 0))->handleError(fn($v) => 'count ������ ���� > 0'),
-                    'offset'  => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v >= 0))->handleError(fn($v) => 'offset ������ ���� >= 0'),
-                    'fields'  => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'fields ������ ���� ��������'),
+                    'user_id' => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v > 0))->handleError(fn($v) => 'Некорректный user_id'),
+                    'count'   => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v > 0))->handleError(fn($v) => 'count должен быть > 0'),
+                    'offset'  => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v >= 0))->handleError(fn($v) => 'offset должен быть >= 0'),
+                    'fields'  => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'fields должен быть массивом'),
                 ],
                 'on_prepare' => function(&$params) {
                     $params['user_id'] = $params['user_id'] ?? $this->user_id;
@@ -158,8 +158,8 @@ final class VkBot extends IntegrationDriver {
             'users.get' => [
                 'meta'   => ['scope' => []],
                 'params' => [
-                    'user_ids' => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'user_ids ������ ���� ��������'),
-                    'fields'   => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'fields ������ ���� ��������'),
+                    'user_ids' => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'user_ids должен быть массивом'),
+                    'fields'   => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'fields должен быть массивом'),
                 ],
                 'on_prepare' => function(&$params) {
                     $params['user_ids'] ??= [];
@@ -169,22 +169,22 @@ final class VkBot extends IntegrationDriver {
             'account.ban' => [
                 'meta'   => ['scope' => ['account']],
                 'params' => [
-                    'owner_id' => Rule::create(fn(&$v) => is_scalar($v) && $v !== '')->handleError(fn($v) => '������������ owner_id')->skip(true),
+                    'owner_id' => Rule::create(fn(&$v) => is_scalar($v) && $v !== '')->handleError(fn($v) => 'Некорректный owner_id')->skip(true),
                 ],
             ],
             'friends.delete' => [
                 'meta'   => ['scope' => ['friends']],
                 'params' => [
-                    'user_id' => Rule::create(fn(&$v) => is_scalar($v) && $v !== '')->handleError(fn($v) => '������������ user_id')->skip(true),
+                    'user_id' => Rule::create(fn(&$v) => is_scalar($v) && $v !== '')->handleError(fn($v) => 'Некорректный user_id')->skip(true),
                 ],
             ],
             'friends.getSuggestions' => [
                 'meta'   => ['scope' => ['friends']],
                 'params' => [
-                    'filter' => Rule::create(fn(&$v) => $v === null || ($v === 'mutual'))->handleError(fn($v) => '������������ filter'),
-                    'count'  => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v > 0))->handleError(fn($v) => 'count ������ ���� > 0'),
-                    'offset' => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v >= 0))->handleError(fn($v) => 'offset ������ ���� >= 0'),
-                    'fields' => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'fields ������ ���� ��������'),
+                    'filter' => Rule::create(fn(&$v) => $v === null || ($v === 'mutual'))->handleError(fn($v) => 'Некорректный filter'),
+                    'count'  => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v > 0))->handleError(fn($v) => 'count должен быть > 0'),
+                    'offset' => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v >= 0))->handleError(fn($v) => 'offset должен быть >= 0'),
+                    'fields' => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'fields должен быть массивом'),
                 ],
                 'on_prepare' => function(&$params) {
                     $params['count']  ??= 100;
@@ -195,7 +195,7 @@ final class VkBot extends IntegrationDriver {
             'friends.add' => [
                 'meta'   => ['scope' => ['friends']],
                 'params' => [
-                    'user_id' => Rule::create(fn(&$v) => is_scalar($v) && $v !== '')->handleError(fn($v) => '������������ user_id')->skip(true),
+                    'user_id' => Rule::create(fn(&$v) => is_scalar($v) && $v !== '')->handleError(fn($v) => 'Некорректный user_id')->skip(true),
                     'text'    => 'nullable|string',
                     'follow'  => 'nullable|bool',
                 ],

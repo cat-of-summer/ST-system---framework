@@ -3,7 +3,7 @@
     "description": "ST_system PHP library",
     "type": "library",
     "require": {
-        "php": ">=8.1"
+        "php": ">=7.4"
     },
     "autoload": {
         "psr-4": {

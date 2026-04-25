@@ -12,13 +12,13 @@ final class RentalCRM extends IntegrationDriver {
 
         $this->on('__construct', function(array $PARAMS = []) {
             $errors = Rule::object([
-                'subdomain' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => '��адан некорректный с�?бдомен')->skip(true),
+                'subdomain' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'Задан некорректный субдомен')->skip(true),
                 'api_key'   => 'nullable|string',
             ])->apply($PARAMS);
             if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
             $PARAMS['endpoint'] = "https://{$PARAMS['subdomain']}.retailcrm.ru/api/v5";
             if (!filter_var($PARAMS['endpoint'], FILTER_VALIDATE_URL))
-                throw new \Exception("��адана некорректна�? то�?ка API");
+                throw new \Exception("Задана некорректная точка API");
             unset($PARAMS['subdomain']);
             $this->SETTINGS = $PARAMS;
         });
@@ -39,7 +39,7 @@ final class RentalCRM extends IntegrationDriver {
                         if ($v === null) return true;
                         if (!is_array($v)) return false;
                         $errors = Rule::object([
-                            'ids' => Rule::create(fn(&$v) => $v === null || (is_array($v) && count($v) === count(array_filter($v, 'is_int'))))->handleError(fn($v) => 'ids должен быть массивом целы�? �?исел'),
+                            'ids' => Rule::create(fn(&$v) => $v === null || (is_array($v) && count($v) === count(array_filter($v, 'is_int'))))->handleError(fn($v) => 'ids должен быть массивом целых чисел'),
                         ])->apply($v);
                         if (!empty($errors)) throw new \Exception($errors[0]);
                         return true;

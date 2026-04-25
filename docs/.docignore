@@ -193,5 +193,5 @@ bower_components/
 
 
 *.json
-.autoload.php
+autoload.php
 .gitattributes

@@ -1,6 +1,6 @@
 ﻿<?php
 
-namespace ST_system\API\Drivers;
+namespace ST_system\API\Drivers\Acquiring;
 
 use \ST_system\API\IntegrationDriver;
 use \ST_system\Rule;
@@ -48,7 +48,7 @@ final class CloudPayments extends IntegrationDriver {
             'orders/create' => [
                 'params' => [
                     'Amount'             => Rule::create(fn(&$v) => is_numeric($v) && $v > 0)
-                        ->handleError(fn($v) => 'Amount ������ ���� ������������� ������')
+                        ->handleError(fn($v) => 'Amount должен быть положительным числом')
                         ->after(fn(&$v) => $v = number_format((float)$v, 2, '.', ''))
                         ->skip(true),
                     'Currency'           => 'default:RUB|in:RUB,EUR,USD',
@@ -67,17 +67,17 @@ final class CloudPayments extends IntegrationDriver {
                 'content_type' => 'application/json',
                 'params' => [
                     'Type'       => Rule::create(fn(&$v) => in_array($v, ['Pay','Fail','Confirm','Refund','Recurrent','Cancel'], true))
-                        ->handleError(fn($v) => "������������ ��� �����������")->skip(true),
+                        ->handleError(fn($v) => "Недопустимый тип уведомления")->skip(true),
                     'Address'    => 'nullable|url',
                     'IsEnabled'  => 'nullable|bool',
                     'HttpMethod' => 'default:GET|in:GET,POST',
                     'Encoding'   => 'default:UTF8|in:UTF8,Windows1251',
                     'Format'     => Rule::create(fn(&$v) => $v === null || in_array($v, ['CloudPayments','QIWI','RT'], true))
-                        ->handleError(fn($v) => '������������ Format'),
+                        ->handleError(fn($v) => 'Недопустимый Format'),
                 ],
                 'on_prepare' => function($params) {
                     if ($params['IsEnabled'] == true && empty($params['Address']))
-                        throw new \Exception("�� ������� ������������ �������� Address!");
+                        throw new \Exception("Не передан обязательный параметр Address!");
                 },
             ],
         ]);

@@ -13,10 +13,10 @@ final class Bitrix24 extends IntegrationDriver {
     // ── Field / Param extension ───────────────────────────────────────────────
 
     /**
-     * обавить дополнительные поля в схему FIELDS указанного метода.
-     * ызывается до первого использования метода.
+     * Добавить дополнительные поля в схему FIELDS указанного метода.
+     * Вызывается до первого использования метода.
      *
-     * ример:
+     * Пример:
      *   $b24->extendFields('crm.contact.add', ['UF_CRM_MY_FIELD' => 'nullable|string']);
      */
     public function extendFields(string $method, array $fields): self {
@@ -28,7 +28,7 @@ final class Bitrix24 extends IntegrationDriver {
     }
 
     /**
-     * обавить дополнительные поля в схему PARAMS указанного метода.
+     * Добавить дополнительные поля в схему PARAMS указанного метода.
      */
     public function extendParams(string $method, array $params): self {
         $this->extraSchemas[$method]['PARAMS'] = array_merge(
@@ -51,10 +51,10 @@ final class Bitrix24 extends IntegrationDriver {
                     try {
                         $date = new \DateTime($v);
                     } catch (\Throwable $th) {
-                        throw new \Exception("екорректная дата {$v}");
+                        throw new \Exception("Некорректная дата {$v}");
                     }
                     if (!$date || !empty(\DateTime::getLastErrors()['error_count']))
-                        throw new \Exception("екорректная дата {$v}");
+                        throw new \Exception("Некорректная дата {$v}");
                     $v = $date->format('Y-m-d');
                 })
                 ->alias('b24_date');
@@ -62,7 +62,7 @@ final class Bitrix24 extends IntegrationDriver {
         // b24_bool: bool / Y / N → Y / N
         if (!Rule::get('b24_bool'))
             Rule::create(fn(&$v) => $v === null || is_bool($v) || in_array($v, ['Y', 'N'], true))
-                ->handleError(fn($v) => 'олжно быть boolean или Y/N')
+                ->handleError(fn($v) => 'Должно быть boolean или Y/N')
                 ->after(fn(&$v) => $v = ($v === null) ? null : (is_bool($v) ? ($v ? 'Y' : 'N') : $v))
                 ->alias('b24_bool');
 

@@ -74,7 +74,7 @@ final class TBank extends IntegrationDriver {
             'Init' => [
                 'params' => [
                     'Amount'          => Rule::create(fn(&$v) => is_numeric($v) && $v > 0)
-                        ->handleError(fn($v) => 'Amount ������ ���� ������������� ������ (� ��������)')
+                        ->handleError(fn($v) => 'Amount должен быть положительным числом (в копейках)')
                         ->after(fn(&$v) => $v = (int)$v)
                         ->skip(true),
                     'OrderId'         => 'required|string',
