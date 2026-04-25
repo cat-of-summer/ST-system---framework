@@ -113,7 +113,7 @@ final class Debug {
     public static function linter(string $file_path): array {
         static $short_open_tag = null;
 
-        $file_path = Main::prepare_path($file_path, 1);
+        $file_path = Main::preparePath($file_path, 1);
 
         if (!is_file($file_path)) 
             return [
@@ -188,7 +188,7 @@ final class Debug {
             $config
         );
 
-        $this->config['dir'] = Main::prepare_path($this->config['dir'], 3);
+        $this->config['dir'] = Main::preparePath($this->config['dir'], 3);
         $this->config['file'] = trim($this->config['file'], DIRECTORY_SEPARATOR);
     }
 

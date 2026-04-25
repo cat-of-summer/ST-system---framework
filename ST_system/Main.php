@@ -142,7 +142,7 @@ final class Main {
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
     }
 
-    public static function prepare_path(string $path, int $depth = 0): string {
+    public static function preparePath(string $path, int $depth = 0): string {
         if (strpos($path, '~') === 0)
             $path = $_SERVER['DOCUMENT_ROOT'].'/'.trim($path, '/~');
         elseif (strpos($path, '/') !== 0)

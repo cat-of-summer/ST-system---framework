@@ -3,8 +3,8 @@
 namespace ST_system\Traits;
 
 trait HasConfig {
-    
-    final public static function set_config(array $config = []): void {
+        
+    final public static function setConfig(array $config = []): void {
         static::$CONFIG = array_merge(static::$CONFIG, $config);
     }
 

@@ -159,7 +159,7 @@ class ImageMime extends Mime {
             });
             asort($resize['sizes']);
 
-            static::set_config(['resize' => $resize]);
+            static::setConfig(['resize' => $resize]);
             $is_sorted = true;
         }
 

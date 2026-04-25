@@ -64,7 +64,7 @@ final class File {
     private function __construct(string $path, $original = null) {
         $this->original = $original;
         $this->isUri = (bool)filter_var($path, FILTER_VALIDATE_URL);
-        $this->info = new \SplFileInfo($this->isUri ? $path : Main::prepare_path($path, 2));
+        $this->info = new \SplFileInfo($this->isUri ? $path : Main::preparePath($path, 2));
 
         $cache_filename = $this->getFilename();
 
@@ -188,7 +188,7 @@ final class File {
 
         $results = [];
         array_walk($input, function ($i) use (&$results, $config, &$input_cache) {
-            $i = $input_cache[$i] ??= Main::prepare_path($i, 5);
+            $i = $input_cache[$i] ??= Main::preparePath($i, 5);
 
             if (!preg_match('/[\\(\\[\\{\\|\\?\\+\\*]/', $i)) {
                 if (file_exists($i)) {
@@ -489,7 +489,7 @@ final class File {
         if ($this->isUri())
             return $this->getPathname();
 
-        return str_replace(Main::prepare_path('~'.$root, 1), '', $this->getPathname());
+        return str_replace(Main::preparePath('~'.$root, 1), '', $this->getPathname());
     }
 
     public function exists(): bool {

@@ -111,7 +111,7 @@ final class Cache {
     public function __construct($key, array $config = []) {
         $config = array_merge(static::config(), $config);
 
-        $this->base_dir = Main::prepare_path($config['dir'], 3);
+        $this->base_dir = Main::preparePath($config['dir'], 3);
         
         $this->initDir(true);
 
