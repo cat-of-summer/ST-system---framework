@@ -123,6 +123,25 @@ final class Main {
         }
     }
 
+    public static function uuid(int $version = 7): string {
+        switch ($version) {
+            case 4:
+                $data = random_bytes(16);
+                $data[6] = chr((ord($data[6]) & 0x0f) | 0x40);
+                break;
+
+            default: // v7
+                $ms = (int)(microtime(true) * 1000);
+                $data = substr(pack('J', $ms), 0, 6) . random_bytes(10);
+                $data[6] = chr((ord($data[6]) & 0x0f) | 0x70);
+                break;
+        }
+
+        $data[8] = chr((ord($data[8]) & 0x3f) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+    }
+
     public static function prepare_path(string $path, int $depth = 0): string {
         if (strpos($path, '~') === 0)
             $path = $_SERVER['DOCUMENT_ROOT'].'/'.trim($path, '/~');

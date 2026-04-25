@@ -111,6 +111,39 @@ class ImageMime extends Mime {
 
         return static::$IMAGE_DRIVER;
     }
+    
+    public static function getAllowedExtension(): array {
+        static $result = [];
+
+        if (empty($result)) {
+            switch (static::getImageDriver()) {
+                case 'imagick':
+                    $formats = array_map('strtolower', \Imagick::queryFormats('*'));
+                    $extensions = in_array('jpeg', $formats) && !in_array('jpg', $formats) ? array_merge($formats, ['jpg']) : $formats;
+                    break;
+                case 'gd':
+                    $types = imagetypes();
+                    $extensions = array_merge(['gd', 'gd2'], ...array_values(array_filter([
+                        'IMG_JPG'  => ['jpg', 'jpeg'],
+                        'IMG_PNG'  => ['png'],
+                        'IMG_WEBP' => ['webp'],
+                        'IMG_BMP'  => ['bmp'],
+                        'IMG_GIF'  => ['gif'],
+                        'IMG_AVIF' => ['avif'],
+                    ], fn($v, $k) => defined($k) && ($types & constant($k)), ARRAY_FILTER_USE_BOTH)));
+                    break;
+                default:
+                    return [];
+            }
+
+            $result = array_values(array_intersect(
+                array_map('mb_strtolower', array_keys(static::config('formats.' . static::getImageDriver()) ?: [])),
+                $extensions
+            ));
+        }
+
+        return $result;
+    }
 
     private Cache $cache;
 

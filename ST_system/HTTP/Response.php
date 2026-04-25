@@ -46,34 +46,39 @@ final class Response {
         return $this;
     }
 
-    private function text(string $text, int $status = 200): self {
+    private function raw($data, int $status = 200): self {
         $this->status($status);
+
+        $this->content = $data;
+
+        return $this;
+    }
+
+    private function text(string $text, int $status = 200): self {
         $this->header('Content-Type', 'text/plain; charset=UTF-8');
 
-        $this->content = $text;
+        $this->raw($text, $status);
 
         return $this;
     }
 
     private function html(string $html, int $status = 200): self {
-        $this->status($status);
         $this->header('Content-Type', 'text/html; charset=UTF-8');
 
-        $this->content = $html;
+        $this->raw($html, $status);
 
         return $this;
     }
 
     private function json($data, int $status = 200, int $json_options = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES): self {
-        $this->status($status);
-        $this->header('Content-Type', 'application/json; charset=UTF-8');
-
         $encoded = @json_encode($data, $json_options);
 
         if ($encoded === false)
             throw new \RuntimeException('JSON encoding error: ' . json_last_error_msg());
         
-        $this->content = $encoded;
+        $this->header('Content-Type', 'application/json; charset=UTF-8');
+
+        $this->raw($encoded, $status);
 
         return $this;
     }
@@ -134,11 +139,18 @@ final class Response {
         return $this->stream($callback, $status);
     }
 
+    private function cookie(string $name, string $value = '', array $options = []): self {
+        setcookie($name, $value, $options);
+        return $this;
+    }
+
     public function send(): void {
-        if (headers_sent($file, $line))
-            throw new \RuntimeException("Cannot send response, headers already sent in {$file}:{$line}");
-        
+        while (ob_get_level() > 0)
+            ob_end_clean();
+
         http_response_code($this->status);
+        header('Status: ' . $this->status, true);
+        
         foreach ($this->headers as $k => $v)
             header($k.': '.$v, true);
         
@@ -165,7 +177,10 @@ final class Response {
             fclose($fp);
         } else
             echo $this->content;
-            
+
+        if (function_exists('fastcgi_finish_request'))
+            fastcgi_finish_request();
+
         exit;
     }
 }

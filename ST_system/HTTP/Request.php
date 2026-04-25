@@ -101,6 +101,8 @@ class Request {
                 case 'get': $this->data['get'] = $this->_get(); break;
                 case '_post': $this->data['_post'] = array_merge($_POST, @json_decode(@file_get_contents('php://input'), true) ?? []); break;
                 case 'post': $this->data['post'] = $this->_post(); break;
+                case '_cookie': $this->data['_cookie'] = $_COOKIE; break;
+                case 'cookie': $this->data['cookie'] = $this->_cookie(); break;
                 case '_query':
                     $this->data['_query'] = (!empty($this->data['query_keys']) && preg_match($this->data['route_template'], $this->uri(), $matches))
                         ? array_intersect_key($matches, array_flip($this->data['query_keys']))

@@ -24,7 +24,7 @@
 
 6. **Реестр + алиасы.** Правила можно зарегистрировать в глобальном реестре по строковому имени через `->alias('name')`. После этого их можно использовать в строковых спецификациях `'required|string|max:50'`. После вызова `alias()` объект **замораживается** — его нельзя менять.
 
-7. **Sentinel "undefined".** Внутри `Rule::object()` отсутствующее поле представляется специальным sentinel-объектом (`$undefined`), а не `null`. Это позволяет отличить `['key' => null]` от `[]` (ключ отсутствует). Правила `sometimes`, `required`, `nullable` используют этот факт.
+7. **Sentinel "undefined" прозрачен для пользователя.** Внутри `Rule::object()` отсутствующее поле представляется специальным sentinel-объектом, который позволяет отличить `['key' => null]` от `[]` (ключ отсутствует). Встроенные правила (`sometimes`, `required`, `nullable` и др.) работают с sentinel напрямую. **Для пользовательских замыканий** (`callback`, `before`, `after`, `handleError`) отсутствующее поле всегда представлено как `null` — без `stdClass`. Используй `sometimes`/`nullable`/`default` для управления поведением отсутствующих полей.
 
 ---
 
@@ -387,10 +387,10 @@ $rule = Rule::object([
 
 ### 4.15 `Rule::excludeIf($cond): Rule` — исключить поле если условие
 
-Если условие `true` — поле устанавливается в специальный sentinel `UNDEFINED` и **удаляется** из результирующего `$data`. Последующие правила не выполняются.
+Если условие `true` — поле **удаляется** из результирующего `$data`. Последующие правила не выполняются.
 
-> **Как работает UNDEFINED:** внутри `Rule::object()` отсутствующий ключ и поле после `excludeIf`
-> представляются одним sentinel-объектом (`new stdClass()`). После обхода всех правил поля:
+> Внутри `Rule::object()` поле после `excludeIf` устанавливается в sentinel `UNDEFINED`.
+> После обхода всех правил поля условие выполняется:
 > ```php
 > if ($temp !== $UNDEFINED) {
 >     $result[$key] = $temp;  // поле попадает в результат
@@ -1211,6 +1211,45 @@ $rule = Rule::object([
     ],
 ]);
 ```
+
+### Нормализация структурированных конфигурационных массивов
+
+Практический пример — нормализация правил URL-роутинга (`MODULE_URL_RULES` в `BX_facade\ST_Module`).
+
+Поля `RULE`, `ID`, `SORT` опциональны и имеют дефолтные значения. `CONDITION` и `PATH` обязательны.
+
+```php
+$schema = Rule::object([
+    'CONDITION' => 'required|string',   // обязательное
+    'PATH'      => 'required|string',   // обязательное
+    'RULE'      => 'default:',          // → '' если не задано
+    'ID'        => 'default',           // → null если не задано (нет параметра → $p[0] ?? null = null)
+    'SORT'      => 'default:100|int',   // → 100 (int) если не задано
+]);
+
+// Минимальное правило — только обязательные поля:
+$rule = ['CONDITION' => '#^/api/#', 'PATH' => '/local/modules/my/api/index.php'];
+$errors = $schema->apply($rule);
+// $errors === []
+// $rule === ['CONDITION' => '#^/api/#', 'PATH' => '...', 'RULE' => '', 'ID' => null, 'SORT' => 100]
+
+// Полное правило — все поля переданы явно, дефолты не срабатывают:
+$rule = ['CONDITION' => '#^/api/#', 'PATH' => '...', 'RULE' => '', 'ID' => null, 'SORT' => 1];
+$errors = $schema->apply($rule);
+// $errors === []
+// $rule['SORT'] === 1  — явное значение сохранено
+
+// Ошибка — отсутствует обязательное поле:
+$rule = ['PATH' => '/local/modules/my/api/index.php'];
+$errors = $schema->apply($rule);
+// $errors === ['CONDITION.This field is required']
+```
+
+> **Почему `'default:'` → `''`, а `'default'` → `null`:**
+> Правило `default` работает как `$v = $p[0] ?? null`. При `default:` параметр `$p[0] = ''`.
+> При `default` (без двоеточия) массив параметров пуст — `$p[0] ?? null = null`.
+
+---
 
 ### before / after на Rule::object
 

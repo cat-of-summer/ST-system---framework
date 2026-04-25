@@ -20,6 +20,7 @@ final class Cache {
     private string $dir;
     private string $file;
     private int $ttl;
+    private array $data_cache = [];
 
     public static function __callStatic(string $name, array $args) {
         switch ($name) {
@@ -32,6 +33,7 @@ final class Cache {
         if (!in_array($name, [
             'get',
             'set',
+            'remember',
             'getMeta',
             'setMeta'
         ], true))
@@ -39,15 +41,31 @@ final class Cache {
         
         $key = array_shift($args);
 
-        if ((strncmp($name, 'get', 3) === 0))
-            [$file, $data, $ttl] = $args;
-        else
-            [$data, $file, $ttl] = $args;
+        $file = null;
+        $ttl  = null;
 
-        return static::make($key, [
-            'file' => (string)$file,
-            'ttl' => (int)$ttl
-        ])->{$name}(...$args);
+        switch ($name) {
+            case 'get':
+            case 'getMeta':
+                // get(string $file = '', ...)
+                $file = ($args + [null])[0];
+                break;
+            case 'remember':
+                // remember(callable $callback, string $file = '', int $ttl = 0)
+                [, $file, $ttl] = $args + [null, null, null];
+                break;
+            default:
+                // set($data, string $file = '', int $ttl = 0)
+                // setMeta(array $data, string $file = '', int $ttl = 0)
+                [, $file, $ttl] = $args + [null, null, null];
+                break;
+        }
+
+        $config = [];
+        if ($file !== null) $config['file'] = (string)$file;
+        if ($ttl  !== null) $config['ttl']  = (int)$ttl;
+
+        return static::make($key, $config)->{$name}(...$args);
     }
 
     public function __call(string $name, array $args) {
@@ -63,6 +81,7 @@ final class Cache {
                 ]);
             case 'set':
             case 'get':
+            case 'remember':
             case 'getMeta':
             case 'setMeta':
             case 'isExpired':
@@ -129,6 +148,8 @@ final class Cache {
     }
 
     public function purge(): void {
+        $this->data_cache = [];
+
         if (!is_dir($this->dir)) return;
         
         $it = new \RecursiveDirectoryIterator($this->dir, \RecursiveDirectoryIterator::SKIP_DOTS);
@@ -153,7 +174,7 @@ final class Cache {
         @rmdir($this->dir);
     }
 
-    private function setMeta(array $data, string $file = '', int $ttl = 0, bool $append = true): void {
+    private function setMeta(array $data, int $ttl = 0, bool $append = true, string $file = ''): void {
         $this->initDir();
 
         if ($ttl === -1)
@@ -245,7 +266,7 @@ final class Cache {
         }
     }
 
-    private function set($data, string $file = '', int $ttl = 0): void {
+    private function set($data, int $ttl = 0, string $file = ''): void {
         $this->initDir();
 
         if ($file === '')
@@ -253,6 +274,8 @@ final class Cache {
         
         if ($ttl === 0)
             $ttl = $this->ttl;
+
+        $type = gettype($data);
         
         if (is_object($data))
             $data = $data instanceof \JsonSerializable
@@ -264,16 +287,29 @@ final class Cache {
         
         @file_put_contents($this->dir.'/'.$file, $data, LOCK_EX);
 
-        $this->setMeta(['type' => gettype($data)], $file, $ttl);
+        unset($this->data_cache[$this->dir.'/'.$file]);
+
+        $this->setMeta(['type' => $type], $ttl, true, $file);
+    }
+
+    private function remember(callable $callback, int $ttl = 0, string $file = '') {
+        $data = $this->get($file);
+
+        if ($data !== null)
+            return $data;
+        
+        $data = $callback();
+
+        $this->set($data, $ttl, $file);
+
+        return $data;
     }
 
     private function get(string $file = '') {
-        static $data_cache = [];
-
         if (!is_dir($this->dir))
             return null;
 
-        if (!$this->isValid($file))
+        if (!$this->isValid('expires_in', $file))
             return null;
 
         $meta = $this->getMeta($file);
@@ -281,8 +317,8 @@ final class Cache {
         $file = $this->dir.'/'.($file === '' ? $this->file : $file);
         $filemtime = filemtime($file);
 
-        if (isset($data_cache[$file]) && $meta['modified_at'] == $filemtime)
-            return $data_cache[$file];
+        if (isset($this->data_cache[$file]) && $meta['modified_at'] == $filemtime)
+            return $this->data_cache[$file];
 
         $lock = fopen($file.'.lock', 'c+');
 
@@ -316,7 +352,7 @@ final class Cache {
                     return $data = $content;
             }
         } finally {
-            $data_cache[$file] = $data;
+            $this->data_cache[$file] = $data;
 
             flock($lock, LOCK_UN);
             fclose($lock);
@@ -324,14 +360,14 @@ final class Cache {
         }
     }
 
-    private function isExpired(string $file = '', string $expires_key = 'expires_in'): bool {
+    private function isExpired(string $expires_key = 'expires_in', string $file = ''): bool {
         $expires_in = $this->getMeta($file)[$expires_key] ?? 0;
 
         return $expires_in != -1 && $expires_in < time();
     }
 
-    private function isValid(string $file = '', string $expires_key = 'expires_in'): bool {
-        if ($this->isExpired($file, $expires_key))
+    private function isValid(string $expires_key = 'expires_in', string $file = ''): bool {
+        if ($this->isExpired($expires_key, $file))
             return false;
 
         $file = $this->dir.'/'.($file === '' ? $this->file : $file);

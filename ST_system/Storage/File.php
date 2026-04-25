@@ -55,7 +55,9 @@ final class File {
 
     private bool $isUri;
     private \SplFileInfo $info;
+    private array $info_data = [];
     private Mimes\Mime $mime;
+    private array $mime_data = [];
     private Cache $cache;
     private $original = null;
 
@@ -63,10 +65,22 @@ final class File {
         $this->original = $original;
         $this->isUri = (bool)filter_var($path, FILTER_VALIDATE_URL);
         $this->info = new \SplFileInfo($this->isUri ? $path : Main::prepare_path($path, 2));
+
+        $cache_filename = $this->getFilename();
+
+        if ($this->isUri) {
+            $q     = strpos($cache_filename, '?');
+            $base  = $q !== false ? substr($cache_filename, 0, $q) : $cache_filename;
+            $query = $q !== false ? substr($cache_filename, $q + 1) : '';
+            $dot   = strrpos($base, '.');
+
+            $cache_filename = ($dot !== false ? substr($base, 0, $dot) : $base) . ($query !== '' ? '_' . md5($query) : '') . ($dot !== false ? substr($base, $dot): '');
+        }
+
         $this->cache = Cache::make($this->getPathname(), [
             'dir' => static::config('cache.dir'),
             'ttl' => static::config('cache.ttl'),
-            'file' => $this->getFilename()
+            'file' => $cache_filename
         ]);
 
         $mime = $this->getMime();
@@ -110,14 +124,29 @@ final class File {
                 if ($this->isUri()) return (int)$this->getMeta()['content-length'];
                 break;
             case 'getBasename':
-                if (empty($args)) return $this->info->getBasename('.'.$this->getExtension());
+                if (empty($args)) {
+                    $key = Main::serialize(['getBasename', []]);
+                    if (!array_key_exists($key, $this->info_data))
+                        $this->info_data[$key] = $this->info->getBasename('.'.$this->getExtension());
+                    return $this->info_data[$key];
+                }
         }
 
-        return is_callable([$this->info, $name])
-            ? $this->info->{$name}(...$args)
-            : (isset($this->mime) && is_callable([$this->mime, $name])
-                ? $this->mime->{$name}(...$args)
-                : throw new \Exception("Method {$name} not found"));
+        if (is_callable([$this->info, $name])) {
+            $key = Main::serialize([$name, $args]);
+            if (!array_key_exists($key, $this->info_data))
+                $this->info_data[$key] = $this->info->{$name}(...$args);
+            return $this->info_data[$key];
+        }
+
+        if (isset($this->mime) && is_callable([$this->mime, $name])) {
+            $key = Main::serialize([$name, $args]);
+            if (!array_key_exists($key, $this->mime_data))
+                $this->mime_data[$key] = $this->mime->{$name}(...$args);
+            return $this->mime_data[$key];
+        }
+
+        throw new \Exception("Method {$name} not found");
     }
 
     public function getOriginal(bool $force = false) {
@@ -259,7 +288,7 @@ final class File {
         $url = $this->getPathname();
         $meta = $this->cache->getMeta();
         
-        if (!$this->cache->isExpired('', 'headers_cache_expires_in') && !$force)
+        if (!$this->cache->isExpired('headers_cache_expires_in') && !$force)
             return $meta;
 
         $curl = curl_init();
@@ -308,13 +337,16 @@ final class File {
             if (($meta['http_code'] ?? null) != 200 && is_file($this->cache->file))
                 $meta['expires_in'] = time() + static::getTtl($meta);
 
-            $this->cache->setMeta($meta, '', 0, false);
+            $this->cache->setMeta($meta, 0, false);
         }
 
         return $meta;
     }
 
     private function fetch(bool $force = false): static {
+        $this->info_data = [];
+        $this->mime_data = [];
+
         if (!$this->isUri()) return $this;
 
         $url = $this->getPathname();
@@ -391,7 +423,7 @@ final class File {
                     ]
                 );
 
-                $this->cache->setMeta($meta, '', 0, false);
+                $this->cache->setMeta($meta, 0, false);
 
                 return new static($this->cache->file, $this);
             } catch (\Throwable $th) {

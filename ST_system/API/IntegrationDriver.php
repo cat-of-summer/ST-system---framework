@@ -2,9 +2,9 @@
 
 namespace ST_system\API;
 
-use ST_system\Rule;
-use ST_system\Cache;
-use ST_system\Traits\HasConfig;
+use \ST_system\Rule;
+use \ST_system\Cache;
+use \ST_system\Traits\HasConfig;
 
 abstract class IntegrationDriver {
 
@@ -316,7 +316,7 @@ abstract class IntegrationDriver {
             $meta = ['ttl' => 0];
             $this->fire('save_cache', $method, $params, $response, $meta);
             $effective_ttl = !empty($meta['ttl']) ? (int)$meta['ttl'] : $config['cache_ttl'];
-            $cache->set(json_encode($raw_data), '', $effective_ttl);
+            $cache->set(json_encode($raw_data), $effective_ttl);
         }
 
         return $response;

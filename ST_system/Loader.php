@@ -13,13 +13,14 @@ final class Loader {
             case 'require_once': require_once $realpath; break;
             case 'include':
             case 'include_once':
-                if (Debug::linter($realpath)['code'] > 0) return;
+                try {
+                    if (Debug::linter($realpath)['code'] > 0) return;
 
-                switch ($action) {
-                    case 'include': include $realpath; break;
-                    case 'include_once': include_once $realpath; break;
-                }
-                
+                    switch ($action) {
+                        case 'include': include $realpath; break;
+                        case 'include_once': include_once $realpath; break;
+                    }
+                } catch (\Throwable $th) {}                
                 break;
             default:
                 throw new \Exception("Method {$action} not found");

@@ -47,8 +47,10 @@ final class Debug {
 
             for ($level = $config['skip_start'] + 2; $level < count($full_backtrace) - $config['skip_end']; $level++)
                 $result .= str_repeat("    ", $level - $config['skip_start'] - 2).'↘ '.$get_trace_func($full_backtrace[$level]);
-        } else
-            $result = $get_trace_func(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | DEBUG_BACKTRACE_PROVIDE_OBJECT)[4]);
+        } else {
+            $bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | DEBUG_BACKTRACE_PROVIDE_OBJECT);
+            $result = $get_trace_func($bt[min(4, count($bt) - 1)] ?? []);
+        }
         
         return $result;
     }

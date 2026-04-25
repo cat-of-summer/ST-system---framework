@@ -19,13 +19,15 @@ final class Rule {
     /** @var \Closure|null */
     private $handleError;
     /** @var int */
-    private $order = 0;
+    private $order = 600;
     /** @var bool */
     private $skip = false;
     /** @var array */
     private $params = [];
     /** @var bool */
     private $frozen = false;
+    /** @var bool Видит ли правило UNDEFINED-сентинел (true) или null (false) */
+    private bool $seesUndefined = false;
 
     private function __construct(?\Closure $callback = null) {
         self::init(false);
@@ -98,9 +100,13 @@ final class Rule {
         return self::$registry[$alias] ?? null;
     }
 
-    public function alias(string $name): self {
+    public function alias(string $name, $skip = 0): self {
         if (isset(self::$registry[$name]) && self::$registry[$name] !== $this) {
-            throw new \RuntimeException("Rule alias '{$name}' already registered");
+            if (!$skip)
+                throw new \RuntimeException("Rule alias '{$name}' already registered");
+            
+            if ($skip == 1)
+                return $this;
         }
         self::$registry[$name] = $this;
         $this->frozen = true;
@@ -114,6 +120,21 @@ final class Rule {
      * @return array{0: bool, 1: string[]}
      */
     private function execute(&$data): array {
+        $UNDEFINED = self::$undefined;
+        if (!$this->seesUndefined && $data === $UNDEFINED) {
+            $masked = null;
+            $result = $this->executeRaw($masked);
+            if ($masked !== null) $data = $masked;
+            return $result;
+        }
+        return $this->executeRaw($data);
+    }
+
+    /**
+     * @param mixed $data
+     * @return array{0: bool, 1: string[]}
+     */
+    private function executeRaw(&$data): array {
         if ($this->before !== null) {
             ($this->before)($data);
         }
@@ -267,7 +288,8 @@ final class Rule {
                 return $subRules[0];
             }
 
-            return new self(function(&$data) use ($subRules): array {
+            // create(string) composite: >1 правил, sub-rules сами решают маскировку
+            $composite = new self(function(&$data) use ($subRules): array {
                 $errors = [];
                 foreach ($subRules as $rule) {
                     [$passed, $ruleErrors] = $rule->execute($data);
@@ -278,6 +300,8 @@ final class Rule {
                 }
                 return $errors;
             });
+            $composite->seesUndefined = true;
+            return $composite;
         }
 
         if (is_array($spec)) {
@@ -290,7 +314,8 @@ final class Rule {
                 return $subRules[0];
             }
 
-            return new self(function(&$data) use ($subRules): array {
+            // create(array) composite: >1 правил, sub-rules сами решают маскировку
+            $composite = new self(function(&$data) use ($subRules): array {
                 $errors = [];
                 foreach ($subRules as $rule) {
                     [$passed, $ruleErrors] = $rule->execute($data);
@@ -301,6 +326,8 @@ final class Rule {
                 }
                 return $errors;
             });
+            $composite->seesUndefined = true;
+            return $composite;
         }
 
         throw new \InvalidArgumentException('Rule::create() expects string, Closure, or array');
@@ -346,7 +373,7 @@ final class Rule {
             $compiled[$key] = self::compileFieldRules($spec);
         }
 
-        return new self(function(&$data) use ($compiled): array {
+        $objectRule = new self(function(&$data) use ($compiled): array {
             if (is_object($data)) $data = (array)$data;
             if (!is_array($data)) return ['Expected array or object'];
 
@@ -373,6 +400,8 @@ final class Rule {
             $data = $result;
             return $errors;
         });
+        $objectRule->seesUndefined = true;
+        return $objectRule;
     }
 
     /**
@@ -395,7 +424,7 @@ final class Rule {
             throw new \InvalidArgumentException('Rule::forEach() expects string, Closure, or Rule');
         }
 
-        return new self(function(&$data) use ($rules): array {
+        $forEachRule = new self(function(&$data) use ($rules): array {
             if (!is_array($data) && !($data instanceof \Traversable)) {
                 return ['Expected iterable'];
             }
@@ -413,6 +442,8 @@ final class Rule {
             unset($item);
             return $errors;
         });
+        $forEachRule->seesUndefined = true;
+        return $forEachRule;
     }
 
     // ─── Плоская (dot-notation) схема ────────────────────────────────
@@ -501,6 +532,7 @@ final class Rule {
         $rule->order = 100;
         $rule->skip  = true;
         $rule->handleError = fn($v) => 'This field is required';
+        $rule->seesUndefined = true;
         return $rule;
     }
 
@@ -519,6 +551,7 @@ final class Rule {
         $rule->order = 100;
         $rule->skip  = true;
         $rule->handleError = fn($v) => 'This field is not allowed';
+        $rule->seesUndefined = true;
         return $rule;
     }
 
@@ -537,6 +570,7 @@ final class Rule {
         });
         $rule->order = 0;
         $rule->skip  = true;
+        $rule->seesUndefined = true;
         return $rule;
     }
 
@@ -571,6 +605,31 @@ final class Rule {
     }
 
     /**
+     * Хелпер для default-значений PHP-типов (массивы, объекты и т.д.),
+     * которые нельзя передать через строковый синтаксис 'default:...'.
+     *
+     * Аналог 'default:x', но принимает настоящее PHP-значение.
+     * order=-1, поэтому выполняется до sometimes (order=0).
+     *
+     * Пример: Rule::default(['*'])
+     *
+     * @param mixed $value
+     */
+    public static function default($value): Rule {
+        self::init(false);
+        $UNDEFINED = self::$undefined;
+        $rule = new self(function(&$v) use ($value, $UNDEFINED): bool {
+            if ($v === $UNDEFINED || $v === null || $v === '') {
+                $v = $value;
+            }
+            return true;
+        });
+        $rule->order = -1;
+        $rule->seesUndefined = true;
+        return $rule;
+    }
+
+    /**
      * Статический хелпер для regex-паттернов, содержащих |
      */
     public static function regex(string $pattern): Rule {
@@ -599,15 +658,18 @@ final class Rule {
         // sometimes (order 0, skip=true, без handleError — поле пропускается если отсутствует)
         (static::create(function(&$v) use ($UNDEFINED): bool {
             return $v !== $UNDEFINED;
-        }))->order(0)->skip(true)->alias('sometimes');
+        }))->order(0)->skip(true)->alias('sometimes')
+            ->seesUndefined = true;
 
-        // default (order 50 — подставляет значение если undefined/null/'')
+        // default (order -1 — подставляет значение если undefined/null/'';
+        //          запускается ДО sometimes, чтобы 'sometimes|default:x|...' работало)
         (static::create(function(&$v, array $p) use ($UNDEFINED): bool {
             if ($v === $UNDEFINED || $v === null || $v === '') {
                 $v = $p[0] ?? null;
             }
             return true;
-        }))->order(50)->alias('default');
+        }))->order(-1)->alias('default')
+            ->seesUndefined = true;
 
         // required (order 100, skip=true) — алиас requiredIf(true)
         static::requiredIf(true)->alias('required');
@@ -615,12 +677,14 @@ final class Rule {
         // nullable (order 100, skip=true — если null/'' => пропускаем остальные правила без ошибки)
         (static::create(function(&$v) use ($UNDEFINED): bool {
             return !($v === null || $v === '' || $v === $UNDEFINED);
-        }))->order(100)->skip(true)->alias('nullable');
+        }))->order(100)->skip(true)->alias('nullable')
+            ->seesUndefined = true;
 
         // present (order 100, skip=true — поле должно существовать, пустое допустимо)
         (static::create(function(&$v) use ($UNDEFINED): bool {
             return $v !== $UNDEFINED;
-        }))->order(100)->skip(true)->handleError(fn($v) => 'This field must be present')->alias('present');
+        }))->order(100)->skip(true)->handleError(fn($v) => 'This field must be present')->alias('present')
+            ->seesUndefined = true;
 
         // string
         (static::create(function(&$v): bool {
