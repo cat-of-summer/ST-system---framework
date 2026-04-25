@@ -8,26 +8,28 @@ final class Mistral extends OpenAICompatibleDriver {
 
     private static array $INSTANCES = [];
 
-    protected static array $CONFIG = [
-        'endpoint' => 'https://api.mistral.ai/v1/chat/',
-        'models' => [
-            "mistral-small-latest",
-            "mistral-medium-latest",
-            "mistral-large-latest",
+    protected static function getDefaultConfig(): array {
+        return [
+            'endpoint' => 'https://api.mistral.ai/v1/chat/',
+            'models' => [
+                "mistral-small-latest",
+                "mistral-medium-latest",
+                "mistral-large-latest",
 
-            "open-mistral-7b",
-            "open-mixtral-8x7b",
+                "open-mistral-7b",
+                "open-mixtral-8x7b",
 
-            "codestral-latest",
+                "codestral-latest",
 
-            "pixtral-12b",
-            "pixtral-large-latest",
+                "pixtral-12b",
+                "pixtral-large-latest",
 
-            "ministral-3b-latest",
-            "ministral-8b-latest"
-        ]
-    ];
-
+                "ministral-3b-latest",
+                "ministral-8b-latest"
+            ]
+        ];
+    }
+    
     private string $token = '';
     private array $conversation = [];
     private array $usage = [];

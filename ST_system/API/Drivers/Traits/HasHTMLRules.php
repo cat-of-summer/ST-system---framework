@@ -21,9 +21,9 @@ trait HasHTMLRules {
         "wbr",
     ];
 
-    abstract protected static function get_nodes_map(): array;
+    abstract protected static function getHtmlRules(): array;
 
-    final protected static function normalize_html($html) {
+    final protected static function normalizeHtml($html) {
         if (!$html instanceof \DOMDocument) {
             if (!is_string($html))
                 throw new \InvalidArgumentException('Передаваемый контент должен быть html-контентом или \DOMDocument объектом');
@@ -71,7 +71,7 @@ trait HasHTMLRules {
     }
 
     private static function parse_nodes_recursive(\DOMNodeList $nodes) {
-        $node_map = static::get_nodes_map();
+        $node_map = static::getHtmlRules();
 
         $html = '';
         foreach ($nodes as $node) {

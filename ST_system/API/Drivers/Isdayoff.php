@@ -7,7 +7,7 @@ use \ST_system\Rule;
 
 final class Isdayoff extends IntegrationDriver {
 
-    protected static array $CONFIG = ['endpoint' => 'https://isdayoff.ru/api/'];
+    protected static function getDefaultConfig(): array { return ['endpoint' => 'https://isdayoff.ru/api/']; }
 
     private array $SETTINGS = [];
 

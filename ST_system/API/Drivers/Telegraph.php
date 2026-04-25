@@ -18,13 +18,15 @@ use \ST_system\Rule;
  */
 final class Telegraph extends IntegrationDriver {
 
-    protected static array $CONFIG = [
-        'endpoint'  => 'https://api.telegra.ph',
-        'cache' => [
-            'dir' => '~/cache/telegraph/',
-            'ttl' => -1,
-        ],
-    ];
+    protected static function getDefaultConfig(): array {
+        return [
+            'endpoint'  => 'https://api.telegra.ph',
+            'cache' => [
+                'dir' => '~/cache/telegraph/',
+                'ttl' => -1,
+            ],
+        ];
+    }
 
     private string $access_token = '';
     private string $author_name  = '';

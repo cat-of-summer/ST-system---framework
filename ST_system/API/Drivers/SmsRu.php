@@ -7,7 +7,7 @@ use \ST_system\Rule;
 
 final class SmsRu extends IntegrationDriver {
 
-    protected static array $CONFIG = ['endpoint' => 'https://sms.ru/sms/'];
+    protected static function getDefaultConfig(): array { return ['endpoint' => 'https://sms.ru/sms/']; }
 
     private string $api_id;
 

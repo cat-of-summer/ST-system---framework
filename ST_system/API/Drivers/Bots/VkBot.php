@@ -7,10 +7,13 @@ use \ST_system\Rule;
 
 final class VkBot extends IntegrationDriver {
 
-    protected static array $CONFIG = [
-        'endpoint'    => 'https://api.vk.com/method',
-        'oauth_point' => 'https://oauth.vk.com'
-    ];
+    protected static function getDefaultConfig(): array {
+        return [
+            'endpoint'    => 'https://api.vk.com/method',
+            'oauth_point' => 'https://oauth.vk.com'
+        ];
+    }
+
     protected const API_VERSION      = '5.258';
 
     private $client_id;

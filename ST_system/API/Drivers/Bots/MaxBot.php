@@ -21,7 +21,7 @@ final class MaxBot extends IntegrationDriver {
     use \ST_system\API\Drivers\Traits\HasHTMLRules;
 
     /**
-     * Таблица обработки HTML-узлов для normalize_html().
+     * Таблица обработки HTML-узлов для normalizeHtml().
      *
      * Поддерживаемые тегом Max HTML-форматирования:
      *   <b>, <strong>  — жирный
@@ -35,7 +35,7 @@ final class MaxBot extends IntegrationDriver {
      * либо удаляются полностью (медиа, формы, таблицы).
      * Теги не из карты — сворачиваются (тег удаляется, содержимое сохраняется).
      */
-    protected static function get_nodes_map(): array {
+    protected static function getHtmlRules(): array {
 
         $line_break = fn($content) => "$content\n";
 
@@ -85,7 +85,7 @@ final class MaxBot extends IntegrationDriver {
 
     }
 
-    protected static array $CONFIG = ['endpoint' => 'https://platform-api.max.ru'];
+    protected static function getDefaultConfig(): array { return ['endpoint' => 'https://platform-api.max.ru']; }
 
     private string $token;
 
@@ -170,7 +170,7 @@ final class MaxBot extends IntegrationDriver {
                         throw new \Exception("Текст сообщения не должен превышать 4000 символов!");
 
                     if (($params['format'] ?? '') === 'html' && isset($params['text']))
-                        $params['text'] = self::normalize_html($params['text']);
+                        $params['text'] = self::normalizeHtml($params['text']);
                 },
             ],
 
