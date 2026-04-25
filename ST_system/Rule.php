@@ -290,7 +290,7 @@ final class Rule {
                 return $subRules[0];
             }
 
-            return new self(function(&$data) use ($subRules): array {
+            return self::create(function(&$data) use ($subRules): array {
                 $errors = [];
                 foreach ($subRules as $rule) {
                     [$passed, $ruleErrors] = $rule->execute($data);
@@ -313,7 +313,7 @@ final class Rule {
                 return $subRules[0];
             }
 
-            return new self(function(&$data) use ($subRules): array {
+            return self::create(function(&$data) use ($subRules): array {
                 $errors = [];
                 foreach ($subRules as $rule) {
                     [$passed, $ruleErrors] = $rule->execute($data);
@@ -406,7 +406,7 @@ final class Rule {
         self::init(false);
 
         if ($spec instanceof \Closure) {
-            $innerRule = new self($spec);
+            $innerRule = self::create($spec);
             $rules = [$innerRule];
         } elseif ($spec instanceof self) {
             $rules = [$spec->copy()];
