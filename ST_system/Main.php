@@ -4,7 +4,7 @@ namespace ST_system;
 
 final class Main {
 
-    public static function timestamp(string $format = '') {
+    public static function timestamp(string $format = ''): string {
         $now = time();
         $ts  = function_exists('hrtime') ? hrtime(true) / 1e9 : microtime(true);
 
@@ -16,7 +16,7 @@ final class Main {
         return $ts;
     }
 
-    public static function pluralForm($n, $forms) { //(1, ["яблоко", "яблока", "яблок"]);
+    public static function pluralForm($n, $forms): string { //(1, ["яблоко", "яблока", "яблок"]);
         $n = (int)$n;
         return $forms[($n % 10 == 1 && $n % 100 != 11) ? 0 : (($n % 10 >= 2 && $n % 10 <= 4 && ($n % 100 < 10 || $n % 100 >= 20)) ? 1 : 2)];
     }
@@ -55,7 +55,7 @@ final class Main {
         return $array1;
     }
 
-    public static function serialize($value) {
+    public static function serialize($value): string {
         $visited = [];
         return static::_serialize($value, $visited);
     }
