@@ -209,7 +209,7 @@ final class TelegramBot extends IntegrationDriver {
         ]);
     }
 
-    public function handleMessage(callable $a): void {
+    public function handleUpdate(callable $a): void {
         $cache = $this->cache()->make(static::class);
 
         $offset = $cache->isValid() ? $cache->get() : 0;
@@ -223,12 +223,9 @@ final class TelegramBot extends IntegrationDriver {
         $updates = $response['result'] ?? [];
 
         foreach ($updates as $update) {
-            try {
-                if (!$a($update)) break;
-                
-                $offset = $update['update_id'];
-
-            } catch (\Throwable $th) { break; }
+            if (!$a($update)) break;
+            
+            $offset = $update['update_id'];
         }
 
        $cache->set($offset);

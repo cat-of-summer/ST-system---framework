@@ -111,7 +111,9 @@ final class Cache {
     private static function make(...$args): static { return new static(...$args); }
 
     public function __construct($key, array $config = []) {
-        $config = array_merge(static::config(), $config);
+        $config['dir'] = ($config['dir'] ?? false) ?: static::config('dir');
+        $config['file'] = ($config['file'] ?? false) ?: static::config('file');
+        $config['ttl'] = ($config['ttl'] ?? false) ?: static::config('ttl');
 
         $this->base_dir = Main::preparePath($config['dir'], 3);
         
@@ -193,7 +195,7 @@ final class Cache {
         $meta = $file.'.meta';
 
         $data['modified_at'] = filemtime($file);
-        $data['meta_modified_at'] = filemtime($meta);
+        $data['meta_modified_at'] = is_file($meta) ? filemtime($meta) : 0;
 
         $lock = fopen($meta.'.lock', 'c+');
 
@@ -235,7 +237,7 @@ final class Cache {
             $file = $this->file;
         
         $meta = $this->dir.'/'.$file.'.meta';
-        $filemtime = filemtime($meta);
+        $filemtime = is_file($meta) ? filemtime($meta) : 0;
 
         if (isset($meta_cache[$meta]) && $meta_cache[$meta]['meta_modified_at'] == $filemtime)
             return $meta_cache[$meta];

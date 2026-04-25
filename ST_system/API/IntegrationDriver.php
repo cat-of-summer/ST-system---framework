@@ -15,7 +15,7 @@ abstract class IntegrationDriver {
             'endpoint'  => '',
             'cache' => [
                 'dir' => '',
-                'ttl' => 3600,
+                'ttl' => false,
             ],
         ];
     }
@@ -59,7 +59,7 @@ abstract class IntegrationDriver {
     final public function __construct(...$args) {
         $this->__init();
 
-        if (static::config('cache.dir')) {
+        if (static::config('cache.ttl') !== false) {
             $this->cache = new Cache([static::class, ...$args], [
                 'dir' => static::config('cache.dir'),
                 'ttl' => static::config('cache.ttl'),

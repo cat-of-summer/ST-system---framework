@@ -93,8 +93,9 @@ final class Mistral extends OpenAICompatibleDriver {
                     return false;
                 
                 return Rule::forEach(Rule::object([
-                    'role'    => 'required|string',
+                    'role'    => 'required|string|in:assistant,system,user',
                     'content' => 'required|string',
+                    'prefix' => 'sometimes|bool'
                 ]))->apply($v);
             })->handleError(fn($v, $errors) => throw new \Exception(implode(', ', $errors)));
 
