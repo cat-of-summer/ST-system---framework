@@ -55,7 +55,15 @@ final class TelegramBot extends IntegrationDriver {
 
     }
 
-    protected static function getDefaultConfig(): array { return ['endpoint' => 'https://api.telegram.org/bot']; }
+    protected static function getDefaultConfig(): array {
+        return [
+            'endpoint' => 'https://api.telegram.org/bot',
+            'cache'    => [
+                'dir' => '',
+                'ttl' => 86400
+            ]
+        ];
+    }
 
     private string $token;
 
@@ -202,28 +210,28 @@ final class TelegramBot extends IntegrationDriver {
     }
 
     public function handleMessage(callable $a): void {
-        static $offset = 0;
+        $cache = $this->cache()->make(static::class);
 
+        $offset = $cache->isValid() ? $cache->get() : 0;
+        
         $response = $this->call('getUpdates', [
             'offset' => $offset + 1
         ]);
 
         if (!$response['ok']) return;
         
-        $last_update_id = $offset;
-
         $updates = $response['result'] ?? [];
 
         foreach ($updates as $update) {
             try {
                 if (!$a($update)) break;
                 
-                $last_update_id = $update['update_id'];
+                $offset = $update['update_id'];
 
             } catch (\Throwable $th) { break; }
         }
 
-        $offset = $last_update_id;
+       $cache->set($offset);
     }
 
 }
