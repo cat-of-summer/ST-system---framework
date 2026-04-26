@@ -5,12 +5,10 @@ namespace ST_system\Console;
 use ST_system\Storage\File;
 use ST_system\Traits\HasConfig;
 
-final class Kernel
-{
+final class Kernel {
     use HasConfig;
 
-    protected static function getDefaultConfig(): array
-    {
+    protected static function getDefaultConfig(): array {
         return [
             'default' => [
                 'dir'       => '~/Console/Commands',
@@ -23,8 +21,7 @@ final class Kernel
 
     private function __construct() {}
 
-    public static function registerDir(string $dir, string $namespace): void
-    {
+    public static function registerDir(string $dir, string $namespace): void {
         $files = File::find($dir, ['extension' => 'php', 'max_files' => 0]);
 
         foreach ($files as $file) {
@@ -81,6 +78,6 @@ final class Kernel
             }
         }
 
-        new self::$commands[$name]($positional, $rawOptions)->handle();
+        (new self::$commands[$name]($positional, $rawOptions))->handle();
     }
 }
