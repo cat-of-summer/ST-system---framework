@@ -480,16 +480,24 @@ final class Rule {
             }
 
             $errors = [];
+            $toRemove = [];
+
             foreach ($data as $i => &$item) {
+                $elementFailed = false;
                 foreach ($rules as $rule) {
                     [$passed, $ruleErrors] = $rule->execute($item);
                     foreach ($ruleErrors as $err) {
                         $errors[] = "{$i}.{$err}";
+                        $elementFailed = true;
                     }
                     if (!$passed && $rule->skip) break;
                 }
+                if ($elementFailed) $toRemove[] = $i;
             }
             unset($item);
+
+            foreach ($toRemove as $i) unset($data[$i]);
+            
             return $errors;
         })->seesSentinel();
     }
