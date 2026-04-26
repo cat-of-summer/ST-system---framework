@@ -2,6 +2,7 @@
 
 namespace ST_system\Console;
 
+use ST_system\Main;
 use ST_system\Storage\File;
 use ST_system\Traits\HasConfig;
 
@@ -23,11 +24,12 @@ final class Kernel {
 
     public static function registerDir(string $dir, string $namespace): void {
         $files = File::find($dir, ['extension' => 'php', 'max_files' => 0]);
+        $resolvedDir = str_replace('\\', '/', rtrim(Main::preparePath($dir), '/'));
 
         foreach ($files as $file) {
             $relative = substr(
                 str_replace('\\', '/', $file->getPathname()),
-                strlen(str_replace('\\', '/', rtrim($dir, '/\\'))) + 1
+                strlen($resolvedDir) + 1
             );
             $class = $namespace . '\\' . str_replace('/', '\\', substr($relative, 0, -4));
 
