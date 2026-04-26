@@ -26,7 +26,7 @@ final class Rule {
     /** @var bool Видит ли правило sentinel (true) или null (false) */
     private bool $seesSentinel = false;
 
-    private function __construct(Closure $callback) {
+    private function __construct(\Closure $callback) {
         self::init(false);
         $this->callback = $callback;
     }
@@ -284,7 +284,7 @@ final class Rule {
             usort($subRules, fn(Rule $a, Rule $b) => $a->order <=> $b->order);
 
             if (count($subRules) === 0) {
-                return new self(fn(&$v) => true);
+                return new self(fn() => true);
             }
             if (count($subRules) === 1) {
                 return $subRules[0];
