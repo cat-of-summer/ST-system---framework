@@ -968,12 +968,31 @@ final class Rule {
         ->alias('contains');
 
         // trim (order -1, трансформер)
-        (self::create(function(&$v): bool {
-            if (is_string($v)) $v = trim($v);
+        (self::create(function(&$v, array $p = []): bool {
+            if (is_string($v))
+                $v = !empty($p) ? trim($v, implode('', $p)) : trim($v);
             return true;
         }))
         ->order(-1)
         ->alias('trim');
+
+        // ltrim (order -1, трансформер)
+        (self::create(function(&$v, array $p = []): bool {
+            if (is_string($v))
+                $v = !empty($p) ? ltrim($v, implode('', $p)) : ltrim($v);
+            return true;
+        }))
+        ->order(-1)
+        ->alias('ltrim');
+
+        // rtrim (order -1, трансформер)
+        (self::create(function(&$v, array $p = []): bool {
+            if (is_string($v))
+                $v = !empty($p) ? rtrim($v, implode('', $p)) : rtrim($v);
+            return true;
+        }))
+        ->order(-1)
+        ->alias('rtrim');
 
         // uppercase (order 1000, трансформер)
         (self::create(function(&$v): bool {
