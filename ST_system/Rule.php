@@ -105,7 +105,6 @@ final class Rule {
      * Выполнить $fn с активным префиксом $prefix. Внутри замыкания:
      *  - alias('foo')     регистрируется как "$prefix\foo";
      *  - get('foo')       и парсер ищут сначала "$prefix\foo", потом fallback на голое 'foo' (по всему стеку).
-     *  - 'defaultConfig:key' автоматически дописывает $prefix как класс.
      * Имя с обратным слэшем считается абсолютным и префикс не получает.
      *
      * @return mixed возвращаемое значение $fn
@@ -266,13 +265,6 @@ final class Rule {
                 [$name, $pStr] = explode(':', $seg, 2);
                 $name   = trim($name);
                 $params = array_map('trim', explode(',', $pStr));
-            }
-
-            // defaultConfig в активном scope: дописываем prefix как класс, если его не передали явно
-            if ($name === 'defaultConfig' && count($params) < 2) {
-                if ($prefix = self::currentPrefix()) {
-                    array_unshift($params, $prefix);
-                }
             }
 
             $tpl = self::resolveAlias($name);

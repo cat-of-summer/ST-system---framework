@@ -33,7 +33,13 @@ trait HasConfig {
                 $v = $p[0]::config($p[1]);
             }
             return true;
-        })->seesSentinel()->order(-1)->alias('\\defaultConfig', 1);
+        })
+        ->before(function(&$v, array &$p): void {
+            if (count($p) < 2 && ($prefix = Rule::currentPrefix()) !== null) {
+                array_unshift($p, $prefix);
+            }
+        })
+        ->seesSentinel()->order(-1)->alias('\\defaultConfig', 1);
     }
 
     protected static function getDefaultConfig(): array {
