@@ -4,10 +4,11 @@ namespace ST_system\API\Drivers\Bots;
 
 use ST_system\API\IntegrationDriver;
 use ST_system\Rule;
+use ST_system\API\Drivers\Traits\HasHTMLRules;
 
 final class TelegramBot extends IntegrationDriver {
 
-    use ST_system\API\Drivers\Traits\HasHTMLRules;
+    use HasHTMLRules;
     
     protected static function getHtmlRules(): array {
 
@@ -100,40 +101,24 @@ final class TelegramBot extends IntegrationDriver {
     }
 
     protected function __init(): void {
-        if (!Rule::get('tg_parse_mode'))
-            Rule::create(fn(&$v) => $v === null || in_array($v, ['HTML', 'Markdown', 'MarkdownV2'], true))
-                ->handleError(fn($v) => 'Invalid parse_mode')
-                ->alias('tg_parse_mode');
+        Rule::create(fn(&$v) => $v === null || in_array($v, ['HTML', 'Markdown', 'MarkdownV2'], true))
+            ->handleError(fn($v) => 'Invalid parse_mode')
+            ->alias('parse_mode', 1);
 
-        if (!Rule::get('tg_reply_markup'))
-            Rule::create(fn(&$v) => $v === null || is_array($v))
-                ->handleError(fn($v) => 'reply_markup must be an array')
-                ->after(fn(&$v) => $v = is_array($v) ? self::process_reply_markup($v) : $v)
-                ->alias('tg_reply_markup');
+        Rule::create(fn(&$v) => $v === null || is_array($v))
+            ->handleError(fn($v) => 'reply_markup must be an array')
+            ->after(fn(&$v) => $v = is_array($v) ? self::process_reply_markup($v) : $v)
+            ->alias('reply_markup', 1);
 
-        if (!Rule::get('tg_media_group'))
-            Rule::object([
-                'type' => Rule::create(fn(&$v) => in_array($v, ['audio', 'document', 'photo', 'video'], true))
-                    ->handleError(fn($v) => 'Не передан тип медиа-контента или он некорректен!'),
-                'parse_mode' => 'nullable|tg_parse_mode',
-                'media'      => 'required|url',
-                'thumbnail'  => 'nullable|url',
-                'caption'    => 'nullable|string',
-            ])
-            ->alias('tg_media_group');
-
-        $this->on('__construct', function(string $token) {
-            $this->token = $token;
-        });
-
-        $this->on('build_url', function (&$request_url, $endpoint) {
-            $request_url = str_replace($endpoint, "{$endpoint}{$this->token}", $request_url);
-        });
-
-        $this->on('before_call', function($method) {
-            if ($this->token == '')
-                throw new \Exception("Для доступа методу '{$method}' необходим авторизационный токен!");
-        });
+        Rule::object([
+            'type' => Rule::create(fn(&$v) => in_array($v, ['audio', 'document', 'photo', 'video'], true))
+                ->handleError(fn($v) => 'Не передан тип медиа-контента или он некорректен!'),
+            'parse_mode' => 'nullable|parse_mode',
+            'media'      => 'required|url',
+            'thumbnail'  => 'nullable|url',
+            'caption'    => 'nullable|string',
+        ])
+        ->alias('media', 1);
 
         $html_on_prepare = function(&$params, string $field = 'text') {
             if (($params['parse_mode'] ?? '') === 'HTML' && isset($params[$field]))
@@ -150,8 +135,8 @@ final class TelegramBot extends IntegrationDriver {
                 'params' => [
                     'chat_id'      => 'required|int',
                     'text'         => 'required|string',
-                    'parse_mode'   => 'nullable|tg_parse_mode',
-                    'reply_markup' => 'nullable|tg_reply_markup',
+                    'parse_mode'   => 'nullable|parse_mode',
+                    'reply_markup' => 'nullable|reply_markup',
                 ],
                 'on_prepare' => fn(&$p) => $html_on_prepare($p, 'text'),
             ],
@@ -160,8 +145,8 @@ final class TelegramBot extends IntegrationDriver {
                     'chat_id'      => 'required|int',
                     'photo'        => 'required|url',
                     'caption'      => 'nullable|string',
-                    'parse_mode'   => 'nullable|tg_parse_mode',
-                    'reply_markup' => 'nullable|tg_reply_markup',
+                    'parse_mode'   => 'nullable|parse_mode',
+                    'reply_markup' => 'nullable|reply_markup',
                 ],
                 'on_prepare' => fn(&$p) => $html_on_prepare($p, 'caption'),
             ],
@@ -171,8 +156,8 @@ final class TelegramBot extends IntegrationDriver {
                     'video'        => 'required|url',
                     'thumbnail'    => 'nullable|url',
                     'caption'      => 'nullable|string',
-                    'parse_mode'   => 'nullable|tg_parse_mode',
-                    'reply_markup' => 'nullable|tg_reply_markup',
+                    'parse_mode'   => 'nullable|parse_mode',
+                    'reply_markup' => 'nullable|reply_markup',
                 ],
                 'on_prepare' => fn(&$p) => $html_on_prepare($p, 'caption'),
             ],
@@ -184,7 +169,7 @@ final class TelegramBot extends IntegrationDriver {
                 ],
                 'on_prepare' => function(&$params) {
                     $params['media'] = json_encode(array_map(function($item) {
-                        $errors = Rule::get('tg_media_group')->apply($item);
+                        $errors = Rule::get('media')->apply($item);
                         if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
                         if (($item['parse_mode'] ?? '') === 'HTML' && isset($item['caption']))
                             $item['caption'] = self::normalizeHtml($item['caption']);
@@ -207,6 +192,19 @@ final class TelegramBot extends IntegrationDriver {
             'deleteWebhook' => [],
             'getWebhookInfo' => [],
         ]);
+
+        $this->on('__construct', function(string $token) {
+            $this->token = $token;
+        });
+
+        $this->on('build_url', function (&$request_url, $endpoint) {
+            $request_url = str_replace($endpoint, "{$endpoint}{$this->token}", $request_url);
+        });
+
+        $this->on('before_call', function($method) {
+            if ($this->token == '')
+                throw new \Exception("Для доступа методу '{$method}' необходим авторизационный токен!");
+        });
     }
 
     public function handleUpdate(callable $a): void {

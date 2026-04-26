@@ -7,6 +7,9 @@ final class Rule {
     /** @var array<string, Rule> */
     private static $registry = [];
 
+    /** @var string[] */
+    private static array $prefixStack = [];
+
     /** @var \Closure|null */
     private $callback;
     /** @var \Closure|null */
@@ -96,19 +99,64 @@ final class Rule {
         return $clone;
     }
 
+    // ─── Scope / префиксы ─────────────────────────────────────────────
+
+    /**
+     * Выполнить $fn с активным префиксом $prefix. Внутри замыкания:
+     *  - alias('foo')     регистрируется как "$prefix\foo";
+     *  - get('foo')       и парсер ищут сначала "$prefix\foo", потом fallback на голое 'foo' (по всему стеку).
+     *  - 'defaultConfig:key' автоматически дописывает $prefix как класс.
+     * Имя с обратным слэшем считается абсолютным и префикс не получает.
+     *
+     * @return mixed возвращаемое значение $fn
+     */
+    public static function scope(string $prefix, \Closure $fn) {
+        self::init(false);
+        self::$prefixStack[] = $prefix;
+        try {
+            return $fn();
+        } finally {
+            array_pop(self::$prefixStack);
+        }
+    }
+
+    public static function currentPrefix(): ?string {
+        $n = count(self::$prefixStack);
+        return $n > 0 ? self::$prefixStack[$n - 1] : null;
+    }
+
+    /** Lookup алиаса с учётом стека префиксов. */
+    private static function resolveAlias(string $name): ?Rule {
+        if (strpos($name, '\\') !== false) {
+            $name = ltrim($name, '\\');
+            return self::$registry[$name] ?? null;
+        }
+        for ($i = count(self::$prefixStack) - 1; $i >= 0; $i--) {
+            $key = self::$prefixStack[$i] . '\\' . $name;
+            if (isset(self::$registry[$key])) return self::$registry[$key];
+        }
+        return self::$registry[$name] ?? null;
+    }
+
     // ─── Реестр ──────────────────────────────────────────────────────
 
     public static function get(string $alias): ?Rule {
         self::init(false);
-        return self::$registry[$alias] ?? null;
+        return self::resolveAlias($alias);
     }
 
     public function alias(string $name, $skip = 0): self {
+        if (strpos($name, '\\') !== false) {
+            $name = ltrim($name, '\\');
+        } elseif ($prefix = self::currentPrefix()) {
+            $name = $prefix . '\\' . $name;
+        }
+
         if (isset(self::$registry[$name]) && self::$registry[$name] !== $this) {
             if (!$skip)
                 throw new \RuntimeException("Rule alias '{$name}' already registered");
-            
-            if ($skip == 1)
+
+            if ($skip === 1)
                 return $this;
         }
         self::$registry[$name] = $this;
@@ -220,7 +268,14 @@ final class Rule {
                 $params = array_map('trim', explode(',', $pStr));
             }
 
-            $tpl = self::$registry[$name] ?? null;
+            // defaultConfig в активном scope: дописываем prefix как класс, если его не передали явно
+            if ($name === 'defaultConfig' && count($params) < 2) {
+                if ($prefix = self::currentPrefix()) {
+                    array_unshift($params, $prefix);
+                }
+            }
+
+            $tpl = self::resolveAlias($name);
             if ($tpl === null) {
                 throw new \RuntimeException("Unknown rule: '{$name}'");
             }
@@ -413,8 +468,10 @@ final class Rule {
         } elseif (is_string($spec)) {
             $rules = self::parseString($spec);
             usort($rules, fn(Rule $a, Rule $b) => $a->order <=> $b->order);
+        } elseif (is_array($spec)) {
+            $rules = Rule::object($spec);
         } else {
-            throw new \InvalidArgumentException('Rule::forEach() expects string, Closure, or Rule');
+            throw new \InvalidArgumentException('Rule::forEach() expects string, Closure, array or Rule');
         }
 
         return self::create(function(&$data) use ($rules): array {
@@ -640,8 +697,9 @@ final class Rule {
         static $done = false;
 
         if ($refresh) {
-            $done           = false;
-            self::$registry = [];
+            $done              = false;
+            self::$registry    = [];
+            self::$prefixStack = [];
         }
         if ($done) return;
         $done = true;

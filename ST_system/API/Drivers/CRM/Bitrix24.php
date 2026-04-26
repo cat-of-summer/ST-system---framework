@@ -40,56 +40,49 @@ final class Bitrix24 extends IntegrationDriver {
 
     protected function __init(): void {
 
-        // ── Rule aliases (guarded) ────────────────────────────────────────────
+        // ── Rule aliases ──────────────────────────────────────────────────────
 
-        // b24_date: string / DateTimeInterface → 'Y-m-d'
-        if (!Rule::get('b24_date'))
-            Rule::create(fn(&$v) => $v === null || $v instanceof \DateTimeInterface || is_string($v))
-                ->after(function(&$v) {
-                    if ($v === null) return;
-                    if ($v instanceof \DateTimeInterface) { $v = $v->format('Y-m-d'); return; }
-                    try {
-                        $date = new \DateTime($v);
-                    } catch (\Throwable $th) {
-                        throw new \Exception("Некорректная дата {$v}");
-                    }
-                    if (!$date || !empty(\DateTime::getLastErrors()['error_count']))
-                        throw new \Exception("Некорректная дата {$v}");
-                    $v = $date->format('Y-m-d');
-                })
-                ->alias('b24_date');
-
-        // b24_bool: bool / Y / N → Y / N
-        if (!Rule::get('b24_bool'))
-            Rule::create(fn(&$v) => $v === null || is_bool($v) || in_array($v, ['Y', 'N'], true))
-                ->handleError(fn($v) => 'Должно быть boolean или Y/N')
-                ->after(fn(&$v) => $v = ($v === null) ? null : (is_bool($v) ? ($v ? 'Y' : 'N') : $v))
-                ->alias('b24_bool');
-
-        // b24_multifield: CRM-массив элементов {ID, TYPE_ID, VALUE, VALUE_TYPE}
-        if (!Rule::get('b24_multifield')) {
-            $crm_item_rule = Rule::object([
-                'ID'         => Rule::create(fn(&$v) => $v === null || is_int($v)),
-                'TYPE_ID'    => Rule::create(fn(&$v) => $v === null || in_array($v, ['PHONE','EMAIL','WEB','IM','LINK'], true))
-                    ->handleError(fn($v) => 'Некорректный TYPE_ID'),
-                'VALUE'      => Rule::create(fn(&$v) => is_string($v) && $v !== '')
-                    ->handleError(fn($v) => 'Не передан VALUE')->skip(true),
-                'VALUE_TYPE' => Rule::create(fn(&$v) => is_string($v) && in_array($v, [
-                        'WORK','MOBILE','FAX','HOME','PAGER','MAILING','OTHER','FACEBOOK','VK',
-                        'LIVEJOURNAL','TWITTER','TELEGRAM','SKYPE','VIBER','INSTAGRAM','BITRIX24',
-                        'OPENLINE','IMOL','ICQ','MSN','JABBER',
-                    ], true))->handleError(fn($v) => 'Некорректный VALUE_TYPE')->skip(true),
-            ]);
-            Rule::create(function(&$v) use ($crm_item_rule): bool {
-                if ($v === null) return true;
-                if (!is_array($v)) return false;
-                $errors = Rule::forEach($crm_item_rule)->apply($v);
-                if (!empty($errors)) throw new \Exception(reset($errors));
-                return true;
+        Rule::create(fn(&$v) => $v === null || $v instanceof \DateTimeInterface || is_string($v))
+            ->after(function(&$v) {
+                if ($v === null) return;
+                if ($v instanceof \DateTimeInterface) { $v = $v->format('Y-m-d'); return; }
+                try {
+                    $date = new \DateTime($v);
+                } catch (\Throwable $th) {
+                    throw new \Exception("Некорректная дата {$v}");
+                }
+                if (!$date || !empty(\DateTime::getLastErrors()['error_count']))
+                    throw new \Exception("Некорректная дата {$v}");
+                $v = $date->format('Y-m-d');
             })
-            ->handleError(fn($v) => 'Некорректный b24_multifield')
-            ->alias('b24_multifield');
-        }
+            ->alias('date', 1);
+
+        Rule::create(fn(&$v) => $v === null || is_bool($v) || in_array($v, ['Y', 'N'], true))
+            ->handleError(fn($v) => 'Должно быть boolean или Y/N')
+            ->after(fn(&$v) => $v = ($v === null) ? null : (is_bool($v) ? ($v ? 'Y' : 'N') : $v))
+            ->alias('bool', 1);
+
+        $crm_item_rule = Rule::object([
+            'ID'         => Rule::create(fn(&$v) => $v === null || is_int($v)),
+            'TYPE_ID'    => Rule::create(fn(&$v) => $v === null || in_array($v, ['PHONE','EMAIL','WEB','IM','LINK'], true))
+                ->handleError(fn($v) => 'Некорректный TYPE_ID'),
+            'VALUE'      => Rule::create(fn(&$v) => is_string($v) && $v !== '')
+                ->handleError(fn($v) => 'Не передан VALUE')->skip(true),
+            'VALUE_TYPE' => Rule::create(fn(&$v) => is_string($v) && in_array($v, [
+                    'WORK','MOBILE','FAX','HOME','PAGER','MAILING','OTHER','FACEBOOK','VK',
+                    'LIVEJOURNAL','TWITTER','TELEGRAM','SKYPE','VIBER','INSTAGRAM','BITRIX24',
+                    'OPENLINE','IMOL','ICQ','MSN','JABBER',
+                ], true))->handleError(fn($v) => 'Некорректный VALUE_TYPE')->skip(true),
+        ]);
+        Rule::create(function(&$v) use ($crm_item_rule): bool {
+            if ($v === null) return true;
+            if (!is_array($v)) return false;
+            $errors = Rule::forEach($crm_item_rule)->apply($v);
+            if (!empty($errors)) throw new \Exception(reset($errors));
+            return true;
+        })
+        ->handleError(fn($v) => 'Некорректный multifield')
+        ->alias('multifield', 1);
 
         // ── Constructor / events ──────────────────────────────────────────────
 
@@ -120,8 +113,8 @@ final class Bitrix24 extends IntegrationDriver {
                     'section' => Rule::create(fn(&$v) => $v === null || (is_array($v) && count($v) === count(array_filter($v, 'is_string'))))
                         ->before(fn(&$v) => $v = is_string($v) ? [$v] : $v)
                         ->handleError(fn($v) => 'section должен быть строкой или массивом строк'),
-                    'from' => 'nullable|b24_date',
-                    'to'   => 'nullable|b24_date',
+                    'from' => 'nullable|date',
+                    'to'   => 'nullable|date',
                 ],
                 'on_prepare' => function(&$params) {
                     if (isset($params['section'])) {
@@ -156,8 +149,8 @@ final class Bitrix24 extends IntegrationDriver {
                         if (!is_array($v)) return false;
                         $schema = array_merge([
                             'NAME'  => 'nullable|string',
-                            'PHONE' => 'nullable|b24_multifield',
-                            'EMAIL' => 'nullable|b24_multifield',
+                            'PHONE' => 'nullable|multifield',
+                            'EMAIL' => 'nullable|multifield',
                         ], $this->extraSchemas['crm.contact.add']['FIELDS'] ?? []);
                         $errors = Rule::object($schema)->apply($v);
                         if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
@@ -167,7 +160,7 @@ final class Bitrix24 extends IntegrationDriver {
                         if ($v === null) return true;
                         if (!is_array($v)) return false;
                         $schema = array_merge([
-                            'REGISTER_SONET_EVENT' => 'nullable|b24_bool',
+                            'REGISTER_SONET_EVENT' => 'nullable|bool',
                         ], $this->extraSchemas['crm.contact.add']['PARAMS'] ?? []);
                         $errors = Rule::object($schema)->apply($v);
                         if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
@@ -190,21 +183,21 @@ final class Bitrix24 extends IntegrationDriver {
                             'TYPE_ID'               => Rule::create(fn(&$v) => true),
                             'CATEGORY_ID'           => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v >= 0)),
                             'STAGE_ID'              => Rule::create(fn(&$v) => true),
-                            'IS_RECURRING'          => 'nullable|b24_bool',
-                            'IS_RETURN_CUSTOMER'    => 'nullable|b24_bool',
-                            'IS_REPEATED_APPROACH'  => 'nullable|b24_bool',
+                            'IS_RECURRING'          => 'nullable|bool',
+                            'IS_RETURN_CUSTOMER'    => 'nullable|bool',
+                            'IS_REPEATED_APPROACH'  => 'nullable|bool',
                             'PROBABILITY'           => Rule::create(fn(&$v) => $v === null || (is_int($v) && $v >= 0 && $v <= 100)),
                             'CURRENCY_ID'           => Rule::create(fn(&$v) => true),
                             'OPPORTUNITY'           => Rule::create(fn(&$v) => $v === null || is_float($v)),
-                            'IS_MANUAL_OPPORTUNITY' => 'nullable|b24_bool',
+                            'IS_MANUAL_OPPORTUNITY' => 'nullable|bool',
                             'TAX_VALUE'             => Rule::create(fn(&$v) => $v === null || is_float($v)),
                             'COMPANY_ID'            => Rule::create(fn(&$v) => true),
                             'CONTACT_ID'            => Rule::create(fn(&$v) => true),
                             'CONTACT_IDS'           => Rule::create(fn(&$v) => $v === null || is_array($v)),
-                            'BEGINDATE'             => 'nullable|b24_date',
-                            'CLOSEDATE'             => 'nullable|b24_date',
-                            'OPENED'                => 'nullable|b24_bool',
-                            'CLOSED'                => 'nullable|b24_bool',
+                            'BEGINDATE'             => 'nullable|date',
+                            'CLOSEDATE'             => 'nullable|date',
+                            'OPENED'                => 'nullable|bool',
+                            'CLOSED'                => 'nullable|bool',
                             'COMMENTS'              => 'nullable|string',
                             'ASSIGNED_BY_ID'        => Rule::create(fn(&$v) => true),
                             'SOURCE_ID'             => Rule::create(fn(&$v) => true),
@@ -228,7 +221,7 @@ final class Bitrix24 extends IntegrationDriver {
                         if ($v === null) return true;
                         if (!is_array($v)) return false;
                         $schema = array_merge([
-                            'REGISTER_SONET_EVENT' => 'nullable|b24_bool',
+                            'REGISTER_SONET_EVENT' => 'nullable|bool',
                         ], $this->extraSchemas['crm.deal.add']['PARAMS'] ?? []);
                         $errors = Rule::object($schema)->apply($v);
                         if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);

@@ -36,7 +36,7 @@ use ST_system\Schema;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-Schema::namespace('schema', function (): void {
+Schema::scope('schema', function (): void {
 
     Schema::entity('item-list', ['fields' => [
         'name'            => 'required|string',
@@ -73,7 +73,7 @@ Schema::namespace('schema', function (): void {
             . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
             . '</script>';
 
-    }])->namespace(function (): void {
+    }])->scope(function (): void {
 
         // ── ListItem ──────────────────────────────────────────────────────────
         Schema::entity('list-item', ['fields' => [

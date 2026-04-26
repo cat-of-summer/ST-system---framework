@@ -33,7 +33,7 @@ trait HasConfig {
                 $v = $p[0]::config($p[1]);
             }
             return true;
-        })->seesSentinel()->order(-1)->alias('defaultConfig');
+        })->seesSentinel()->order(-1)->alias('\\defaultConfig', 1);
     }
 
     protected static function getDefaultConfig(): array {

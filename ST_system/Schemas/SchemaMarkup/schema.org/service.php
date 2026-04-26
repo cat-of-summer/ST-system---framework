@@ -38,7 +38,7 @@ use ST_system\Schema;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-Schema::namespace('schema', function (): void {
+Schema::scope('schema', function (): void {
 
     Schema::entity('service', ['fields' => [
         'service_type'      => 'required|string',
@@ -93,7 +93,7 @@ Schema::namespace('schema', function (): void {
             . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
             . '</script>';
 
-    }])->namespace(function (): void {
+    }])->scope(function (): void {
 
         // ── PostalAddress ─────────────────────────────────────────────────────
         Schema::entity('postal-address', ['fields' => [

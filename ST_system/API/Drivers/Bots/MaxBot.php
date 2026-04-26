@@ -4,6 +4,7 @@ namespace ST_system\API\Drivers\Bots;
 
 use ST_system\API\IntegrationDriver;
 use ST_system\Rule;
+use ST_system\API\Drivers\Traits\HasHTMLRules;
 
 /**
  * Драйвер для работы с API мессенджера Max (https://dev.max.ru/docs-api)
@@ -18,7 +19,7 @@ use ST_system\Rule;
  */
 final class MaxBot extends IntegrationDriver {
 
-    use ST_system\API\Drivers\Traits\HasHTMLRules;
+    use HasHTMLRules;
 
     /**
      * Таблица обработки HTML-узлов для normalizeHtml().

@@ -57,7 +57,7 @@ abstract class IntegrationDriver {
     protected function __init(): void {}
 
     final public function __construct(...$args) {
-        $this->__init();
+        Rule::scope(static::class, fn() => $this->__init());
 
         if (static::config('cache.ttl') !== false) {
             $this->cache = new Cache([static::class, ...$args], [
@@ -115,6 +115,11 @@ abstract class IntegrationDriver {
         $http                   = strtoupper((string)($config['method'] ?? 'GET'));
         $config['method']       = in_array($http, ['GET', 'POST'], true)   ? $http                 : 'GET';
         $config['params']       = is_array($config['params'] ?? null)       ? $config['params']     : [];
+        if (!empty($config['params'])) {
+            try {
+                $config['params'] = Rule::scope(static::class, fn() => Rule::object($config['params']));
+            } catch (\Throwable $e) {}
+        }
         $config['on_prepare']   = is_callable($config['on_prepare'] ?? null) ? $config['on_prepare'] : null;
         $config['cache_ttl']    = is_int($config['cache_ttl'] ?? null)      ? $config['cache_ttl']  : 0;
         $config['meta']         = is_array($config['meta'] ?? null)         ? $config['meta']       : [];
@@ -246,13 +251,18 @@ abstract class IntegrationDriver {
 
         $this->fire('before_call', $method, $params);
 
-        if (!empty($config['params'])) {
-            $errors = Rule::object($config['params'])->apply($params);
-            if (!empty($errors))
-                throw new \InvalidArgumentException($errors[0]);
-        }
-        if ($config['on_prepare'] !== null)
-            ($config['on_prepare'])($params);
+        Rule::scope(static::class, function() use ($config, &$params) {
+            if (!empty($config['params'])) {
+                $rule = $config['params'];
+                $errors = ($rule instanceof Rule)
+                    ? $rule->apply($params)
+                    : Rule::object($rule)->apply($params);
+                if (!empty($errors))
+                    throw new \InvalidArgumentException($errors[0]);
+            }
+            if ($config['on_prepare'] !== null)
+                ($config['on_prepare'])($params);
+        });
 
         $params = array_filter($params, fn($v) => $v !== null);
 

@@ -34,7 +34,7 @@ use ST_system\Schema;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-Schema::namespace('schema', function (): void {
+Schema::scope('schema', function (): void {
 
     Schema::entity('medical-procedure', ['fields' => [
         'name'               => 'required|string',

@@ -40,13 +40,6 @@ final class Mistral extends OpenAICompatibleDriver {
     private array $usage = [];
 
     protected function __init(): void {
-
-        $RULES = [
-            'messages' => ['required', Rule::create(fn(&$v) => is_array($v) && count($v) > 0)->handleError(fn($v) => 'Параметр messages должен быть непустым массивом!')],
-            'temperature' => ['nullable', Rule::create(fn(&$v) => is_numeric($v) && $v >= 0 && $v <= 2)->handleError(fn($v) => 'temperature должен быть числом от 0 до 2')],
-            'model' => ['default:'.static::config('models.0'), Rule::create(fn(&$v) => in_array($v, static::config('models')))->handleError(fn($v) => "Недопустимая модель '{$v}'")],
-        ];
-
         $this->on('__construct', function(array $config) {
             $errors = Rule::object([
                 'token' => Rule::create(['required', 'string']),
@@ -74,18 +67,29 @@ final class Mistral extends OpenAICompatibleDriver {
             $config['headers']['Authorization'] = 'Bearer ' . $this->token;
         });
 
+        Rule::create(fn(&$v) => is_array($v) && count($v) > 0)
+            ->handleError(fn($v) => 'Параметр messages должен быть непустым массивом!')
+            ->alias('messages', 1);
+
+        Rule::create(fn(&$v) => is_numeric($v) && $v >= 0 && $v <= 2)
+            ->handleError(fn($v) => 'temperature должен быть числом от 0 до 2')
+            ->alias('temperature', 1);
+
+        Rule::create(fn(&$v) => in_array($v, static::config('models')))
+            ->handleError(fn($v) => "Недопустимая модель '{$v}'")
+            ->alias('model', 1);
+
         $this->registerMethod('completions', [
             'method'       => 'POST',
             'content_type' => 'application/json',
             'params' => [
-                'model'       => $RULES['model'],
-                'messages'    => $RULES['messages'],
-                'temperature' => $RULES['temperature'],
+                'model'       => 'default:'.static::config('models.0').'|model',
+                'messages'    => 'required|messages',
+                'temperature' => 'nullable|temperature',
                 'max_tokens'  => 'nullable|int',
                 'stream'      => 'nullable|bool',
             ]
         ]);
-
     }
 
     public function ask($input, array $options = []): string {

@@ -2,6 +2,8 @@
 
 namespace ST_system;
 
+use ST_system\Rule;
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
  *  Schema — типизированный реестр сущностей (entities) с валидацией и рендерингом
@@ -17,7 +19,7 @@ namespace ST_system;
  *
  * Entity   — именованный тип данных. Регистрируется один раз через Schema::entity().
  * Instance — заполненный экземпляр entity, создаётся через Schema::create()->fill().
- * Namespace — иерархический префикс для полного имени entity (через точку).
+ * Scope — иерархический префикс для полного имени entity (через точку).
  *
  * ───────────────────────────────────────────────────────────────────────────────
  *  РЕГИСТРАЦИЯ ENTITY
@@ -80,24 +82,24 @@ namespace ST_system;
  *     ]);
  *
  * ───────────────────────────────────────────────────────────────────────────────
- *  NAMESPACE
+ *  SCOPE
  * ───────────────────────────────────────────────────────────────────────────────
  *
- * Namespace — иерархический префикс через точку.
+ * Scope — иерархический префикс через точку.
  * Все entity, зарегистрированные внутри Closure, получат этот префикс.
  *
- *   Schema::namespace('schema', function (): void {
+ *   Schema::scope('schema', function (): void {
  *       Schema::entity('service', [...]);   // fullPath = 'schema.service'
  *       Schema::entity('offer',   [...]);   // fullPath = 'schema.offer'
  *   });
  *
- * Entity может открывать собственный namespace через ->namespace():
+ * Entity может открывать собственный scope через ->scope():
  *
- *   Schema::entity('service', [...])->namespace(function (): void {
+ *   Schema::entity('service', [...])->scope(function (): void {
  *       Schema::entity('offer', [...]);     // fullPath = 'service.offer'
  *   });
  *
- * Schema::namespace() идемпотентен: открывает существующий namespace или создаёт
+ * Schema::scope() идемпотентен: открывает существующий scope или создаёт
  * пустышку. Schema::entity() бросает исключение при повторной регистрации.
  *
  * ───────────────────────────────────────────────────────────────────────────────
@@ -318,11 +320,13 @@ final class Schema
         return new self($def);
     }
 
-    private function namespace(\Closure $fn): self
+    private function scope(\Closure $fn): self
     {
         self::$nsStack[] = $this->entityDef->fullPath;
         try {
-            $fn();
+            Rule::scope($this->entityDef->fullPath, function() use ($fn) {
+                $fn();
+            });
         } finally {
             array_pop(self::$nsStack);
         }
@@ -331,15 +335,15 @@ final class Schema
 
     public function __call(string $name, array $args)
     {
-        if ($name === 'namespace') {
-            return $this->namespace(...$args);
+        if ($name === 'scope') {
+            return $this->scope(...$args);
         }
         throw new \Error("Call to undefined method " . __CLASS__ . "::{$name}()");
     }
 
     public static function __callStatic(string $name, array $args)
     {
-        if ($name === 'namespace') {
+        if ($name === 'scope') {
             [$fullPath, $fn] = $args;
 
             if (isset(self::$registry[$fullPath])) {
@@ -360,7 +364,7 @@ final class Schema
                 $instance = new self($def);
             }
 
-            return $instance->namespace($fn);
+            return $instance->scope($fn);
         }
 
         throw new \Error("Call to undefined static method " . __CLASS__ . "::{$name}()");
@@ -398,16 +402,18 @@ final class Schema
         $computed   = [];
         $ruleSchema = [];
 
-        foreach ($def->fields as $key => $spec) {
-            if ($spec instanceof \Closure) {
-                $computed[$key] = $spec;
-                continue;
+        Rule::scope($ctx, function() use ($def, $ctx, &$ruleSchema, &$computed) {
+            foreach ($def->fields as $key => $spec) {
+                if ($spec instanceof \Closure) {
+                    $computed[$key] = $spec;
+                    continue;
+                }
+                $ruleSchema[$key] = self::compileFieldSpec($spec, $ctx);
             }
-            $ruleSchema[$key] = self::compileFieldSpec($spec, $ctx);
-        }
+        });
 
         $result = $data;
-        $errors = Rule::object($ruleSchema)->apply($result);
+        $errors = Rule::scope($ctx, fn() => Rule::object($ruleSchema)->apply($result));
 
         if (!empty($errors)) {
             throw new \RuntimeException(
