@@ -5,6 +5,7 @@
 
 - [API](API/)
 - [CensorText](CensorText/)
+- [Console](Console/)
 - [HTTP](HTTP/)
 - [Schemas](Schemas/)
 - [Storage](Storage/)
