@@ -26,7 +26,7 @@ final class Rule {
     /** @var bool Видит ли правило sentinel (true) или null (false) */
     private bool $seesSentinel = false;
 
-    private function __construct(?\Closure $callback = null) {
+    private function __construct(Closure $callback) {
         self::init(false);
         $this->callback = $callback;
     }
