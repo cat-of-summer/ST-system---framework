@@ -29,7 +29,7 @@ trait HasConfig {
         $initialized[static::class] = true;
 
         Rule::create(function(&$v, array $p): bool {
-            if (self::isSentinel($v) || $v === null || $v === '') {
+            if (Rule::isSentinel($v) || $v === null || $v === '') {
                 $v = $p[0]::config($p[1]);
             }
             return true;
