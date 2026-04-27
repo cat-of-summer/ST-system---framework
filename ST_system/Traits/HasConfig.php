@@ -21,12 +21,33 @@ trait HasConfig {
         return Config::getImmutableConfig(static::class, $key);
     }
 
-    public static function hasConfigInit(): void {
+<?php
+
+namespace ST_system\Traits;
+
+use ST_system\Config;
+use ST_system\Rule;
+
+trait HasConfig {
+
+    final public static function setConfig(array $config = []): void {
+        foreach ($config as $key => $value)
+            Config::setImmutableConfig(static::class, $key, $value);
+    }
+
+    final public static function config(string $key = '') {
         static $initialized = [];
+        if (!isset($initialized[static::class])) {
+            Config::fillImmutableConfig(static::class, '', static::getDefaultConfig());
+            $initialized[static::class] = true;
+        }
+        return Config::getImmutableConfig(static::class, $key);
+    }
 
-        if (isset($initialized[static::class])) return;
+    public static function hasConfigInit(): void {
+        static $initialized = null;
 
-        $initialized[static::class] = true;
+        if ($initialized !== null) return;
 
         Rule::create(function(&$v, array $p): bool {
             if (Rule::isSentinel($v) || $v === null || $v === '') {
@@ -39,7 +60,9 @@ trait HasConfig {
                 array_unshift($p, $prefix);
             }
         })
-        ->seesSentinel()->order(-1)->alias('\\defaultConfig', 1);
+        ->seesSentinel()->order(-1)->alias('\\defaultConfig');
+
+        $initialized = true;
     }
 
     protected static function getDefaultConfig(): array {
