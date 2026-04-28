@@ -25,6 +25,7 @@ trait HasConfig {
         static $initialized = null;
 
         if ($initialized !== null) return;
+        $initialized = true;
 
         Rule::create(function(&$v, array $p): bool {
             if (Rule::isSentinel($v) || $v === null || $v === '') {
@@ -38,8 +39,6 @@ trait HasConfig {
             }
         })
         ->seesSentinel()->order(-1)->alias('\\defaultConfig');
-
-        $initialized = true;
     }
 
     protected static function getDefaultConfig(): array {

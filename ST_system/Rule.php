@@ -30,7 +30,7 @@ final class Rule {
     private bool $seesSentinel = false;
 
     private function __construct(\Closure $callback) {
-        self::init(false);
+        self::init();
         $this->callback = $callback;
     }
 
@@ -110,7 +110,7 @@ final class Rule {
      * @return mixed возвращаемое значение $fn
      */
     public static function scope(string $prefix, \Closure $fn) {
-        self::init(false);
+        self::init();
         self::$prefixStack[] = $prefix;
         try {
             return $fn();
@@ -140,7 +140,7 @@ final class Rule {
     // ─── Реестр ──────────────────────────────────────────────────────
 
     public static function get(string $alias): ?Rule {
-        self::init(false);
+        self::init();
         return self::resolveAlias($alias);
     }
 
@@ -320,7 +320,7 @@ final class Rule {
      * @return Rule
      */
     public static function create($spec): Rule {
-        self::init(false);
+        self::init();
 
         if ($spec instanceof \Closure) {
             return new self($spec);
@@ -382,7 +382,7 @@ final class Rule {
      * Валидация ассоциативного массива / объекта по схеме полей.
      */
     public static function object(array $schema): Rule {
-        self::init(false);
+        self::init();
 
         // ── отделяем dot-notation ключи от обычных ──────────────────
         $regular  = [];
@@ -450,7 +450,7 @@ final class Rule {
      * @param string|Rule|\Closure $spec
      */
     public static function forEach($spec): Rule {
-        self::init(false);
+        self::init();
 
         if ($spec instanceof \Closure) {
             $innerRule = self::create($spec);
@@ -569,7 +569,7 @@ final class Rule {
      * @param bool|\Closure $cond
      */
     public static function requiredIf($cond): Rule {
-        self::init(false);
+        self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
 
         return self::create(function(&$v) use ($fn): bool {
@@ -586,7 +586,7 @@ final class Rule {
      * @param bool|\Closure $cond
      */
     public static function prohibitedIf($cond): Rule {
-        self::init(false);
+        self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
 
         return self::create(function(&$v) use ($fn): bool {
@@ -603,7 +603,7 @@ final class Rule {
      * @param bool|\Closure $cond
      */
     public static function excludeIf($cond): Rule {
-        self::init(false);
+        self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
 
         return self::create(function(&$v) use ($fn): bool {
@@ -621,7 +621,7 @@ final class Rule {
      * @param string|Rule $spec
      */
     public static function when($cond, $spec): Rule {
-        self::init(false);
+        self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
         $thenRule = is_string($spec) ? self::create($spec) : $spec;
 
@@ -633,14 +633,14 @@ final class Rule {
     }
 
     public static function in(array $values): Rule {
-        self::init(false);
+        self::init();
 
         return self::create(fn(&$v) => in_array($v, $values, false))
         ->handleError(fn($v) => 'Not a valid option');
     }
 
     public static function notIn(array $values): Rule {
-        self::init(false);
+        self::init();
 
         return self::create(fn(&$v) => !in_array($v, $values, false))
         ->handleError(fn($v) => 'Value is not allowed');
@@ -658,7 +658,7 @@ final class Rule {
      * @param mixed $value
      */
     public static function default($value): Rule {
-        self::init(false);
+        self::init();
 
         return self::create(function(&$v) use ($value): bool {
             if (self::isSentinel($v) || $v === null || $v === '')
@@ -672,7 +672,7 @@ final class Rule {
      * Статический хелпер для regex-паттернов, содержащих |
      */
     public static function regex(string $pattern): Rule {
-        self::init(false);
+        self::init();
         return self::create(fn(&$v) => is_string($v) && @preg_match($pattern, $v) === 1)
         ->handleError(fn($v) => 'Invalid format');
     }
@@ -693,14 +693,9 @@ final class Rule {
 
     // ─── Инициализация стандартных правил ─────────────────────────────
 
-    public static function init(bool $refresh = true): void {
+    public static function init(): void {
         static $done = false;
 
-        if ($refresh) {
-            $done              = false;
-            self::$registry    = [];
-            self::$prefixStack = [];
-        }
         if ($done) return;
         $done = true;
 

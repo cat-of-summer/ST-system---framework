@@ -35,7 +35,7 @@ class Request {
     protected function __schema(): array { return []; }
 
     private function __construct(array $query_params = []) {
-        Rule::init(true);
+        Rule::init();
 
         $this->data['query'] = $query_params;
 
@@ -65,7 +65,10 @@ class Request {
     private function validate(array $schema): array {
         $this->data();
 
-        $errors = Rule::object($schema)->apply($this->data['data']);
+        $errors = [];
+        Rule::scope(static::class, function() use ($schema, &$errors) {
+            $errors = Rule::object($schema)->apply($this->data['data']);
+        });
 
         foreach (['get', 'post', 'query', 'files'] as $key) {
             foreach (array_keys($this->data[$key]) as $k) {
