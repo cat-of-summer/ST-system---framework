@@ -35,8 +35,6 @@ class Request {
     protected function __schema(): array { return []; }
 
     private function __construct(array $query_params = []) {
-        Rule::init();
-
         $this->data['query'] = $query_params;
 
         $schema = $this->__schema();
