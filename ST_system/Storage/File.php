@@ -114,6 +114,7 @@ final class File {
     public function __call(string $name, array $args) {
         switch ($name) {
             case 'fetch':
+            case 'exists':
                 return $this->{$name}(...$args);
             case 'make':
                 return new static($args[0], $this);
@@ -503,7 +504,7 @@ final class File {
         return str_replace(Main::preparePath('~'.$root, 1), '', $this->getPathname());
     }
 
-    public function exists(): bool {
+    private function exists(): bool {
         return $this->isUri()
             ? false
             : file_exists($this->getPathname());
