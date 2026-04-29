@@ -104,6 +104,8 @@ final class File {
                 return static::make($args[0])->fetch($args[1] ?? false);
             case 'find':
                 return static::find(...$args);
+            case 'exists':
+                return static::make($args[0])->exists();
             default:
                 throw new \Exception("Method {$name} not found");
         }
