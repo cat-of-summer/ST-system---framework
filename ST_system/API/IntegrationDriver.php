@@ -5,6 +5,7 @@ namespace ST_system\API;
 use ST_system\Rule;
 use ST_system\Cache;
 use ST_system\Traits\HasConfig;
+use ST_system\Traits\HasEvents;
 
 abstract class IntegrationDriver {
 
@@ -20,35 +21,19 @@ abstract class IntegrationDriver {
         ];
     }
 
-    private array $listeners   = [];
+    use HasEvents;
+
+    protected static function getReservedEvents(): array {
+        return [
+            '__construct', 'before_curl_init', 'curl_init', 'encode_request',
+            'before_call', 'call', 'build_url', 'prepare_response',
+            'curl_error', 'decode_response', 'response', 'save_cache',
+        ];
+    }
+
     private array $methods_map = [];
 
     protected ?Cache $cache = null;
-
-    private const RESERVED_EVENTS = [
-        '__construct', 'before_curl_init', 'curl_init', 'encode_request',
-        'before_call', 'call', 'build_url', 'prepare_response',
-        'curl_error', 'decode_response', 'response', 'save_cache',
-    ];
-
-    final protected function on(string $event, callable $listener): void {
-        $this->listeners[$event][] = $listener;
-    }
-
-    private function fire(string $event, &...$params) {
-        if (empty($this->listeners[$event]))
-            return false;
-
-        foreach ($this->listeners[$event] as $listener)
-            call_user_func_array($listener, $params);
-    }
-
-    final protected function trigger(string $event, &...$params) {
-        if (in_array($event, self::RESERVED_EVENTS, true))
-            throw new \LogicException("Event '{$event}' is reserved and cannot be triggered externally.");
-
-        return $this->fire($event, ...$params);
-    }
 
     final public static function create(...$params): self {
         return new static(...$params);
