@@ -17,6 +17,7 @@
 - [Assets.php](Assets.php.md)
 - [Cache.php](Cache.php.md)
 - [Config.php](Config.php.md)
+- [Daemon.php](Daemon.php.md)
 - [Debug.php](Debug.php.md)
 - [Loader.php](Loader.php.md)
 - [Main.php](Main.php.md)
