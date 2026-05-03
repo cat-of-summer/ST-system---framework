@@ -4,6 +4,7 @@
 ## Папки
 
 - [API](API/)
+- [Cache](Cache/)
 - [CensorText](CensorText/)
 - [Console](Console/)
 - [HTTP](HTTP/)
@@ -15,7 +16,6 @@
 
 - [Access.php](Access.php.md)
 - [Assets.php](Assets.php.md)
-- [Cache.php](Cache.php.md)
 - [Config.php](Config.php.md)
 - [Daemon.php](Daemon.php.md)
 - [Debug.php](Debug.php.md)
