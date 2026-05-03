@@ -22,10 +22,7 @@ trait HasConfig {
     }
 
     public static function hasConfigInit(): void {
-        static $initialized = null;
-
-        if ($initialized !== null) return;
-        $initialized = true;
+        if (Rule::get('defaultConfig') !== null) return;
 
         Rule::create(function(&$v, array $p): bool {
             $class = $p[0];

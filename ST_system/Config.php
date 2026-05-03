@@ -96,7 +96,8 @@ final class Config {
         if ($subKey === '')
             return static::$cache[$key] ?? [];
 
-        return Main::dotGet(static::$cache, $key . '.' . $subKey, static::sentinel());
+        $value = Main::dotGet(static::$cache, $key . '.' . $subKey, static::sentinel());
+        return $value === static::sentinel() ? null : $value;
     }
 
     public static function setImmutableConfig(string $key, string $subKey, $value): void {
