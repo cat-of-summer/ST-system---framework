@@ -17,7 +17,7 @@ abstract class IntegrationDriver {
             'cache' => [
                 'dir' => '',
                 'ttl' => false,
-                'driver' => \ST_system\Cache\Drivers\FileSystemCacheDriver::class
+                'driver' => 'filesystem'
             ],
         ];
     }
@@ -46,7 +46,7 @@ abstract class IntegrationDriver {
         Rule::scope(static::class, fn() => $this->__init());
 
         if (static::config('cache.ttl') !== false) {
-            $this->cache = new Cache([static::class, ...$args], static::config('cache'));
+            $this->cache = Cache::make([static::class, ...$args], static::config('cache'));
         }
 
         $this->fire('__construct', ...$args);

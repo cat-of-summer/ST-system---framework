@@ -12,7 +12,7 @@ trait Minifiable {
 
     protected function __init(): void {
         $this->cache = Cache::make($this->file->getPathname(), [
-            'driver' => \ST_system\Cache\Drivers\FileSystemCacheDriver::class,
+            'driver' => 'filesystem',
             'dir' => File::config('cache.dir'),
             'file' => $this->file->getFilename(),
             'ttl' => -1

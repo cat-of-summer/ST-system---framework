@@ -4,15 +4,22 @@ namespace ST_system\Cache;
 
 use ST_system\Traits\HasConfig;
 use ST_system\Cache\CacheDriver;
-use ST_system\Cache\Drivers\FileSystemCacheDriver;
 
 final class Manager {
 
     use HasConfig;
 
     protected static function getDefaultConfig(): array {
+        $drivers = [
+            'filesystem' => \ST_system\Cache\Drivers\FileSystemCacheDriver::class,
+            'redis'      => \ST_system\Cache\Drivers\RedisCacheDriver::class,
+        ];
+
         return [
-            'driver' => FileSystemCacheDriver::class,
+            'drivers' => [
+                'default' => $drivers['filesystem'],
+                'available' => $drivers
+            ]
         ];
     }
 
@@ -26,7 +33,10 @@ final class Manager {
 
         static::hasConfigInit();
 
-        $driver = $config['driver'] ?? static::config('driver');
+        $driver = $config['driver'] ?? static::config('drivers.default');
+
+        if (static::config('drivers.available.'.$driver))
+            $driver = static::config('drivers.available.'.$driver);
 
         if (!class_exists($driver) || !is_subclass_of($driver, CacheDriver::class))
             throw new \InvalidArgumentException("Cache driver must be a subclass of ".CacheDriver::class);

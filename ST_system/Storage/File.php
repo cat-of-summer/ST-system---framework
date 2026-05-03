@@ -80,7 +80,7 @@ final class File {
         }
 
         $this->cache = Cache::make($this->getPathname(), [
-            'driver' => \ST_system\Cache\Drivers\FileSystemCacheDriver::class,
+            'driver' => 'filesystem',
             'dir' => static::config('cache.dir'),
             'ttl' => static::config('cache.ttl'),
             'file' => $cache_filename
