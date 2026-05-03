@@ -33,8 +33,8 @@ class Daemon {
     public string $pid;
     protected bool $running = false;
 
-    private callable $initFn;
-    private callable $runFn;
+    private \Closure $initFn;
+    private \Closure $runFn;
 
     private bool    $committed = false;
     private array   $checkpoints = [];

@@ -25,6 +25,6 @@ trait HasEvents {
         if (in_array($event, static::getReservedEvents(), true))
             throw new \LogicException("Event '{$event}' is reserved and cannot be triggered externally.");
 
-        return $this->fire($event, ...$params);
+        $this->fire($event, ...$params);
     }
 }

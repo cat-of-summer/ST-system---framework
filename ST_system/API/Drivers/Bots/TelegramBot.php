@@ -182,7 +182,7 @@ final class TelegramBot extends IntegrationDriver {
             ],
             'setWebhook' => [
                 'params' => [
-                    'url'        => 'required|secure_url',
+                    'url'        => 'required|url',
                     'show_alert' => 'nullable|bool',
                 ],
             ],
