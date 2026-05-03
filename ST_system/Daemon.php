@@ -57,7 +57,8 @@ class Daemon {
         });
     }
 
-    final public static function __callStatic(string $name, array $args): mixed {
+    /** @return mixed */
+    final public static function __callStatic(string $name, array $args) {
         $instance = new static();
 
         if ($name === 'init') {
@@ -75,7 +76,8 @@ class Daemon {
         return $instance->__call($name, $args);
     }
 
-    final public function __call(string $name, array $args): mixed {
+    /** @return mixed */
+    final public function __call(string $name, array $args) {
         $fn = $args[0] ?? null;
 
         if ($name === 'run') {
@@ -85,7 +87,7 @@ class Daemon {
             return $this;
         }
 
-        if (str_starts_with($name, 'on') && strlen($name) > 2) {
+        if (strncmp($name, 'on', 2) === 0 && strlen($name) > 2) {
             if ($fn) $this->on(lcfirst(substr($name, 2)), $fn);
             return $this;
         }
@@ -105,7 +107,8 @@ class Daemon {
         $last_checkpoint = $name;
     }
 
-    final protected function goal(string $name, mixed &...$params): void {
+    /** @param mixed ...$params */
+    final protected function goal(string $name, &...$params): void {
         if (!isset($this->checkpoints[$name]))
             throw new \LogicException("Checkpoint '{$name}' is not registered.");
 

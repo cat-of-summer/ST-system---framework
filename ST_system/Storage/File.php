@@ -242,7 +242,7 @@ final class File {
                         $parts = explode('/', str_replace('\\', '/', $iterator instanceof \RecursiveIteratorIterator ? $iterator->getSubPathname() : $iterator->getFilename()));
                         $skip = false;
                         foreach ($parts as $p)
-                            if ($p != '' && str_starts_with($p, '.')) {
+                            if ($p != '' && strncmp($p, '.', 1) === 0) {
                                 $skip = true;
                                 break;
                             }
@@ -346,7 +346,8 @@ final class File {
         return $meta;
     }
 
-    private function fetch(bool $force = false): static {
+    /** @return static */
+    private function fetch(bool $force = false): self {
         $this->info_data = [];
         $this->mime_data = [];
 
@@ -437,7 +438,8 @@ final class File {
         throw $th;
     }
 
-    public function getSize(string $unit = 'b'): int|float {
+    /** @return int|float */
+    public function getSize(string $unit = 'b') {
         $bytes = $this->isUri()
             ? (int)$this->getMeta()['content-length']
             : $this->info->getSize();
@@ -457,7 +459,8 @@ final class File {
         ])->purgeBase();
     }
 
-    public function purgeCache(): static {
+    /** @return static */
+    public function purgeCache(): self {
         $this->cache->purge();
 
         if ($original = $this->getOriginal())

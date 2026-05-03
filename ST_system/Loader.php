@@ -27,7 +27,8 @@ final class Loader {
         }
     }
 
-    public static function create(...$args): static { return new static(...$args); }
+    /** @return static */
+    public static function create(...$args): self { return new static(...$args); }
 
     public static function __callStatic(string $name, array $args) {
         switch ($name) {

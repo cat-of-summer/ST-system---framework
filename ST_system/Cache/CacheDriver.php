@@ -30,7 +30,8 @@ abstract class CacheDriver {
         $this->attributes['ttl']  = (int)($config['ttl']  ?? 0);
     }
 
-    final public function spawn($key, array $override = []): static {
+    /** @return static */
+    final public function spawn($key, array $override = []): self {
         $clone = clone $this;
         $clone->attributes['raw_key'] = $key;
         $clone->id = md5(Main::serialize($key));

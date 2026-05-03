@@ -117,5 +117,6 @@ final class Manager {
         return $this->driver->{$name};
     }
 
-    private static function make(...$args): static { return new static(...$args); }
+    /** @return static */
+    private static function make(...$args): self { return new static(...$args); }
 }

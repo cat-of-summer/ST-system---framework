@@ -137,7 +137,8 @@ final class Mistral extends OpenAICompatibleDriver {
         return array_slice($this->conversation, $start, $count ?: null);
     }
 
-    public function getHistorySize(string $unit = 'b'): int|float {
+    /** @return int|float */
+    public function getHistorySize(string $unit = 'b') {
         $bytes = mb_strlen(json_encode($this->conversation), '8bit');
 
         return ($divisor = ['kb' => 1024, 'mb' => 1048576][strtolower($unit)] ?? null)

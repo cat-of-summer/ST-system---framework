@@ -366,7 +366,7 @@ class Assets {
                 $parts = explode('/', str_replace('\\', '/', $iterator->getSubPathname()));
                 $skip = false;
                 foreach ($parts as $p)
-                    if ($p !== '' && str_starts_with($p, '.')) {
+                    if ($p !== '' && strncmp($p, '.', 1) === 0) {
                         $skip = true;
                         break;
                     }

@@ -183,16 +183,16 @@ final class Robokassa extends IntegrationDriver
      */
     public static function mapStateCode(int $stateCode): string
     {
-        return match ($stateCode) {
-            100     => 'completed',   // Платёж проведён успешно
-            50      => 'processing',  // Средства получены, зачисление в процессе
-            20      => 'hold',        // HOLD
-            5       => 'pending',     // Операция инициализирована
-            10      => 'canceled',    // Операция отменена
-            60      => 'refunded',    // Отказ в зачислении, возврат
-            80      => 'pending',     // Приостановлено (проверка безопасности)
-            default => 'unknown',
-        };
+        switch ($stateCode) {
+            case 100: return 'completed';   // Платёж проведён успешно
+            case 50:  return 'processing';  // Средства получены, зачисление в процессе
+            case 20:  return 'hold';        // HOLD
+            case 5:   return 'pending';     // Операция инициализирована
+            case 10:  return 'canceled';    // Операция отменена
+            case 60:  return 'refunded';    // Отказ в зачислении, возврат
+            case 80:  return 'pending';     // Приостановлено (проверка безопасности)
+            default:  return 'unknown';
+        }
     }
 
     // ------------------------------------------------------------------
@@ -291,7 +291,7 @@ final class Robokassa extends IntegrationDriver
         // Recurring endpoint — POST form-encoded
         // ------------------------------------------------------------------
         $this->on('before_curl_init', function ($r, $m, $p, &$config) {
-            if (str_contains($m, 'Recurring')) {
+            if (strpos($m, 'Recurring') !== false) {
                 $config['method']       = 'POST';
                 $config['content_type'] = 'application/x-www-form-urlencoded';
             } else {
@@ -304,7 +304,7 @@ final class Robokassa extends IntegrationDriver
         // Listener receives args in that order, so correct signature is:
         // function ($request_url, $method, &$params)
         $this->on('encode_request', function ($request_url, $method, &$params) {
-            if (str_contains($method, 'Recurring')) {
+            if (strpos($method, 'Recurring') !== false) {
                 // Add merchant login & signature to recurring request
                 $params['MerchantLogin'] = $this->SETTINGS['merchant_login'];
 
@@ -338,7 +338,7 @@ final class Robokassa extends IntegrationDriver
             }
 
             // OpStateExt returns XML
-            if (str_contains($method, 'OpStateExt')) {
+            if (strpos($method, 'OpStateExt') !== false) {
                 $parsed = self::parseOpStateXml($raw_data['response']);
                 if (isset($parsed['error'])) {
                     $raw_data['error'] = $parsed['error'];
@@ -348,7 +348,7 @@ final class Robokassa extends IntegrationDriver
                 $raw_data['response'] = $parsed;
             }
             // Recurring endpoint returns plain text like "OK{InvId}" or error XML
-            elseif (str_contains($method, 'Recurring')) {
+            elseif (strpos($method, 'Recurring') !== false) {
                 $response = trim($raw_data['response']);
                 // Successful response starts with "OK"
                 if (stripos($response, 'OK') === false) {

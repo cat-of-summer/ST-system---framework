@@ -33,7 +33,8 @@ final class SmartCaptcha extends IntegrationDriver {
         ]);
     }
 
-    public function validate($params): mixed {
+    /** @return mixed */
+    public function validate($params) {
         if (!is_array($params))
             $params = ['token' => (string)$params];
 

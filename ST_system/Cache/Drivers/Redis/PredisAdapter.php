@@ -12,7 +12,8 @@ class PredisAdapter implements RedisAdapterInterface {
         $this->client = $client;
     }
 
-    public static function connect(array $cfg): static {
+    /** @return static */
+    public static function connect(array $cfg): self {
         $params = ['host' => $cfg['host'], 'port' => (int)$cfg['port']];
         if (!empty($cfg['auth'])) $params['password'] = $cfg['auth'];
         if ((int)$cfg['db'] !== 0) $params['database'] = (int)$cfg['db'];
@@ -23,7 +24,8 @@ class PredisAdapter implements RedisAdapterInterface {
         $this->client->hset($key, $field, $value);
     }
 
-    public function hGet(string $key, string $field): string|false {
+    /** @return string|false */
+    public function hGet(string $key, string $field) {
         $r = $this->client->hget($key, $field);
         return ($r === null) ? false : (string)$r;
     }
@@ -32,11 +34,16 @@ class PredisAdapter implements RedisAdapterInterface {
         return (bool)$this->client->hexists($key, $field);
     }
 
-    public function del(string|array $keys): void {
+    /** @param string|array $keys */
+    public function del($keys): void {
         $this->client->del(...(array)$keys);
     }
 
-    public function scan(mixed &$cursor, string $pattern, int $count): array|false {
+    /**
+     * @param int|string|null $cursor
+     * @return array|false
+     */
+    public function scan(&$cursor, string $pattern, int $count) {
         if ($cursor === null || $cursor === false) $cursor = 0;
         [$cursor, $keys] = $this->client->scan($cursor, ['match' => $pattern, 'count' => $count]);
         $cursor = (int)$cursor;

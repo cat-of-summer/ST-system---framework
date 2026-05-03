@@ -207,11 +207,13 @@ final class Access {
         $config['ban_time'];
     }
 
-    public static function ban_ip(mixed $ips) { //Диапазон, массив, строка
+    /** @param mixed $ips */
+    public static function ban_ip($ips) { //Диапазон, массив, строка
         $config['ban_time'];
     }
 
-    public static function unban_ip(mixed $ips) { //Диапазон, массив, строка
+    /** @param mixed $ips */
+    public static function unban_ip($ips) { //Диапазон, массив, строка
     }
 
 }
