@@ -58,7 +58,11 @@ final class TelegramBot extends IntegrationDriver {
 
     protected static function getDefaultConfig(): array {
         return [
-            'endpoint' => 'https://api.telegram.org/bot'
+            'endpoint' => 'https://api.telegram.org/bot',
+            'cache' => [
+                'dir' => '~/cache/',
+                'ttl' => 86400
+            ]
         ];
     }
 
