@@ -28,9 +28,20 @@ trait HasConfig {
         $initialized = true;
 
         Rule::create(function(&$v, array $p): bool {
-            if (Rule::isSentinel($v) || $v === null || $v === '') {
-                $v = $p[0]::config($p[1]);
+            $class = $p[0];
+
+            if (is_array($v) && !isset($p[1])) {
+                foreach ($class::config() as $k => $_) {
+                    if (!array_key_exists($k, $v) || $v[$k] === null || $v[$k] === '')
+                        $v[$k] = $class::config($k);
+                }
+                return true;
             }
+
+            if (Rule::isSentinel($v) || $v === null || $v === '') {
+                $v = $class::config($p[1] ?? '');
+            }
+            
             return true;
         })
         ->before(function(&$v, array &$p): void {

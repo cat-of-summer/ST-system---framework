@@ -3,7 +3,7 @@
 namespace ST_system\API;
 
 use ST_system\Rule;
-use ST_system\Cache;
+use ST_system\Cache\Manager as Cache;
 use ST_system\Traits\HasConfig;
 use ST_system\Traits\HasEvents;
 
@@ -17,6 +17,7 @@ abstract class IntegrationDriver {
             'cache' => [
                 'dir' => '',
                 'ttl' => false,
+                'driver' => \ST_system\Cache\Drivers\FileSystemCacheDriver::class
             ],
         ];
     }
@@ -45,10 +46,7 @@ abstract class IntegrationDriver {
         Rule::scope(static::class, fn() => $this->__init());
 
         if (static::config('cache.ttl') !== false) {
-            $this->cache = new Cache([static::class, ...$args], [
-                'dir' => static::config('cache.dir'),
-                'ttl' => static::config('cache.ttl'),
-            ]);
+            $this->cache = new Cache([static::class, ...$args], static::config('cache'));
         }
 
         $this->fire('__construct', ...$args);

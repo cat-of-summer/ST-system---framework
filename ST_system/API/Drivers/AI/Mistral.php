@@ -11,10 +11,7 @@ final class Mistral extends OpenAICompatibleDriver {
     protected static function getDefaultConfig(): array {
         return [
             'endpoint' => 'https://api.mistral.ai/v1/chat/',
-            'cache' => [
-                'dir' => '',
-                'ttl' => -1,
-            ],
+            'cache' => parent::config('cache'),
             'models' => [
                 "mistral-small-latest",
                 "mistral-medium-latest",

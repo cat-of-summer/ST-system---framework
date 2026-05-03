@@ -4,7 +4,7 @@ namespace ST_system\Storage;
 
 use ST_system\Traits\HasConfig;
 use ST_system\Main;
-use ST_system\Cache;
+use ST_system\Cache\Manager as Cache;
 use ST_system\Storage\Mimes;
 
 final class File {
@@ -15,7 +15,7 @@ final class File {
         return [
             'cache' => [
                 'dir' => '~/cache/',
-                'ttl' => 3600
+                'ttl' => 3600,
             ],
             'mimes' => [
                 'extensions' => [
@@ -80,6 +80,7 @@ final class File {
         }
 
         $this->cache = Cache::make($this->getPathname(), [
+            'driver' => \ST_system\Cache\Drivers\FileSystemCacheDriver::class,
             'dir' => static::config('cache.dir'),
             'ttl' => static::config('cache.ttl'),
             'file' => $cache_filename

@@ -21,10 +21,7 @@ final class Telegraph extends IntegrationDriver {
     protected static function getDefaultConfig(): array {
         return [
             'endpoint'  => 'https://api.telegra.ph',
-            'cache' => [
-                'dir' => '~/cache/telegraph/',
-                'ttl' => -1,
-            ],
+            'cache' => parent::config('cache'),
         ];
     }
 

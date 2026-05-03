@@ -4,7 +4,7 @@ namespace ST_system\Storage\Mimes;
 
 use ST_system\Storage\Mimes\Mime;
 use ST_system\Traits\HasConfig;
-use ST_system\Cache;
+use ST_system\Cache\Manager as Cache;
 use ST_system\Storage\File;
 
 class ImageMime extends Mime {
@@ -166,6 +166,7 @@ class ImageMime extends Mime {
         }
 
         $this->cache = Cache::make($this->file->getPathname(), [
+            'driver' => \ST_system\Cache\Drivers\FileSystemCacheDriver::class,
             'dir' => static::config('cache_dir') ?: File::config('cache.dir'),
             'file' => $this->file->getFilename(),
             'ttl' => -1,

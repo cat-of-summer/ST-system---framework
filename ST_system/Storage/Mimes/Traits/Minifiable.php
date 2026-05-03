@@ -3,7 +3,7 @@ namespace ST_system\Storage\Mimes\Traits;
 
 use ST_system\Storage\File;
 use ST_system\Main;
-use ST_system\Cache;
+use ST_system\Cache\Manager as Cache;
 
 trait Minifiable {
 
@@ -12,6 +12,7 @@ trait Minifiable {
 
     protected function __init(): void {
         $this->cache = Cache::make($this->file->getPathname(), [
+            'driver' => \ST_system\Cache\Drivers\FileSystemCacheDriver::class,
             'dir' => File::config('cache.dir'),
             'file' => $this->file->getFilename(),
             'ttl' => -1
