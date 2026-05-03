@@ -13,6 +13,7 @@ final class Manager {
         $drivers = [
             'filesystem' => \ST_system\Cache\Drivers\FileSystemCacheDriver::class,
             'redis'      => \ST_system\Cache\Drivers\RedisCacheDriver::class,
+            'database'   => \ST_system\Cache\Drivers\DatabaseCacheDriver::class,
         ];
 
         return [

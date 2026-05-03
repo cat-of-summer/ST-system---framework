@@ -51,10 +51,19 @@ class RedisCacheDriver extends CacheDriver {
 
         if (!is_string($cfg['host']) || $cfg['host'] === '') return null;
 
+        static $pool = [];
+        $key = md5(serialize([
+            (string)($cfg['host'] ?? ''),
+            (int)   ($cfg['port'] ?? 0),
+            (string)($cfg['auth'] ?? ''),
+            (int)   ($cfg['db']   ?? 0),
+        ]));
+        if (isset($pool[$key])) return $pool[$key];
+
         foreach (self::ADAPTERS as $adapterClass) {
             if (!$adapterClass::isAvailable()) continue;
             try {
-                return $adapterClass::connect($cfg);
+                return $pool[$key] = $adapterClass::connect($cfg);
             } catch (\Throwable $e) {
                 continue;
             }
