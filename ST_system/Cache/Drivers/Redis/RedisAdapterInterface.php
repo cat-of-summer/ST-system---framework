@@ -3,6 +3,7 @@
 namespace ST_system\Cache\Drivers\Redis;
 
 interface RedisAdapterInterface {
+    public static function isAvailable(): bool;
     /** @return static */
     public static function connect(array $cfg): self;
     public function hSet(string $key, string $field, string $value): void;

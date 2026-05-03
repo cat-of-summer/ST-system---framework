@@ -50,6 +50,8 @@ abstract class CacheDriver {
     abstract protected function __init(array $config): void;
     protected function __rebind(array $override): void {}
 
+    abstract public function isAvailable(): bool;
+
     abstract protected function writeBlob(string $file, string $payload): void;
     abstract protected function readBlob(string $file): ?string;
     abstract protected function writeMeta(string $file, array $meta): void;

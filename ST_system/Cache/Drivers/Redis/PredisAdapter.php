@@ -12,6 +12,10 @@ class PredisAdapter implements RedisAdapterInterface {
         $this->client = $client;
     }
 
+    public static function isAvailable(): bool {
+        return class_exists(\Predis\Client::class);
+    }
+
     /** @return static */
     public static function connect(array $cfg): self {
         $params = ['host' => $cfg['host'], 'port' => (int)$cfg['port']];

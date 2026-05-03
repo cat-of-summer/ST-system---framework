@@ -17,16 +17,17 @@ class FileSystemCacheDriver extends CacheDriver {
 
     protected function __init(array $config): void {
         $this->attributes['base_dir'] = Main::preparePath($config['dir'], 3);
-        $this->initDir($this->attributes['base_dir']);
         $this->attributes['dir']      = $this->attributes['base_dir'].'/'.$this->id;
     }
 
     protected function __rebind(array $override): void {
-        if (isset($override['dir']) && $override['dir'] !== '' && $override['dir'] !== null) {
+        if (isset($override['dir']) && $override['dir'] !== '' && $override['dir'] !== null)
             $this->attributes['base_dir'] = Main::preparePath($override['dir'], 3);
-            $this->initDir($this->attributes['base_dir']);
-        }
         $this->attributes['dir'] = $this->attributes['base_dir'].'/'.$this->id;
+    }
+
+    public function isAvailable(): bool {
+        return $this->initDir($this->attributes['base_dir']);
     }
 
     protected function getFileAttribute(): string {
@@ -37,15 +38,11 @@ class FileSystemCacheDriver extends CacheDriver {
         return $this->getFileAttribute().'.meta';
     }
 
-    private function initDir(string $dir): void {
+    private function initDir(string $dir): bool {
         static $initialized = [];
-        if (isset($initialized[$dir])) return;
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0775, true);
-            if (!is_dir($dir))
-                throw new \RuntimeException("Cannot create cache directory");
-        }
-        $initialized[$dir] = true;
+        if (isset($initialized[$dir])) return $initialized[$dir];
+        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        return $initialized[$dir] = is_dir($dir) && is_writable($dir);
     }
 
     protected function writeBlob(string $file, string $payload): void {

@@ -7,13 +7,12 @@ use ST_system\Cache\Drivers\Redis\RedisAdapterInterface;
 
 class RedisCacheDriver extends CacheDriver {
 
-    private const CLIENT_MAP = [
-        \Redis::class         => \ST_system\Cache\Drivers\Redis\PhpRedisAdapter::class,
-        \Relay\Relay::class   => \ST_system\Cache\Drivers\Redis\PhpRedisAdapter::class,
-        \Predis\Client::class => \ST_system\Cache\Drivers\Redis\PredisAdapter::class,
+    private const ADAPTERS = [
+        \ST_system\Cache\Drivers\Redis\PhpRedisAdapter::class,
+        \ST_system\Cache\Drivers\Redis\PredisAdapter::class,
     ];
 
-    private RedisAdapterInterface $connection;
+    private ?RedisAdapterInterface $connection = null;
 
     protected static function getDefaultConfig(): array {
         return [
@@ -37,30 +36,30 @@ class RedisCacheDriver extends CacheDriver {
     protected function __rebind(array $override): void {
         if (isset($override['prefix']) && $override['prefix'] !== null)
             $this->attributes['prefix'] = (string)$override['prefix'];
-        if ($override['connection'] instanceof RedisAdapterInterface)
+        if (isset($override['connection']) && $override['connection'] instanceof RedisAdapterInterface)
             $this->connection = $override['connection'];
         $this->attributes['bucket'] = $this->attributes['prefix'].$this->id;
     }
 
-    private static function getConnection(array $cfg): RedisAdapterInterface {
-        static $resolved_adapter = null;
+    public function isAvailable(): bool {
+        return $this->connection !== null;
+    }
 
-        if ($cfg['connection'] instanceof RedisAdapterInterface) return $cfg['connection'];
+    private static function getConnection(array $cfg): ?RedisAdapterInterface {
+        if (isset($cfg['connection']) && $cfg['connection'] instanceof RedisAdapterInterface)
+            return $cfg['connection'];
 
-        if (is_string($cfg['host']) && $cfg['host'] !== '') {
-            if ($resolved_adapter === null) {
-                foreach (self::CLIENT_MAP as $nativeClass => $adapterClass) {
-                    if (class_exists($nativeClass)) {
-                        $resolved_adapter = $adapterClass;
-                        break;
-                    }
-                }
+        if (!is_string($cfg['host']) || $cfg['host'] === '') return null;
+
+        foreach (self::ADAPTERS as $adapterClass) {
+            if (!$adapterClass::isAvailable()) continue;
+            try {
+                return $adapterClass::connect($cfg);
+            } catch (\Throwable $e) {
+                continue;
             }
-            if ($resolved_adapter !== null)
-                return ($resolved_adapter)::connect($cfg);
         }
-
-        throw new \RuntimeException('No Redis client available for RedisCacheDriver');
+        return null;
     }
 
     protected function writeBlob(string $file, string $payload): void {

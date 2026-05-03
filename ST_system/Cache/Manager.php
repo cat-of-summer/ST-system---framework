@@ -33,17 +33,23 @@ final class Manager {
 
         static::hasConfigInit();
 
-        $driver = $config['driver'] ?? static::config('drivers.default');
-
-        if (static::config('drivers.available.'.$driver))
-            $driver = static::config('drivers.available.'.$driver);
-
-        if (!class_exists($driver) || !is_subclass_of($driver, CacheDriver::class))
-            throw new \InvalidArgumentException("Cache driver must be a subclass of ".CacheDriver::class);
-
+        $requested = $config['driver'] ?? static::config('drivers.default');
+        $default   = static::config('drivers.default');
         unset($config['driver']);
 
-        $this->driver = new $driver($key, $config);
+        $primaryClass = static::config('drivers.available.'.$requested) ?: $requested;
+        $defaultClass = static::config('drivers.available.'.$default)   ?: $default;
+
+        $this->driver = static::makeDriver($primaryClass, $key, $config);
+
+        if (!$this->driver->isAvailable() && $primaryClass !== $defaultClass)
+            $this->driver = static::makeDriver($defaultClass, $key, $config);
+    }
+
+    private static function makeDriver(string $class, $key, array $config): CacheDriver {
+        if (!class_exists($class) || !is_subclass_of($class, CacheDriver::class))
+            throw new \InvalidArgumentException("Cache driver must be a subclass of ".CacheDriver::class);
+        return new $class($key, $config);
     }
 
     public static function __callStatic(string $name, array $args) {

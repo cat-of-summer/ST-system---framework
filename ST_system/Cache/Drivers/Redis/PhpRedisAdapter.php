@@ -14,6 +14,10 @@ class PhpRedisAdapter implements RedisAdapterInterface {
         $this->client = $client;
     }
 
+    public static function isAvailable(): bool {
+        return class_exists(\Redis::class) || class_exists(\Relay\Relay::class);
+    }
+
     /** @return static */
     public static function connect(array $cfg): self {
         if (class_exists(\Redis::class)) {
