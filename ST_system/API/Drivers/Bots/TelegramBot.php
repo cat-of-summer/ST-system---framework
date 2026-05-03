@@ -208,25 +208,27 @@ final class TelegramBot extends IntegrationDriver {
     }
 
     public function handleUpdate(callable $a): void {
+        static $offset = null;
+
         $cache = $this->cache()->make(static::class);
 
-        $offset = $cache->isValid() ? $cache->get() : 0;
-        
+        if ($offset === null)
+            $offset = $cache->isValid() ? (int)$cache->get() : 0;
+
         $response = $this->call('getUpdates', [
             'offset' => $offset + 1
         ]);
 
         if (!$response['ok']) return;
-        
-        $updates = $response['result'] ?? [];
 
-        foreach ($updates as $update) {
+        $start = $offset;
+        foreach ($response['result'] ?? [] as $update) {
             if (!$a($update)) break;
-            
             $offset = $update['update_id'];
         }
 
-       $cache->set($offset);
+        if ($offset !== $start)
+            $cache->set($offset);
     }
 
 }
