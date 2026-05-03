@@ -58,8 +58,7 @@ final class TelegramBot extends IntegrationDriver {
 
     protected static function getDefaultConfig(): array {
         return [
-            'endpoint' => 'https://api.telegram.org/bot',
-            'cache'    => parent::config('cache')
+            'endpoint' => 'https://api.telegram.org/bot'
         ];
     }
 

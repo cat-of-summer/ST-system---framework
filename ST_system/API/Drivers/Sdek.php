@@ -7,7 +7,7 @@ use ST_system\Rule;
 
 final class Sdek extends IntegrationDriver {
 
-    protected static function getDefaultConfig(): array { return ['endpoint' => 'https://api.cdek.ru/v2/', 'cache' => parent::config('cache')]; }
+    protected static function getDefaultConfig(): array { return ['endpoint' => 'https://api.cdek.ru/v2/']; }
 
     private array $SETTINGS = [];
 
