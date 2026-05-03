@@ -34,18 +34,14 @@ class MysqlAdapter implements DatabaseAdapterInterface {
 
         $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset={$charset}";
 
-        $options = ($cfg['options'] ?? []) + [
+        $pdo = new \PDO($dsn, (string)($cfg['username'] ?? ''), (string)($cfg['password'] ?? ''), [
             \PDO::ATTR_ERRMODE            => \PDO::ERRMODE_EXCEPTION,
             \PDO::ATTR_EMULATE_PREPARES   => false,
             \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
-        ];
-
-        $pdo = new \PDO($dsn, (string)($cfg['username'] ?? ''), (string)($cfg['password'] ?? ''), $options);
+        ]);
 
         $self = new static($pdo, $table);
-
-        if (!array_key_exists('auto_migrate', $cfg) || $cfg['auto_migrate'])
-            $self->migrate();
+        $self->migrate();
 
         return $self;
     }

@@ -8,28 +8,27 @@ use ST_system\Cache\Drivers\Database\DatabaseAdapterInterface;
 class DatabaseCacheDriver extends CacheDriver {
 
     private const ADAPTERS = [
-        \ST_system\Cache\Drivers\Database\MysqlAdapter::class,
-        \ST_system\Cache\Drivers\Database\PostgresAdapter::class,
+        'mysql'    => \ST_system\Cache\Drivers\Database\MysqlAdapter::class,
+        'mariadb'  => \ST_system\Cache\Drivers\Database\MysqlAdapter::class,
+        'postgres' => \ST_system\Cache\Drivers\Database\PostgresAdapter::class,
     ];
 
     private ?DatabaseAdapterInterface $connection = null;
 
     protected static function getDefaultConfig(): array {
         return [
-            'file'         => 'data',
-            'ttl'          => 3600,
-            'prefix'       => 'cache:',
-            'engine'       => null,
-            'host'         => null,
-            'port'         => null,
-            'username'     => null,
-            'password'     => null,
-            'database'     => null,
-            'table'        => 'cache_entries',
-            'charset'      => 'utf8mb4',
-            'options'      => [],
-            'auto_migrate' => true,
-            'connection'   => null,
+            'file'       => 'data',
+            'ttl'        => 3600,
+            'prefix'     => 'cache:',
+            'engine'     => null,
+            'host'       => null,
+            'port'       => null,
+            'username'   => null,
+            'password'   => null,
+            'database'   => null,
+            'table'      => 'cache',
+            'charset'    => 'utf8mb4',
+            'connection' => null,
         ];
     }
 
@@ -59,26 +58,29 @@ class DatabaseCacheDriver extends CacheDriver {
         if (!is_string($cfg['host'])   || $cfg['host']   === '') return null;
         if (!is_string($cfg['database']) || $cfg['database'] === '') return null;
 
+        $engine = strtolower($cfg['engine']);
+        $adapterClass = self::ADAPTERS[$engine] ?? $cfg['engine'];
+
+        if (!class_exists($adapterClass) || !is_subclass_of($adapterClass, DatabaseAdapterInterface::class))
+            return null;
+        if (!$adapterClass::isAvailable()) return null;
+
         static $pool = [];
         $key = md5(serialize([
-            strtolower((string)($cfg['engine']   ?? '')),
-            (string)   ($cfg['host']     ?? ''),
-            (int)      ($cfg['port']     ?? 0),
-            (string)   ($cfg['database'] ?? ''),
-            (string)   ($cfg['username'] ?? ''),
-            (string)   ($cfg['table']    ?? ''),
+            $engine,
+            (string)($cfg['host']     ?? ''),
+            (int)   ($cfg['port']     ?? 0),
+            (string)($cfg['database'] ?? ''),
+            (string)($cfg['username'] ?? ''),
+            (string)($cfg['table']    ?? ''),
         ]));
         if (isset($pool[$key])) return $pool[$key];
 
-        foreach (self::ADAPTERS as $adapterClass) {
-            if (!$adapterClass::isAvailable()) continue;
-            try {
-                return $pool[$key] = $adapterClass::connect($cfg);
-            } catch (\Throwable $e) {
-                continue;
-            }
+        try {
+            return $pool[$key] = $adapterClass::connect($cfg);
+        } catch (\Throwable $e) {
+            return null;
         }
-        return null;
     }
 
     protected function writeBlob(string $file, string $payload): void {
