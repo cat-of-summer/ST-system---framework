@@ -3,10 +3,17 @@
 namespace ST_system\Cache\Drivers;
 
 use ST_system\Cache\CacheDriver;
+use ST_system\Cache\Drivers\Redis\RedisAdapterInterface;
 
 class RedisCacheDriver extends CacheDriver {
 
-    private \Redis $connection;
+    private const CLIENT_MAP = [
+        \Redis::class         => \ST_system\Cache\Drivers\Redis\PhpRedisAdapter::class,
+        \Relay\Relay::class   => \ST_system\Cache\Drivers\Redis\PhpRedisAdapter::class,
+        \Predis\Client::class => \ST_system\Cache\Drivers\Redis\PredisAdapter::class,
+    ];
+
+    private RedisAdapterInterface $connection;
 
     protected static function getDefaultConfig(): array {
         return [
@@ -23,30 +30,37 @@ class RedisCacheDriver extends CacheDriver {
 
     protected function __init(array $config): void {
         $this->attributes['prefix'] = (string)$config['prefix'];
-        $this->connection           = $this->resolveConnection($config);
+        $this->connection           = static::getConnection($config);
         $this->attributes['bucket'] = $this->attributes['prefix'].$this->id;
     }
 
     protected function __rebind(array $override): void {
         if (isset($override['prefix']) && $override['prefix'] !== null)
             $this->attributes['prefix'] = (string)$override['prefix'];
-        if (isset($override['connection']) && $override['connection'] instanceof \Redis)
+        if ($override['connection'] instanceof RedisAdapterInterface)
             $this->connection = $override['connection'];
         $this->attributes['bucket'] = $this->attributes['prefix'].$this->id;
     }
 
-    private function resolveConnection(array $cfg): \Redis {
-        if ($cfg['connection'] instanceof \Redis) return $cfg['connection'];
+    private static function getConnection(array $cfg): RedisAdapterInterface {
+        static $resolved_adapter = null;
+
+        if ($cfg['connection'] instanceof RedisAdapterInterface) return $cfg['connection'];
 
         if (is_string($cfg['host']) && $cfg['host'] !== '') {
-            $r = new \Redis();
-            $r->connect($cfg['host'], (int)$cfg['port']);
-            if (!empty($cfg['auth'])) $r->auth($cfg['auth']);
-            if ((int)$cfg['db'] !== 0) $r->select((int)$cfg['db']);
-            return $r;
+            if ($resolved_adapter === null) {
+                foreach (self::CLIENT_MAP as $nativeClass => $adapterClass) {
+                    if (class_exists($nativeClass)) {
+                        $resolved_adapter = $adapterClass;
+                        break;
+                    }
+                }
+            }
+            if ($resolved_adapter !== null)
+                return ($resolved_adapter)::connect($cfg);
         }
 
-        throw new \RuntimeException('No Redis connection available for RedisCacheDriver');
+        throw new \RuntimeException('No Redis client available for RedisCacheDriver');
     }
 
     protected function writeBlob(string $file, string $payload): void {
@@ -55,7 +69,7 @@ class RedisCacheDriver extends CacheDriver {
 
     protected function readBlob(string $file): ?string {
         $r = $this->connection->hGet($this->attributes['bucket'], $file);
-        return ($r === false || $r === null) ? null : (string)$r;
+        return ($r === false) ? null : $r;
     }
 
     protected function writeMeta(string $file, array $meta): void {
@@ -66,13 +80,13 @@ class RedisCacheDriver extends CacheDriver {
 
     protected function readMeta(string $file): ?array {
         $r = $this->connection->hGet($this->attributes['bucket'], $file.'.meta');
-        if ($r === false || $r === null) return null;
-        $d = @json_decode((string)$r, true);
+        if ($r === false) return null;
+        $d = @json_decode($r, true);
         return is_array($d) ? $d : null;
     }
 
     protected function blobExists(string $file): bool {
-        return (bool)$this->connection->hExists($this->attributes['bucket'], $file);
+        return $this->connection->hExists($this->attributes['bucket'], $file);
     }
 
     protected function purgeStorage(): void {
@@ -80,10 +94,10 @@ class RedisCacheDriver extends CacheDriver {
     }
 
     protected function purgeBaseStorage(): void {
-        $cursor = null;
+        $cursor = 0;
         do {
             $keys = $this->connection->scan($cursor, $this->attributes['prefix'].'*', 500);
             if (is_array($keys) && $keys) $this->connection->del($keys);
-        } while ($cursor !== 0 && $cursor !== null);
+        } while ($cursor !== 0);
     }
 }
