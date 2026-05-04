@@ -7,7 +7,9 @@ use ST_system\Cache\CacheDriver;
 
 final class Manager {
 
-    use HasConfig;
+    use HasConfig {
+        setConfig as private traitSetConfig;
+    }
 
     protected static function getDefaultConfig(): array {
         $drivers = [
@@ -22,6 +24,42 @@ final class Manager {
                 'available' => $drivers
             ]
         ];
+    }
+
+    public static function setConfig(array $config = []): void {
+        $flat = \ST_system\Main::dotFlatten($config);
+
+        $managerConfig = [];
+        $driverConfigs = [];
+
+        foreach ($flat as $key => $value) {
+            if (str_starts_with($key, 'drivers.')) {
+                $rest   = substr($key, strlen('drivers.'));
+                $dotPos = strpos($rest, '.');
+
+                if ($dotPos !== false) {
+                    $driverName = substr($rest, 0, $dotPos);
+                    $subKey     = substr($rest, $dotPos + 1);
+
+                    if ($driverName !== 'default' && $driverName !== 'available') {
+                        $driverClass = static::config('drivers.available.'.$driverName) ?: $driverName;
+                        $driverConfigs[$driverClass][$subKey] = $value;
+                        continue;
+                    }
+                }
+            }
+            $managerConfig[$key] = $value;
+        }
+
+        if ($managerConfig) {
+            static::traitSetConfig($managerConfig);
+        }
+
+        foreach ($driverConfigs as $driverClass => $cfg) {
+            if (class_exists($driverClass)) {
+                $driverClass::setConfig($cfg);
+            }
+        }
     }
 
     private CacheDriver $driver;

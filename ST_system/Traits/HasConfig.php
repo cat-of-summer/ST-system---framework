@@ -7,7 +7,7 @@ use ST_system\Rule;
 
 trait HasConfig {
 
-    final public static function setConfig(array $config = []): void {
+    public static function setConfig(array $config = []): void {
         foreach ($config as $key => $value)
             Config::setImmutableConfig(static::class, $key, $value);
     }
