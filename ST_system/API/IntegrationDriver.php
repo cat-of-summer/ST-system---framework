@@ -45,10 +45,9 @@ abstract class IntegrationDriver {
     final public function __construct(...$args) {
         Rule::scope(static::class, fn() => $this->__init());
 
-        if (static::config('cache.ttl') !== false) {
+        if (static::config('cache.ttl'))
             $this->cache = Cache::make([static::class, ...$args], static::config('cache'));
-        }
-
+        
         $this->fire('__construct', ...$args);
     }
 
