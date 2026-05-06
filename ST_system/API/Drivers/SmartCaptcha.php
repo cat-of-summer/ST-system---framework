@@ -4,6 +4,7 @@ namespace ST_system\API\Drivers;
 
 use ST_system\API\IntegrationDriver;
 use ST_system\Rule;
+use ST_system\Access;
 
 final class SmartCaptcha extends IntegrationDriver {
 
@@ -63,19 +64,20 @@ final class SmartCaptcha extends IntegrationDriver {
             'validate' => [
                 'method' => 'POST',
                 'params' => [
-                    'token' => 'required|string',
-                    'ip'    => 'nullable|string',
+                    'token' => 'required|string|trim',
+                    'ip'    => ['string', Rule::default(Access::getClientIp())],
                 ],
             ],
         ]);
     }
 
-    /** @return mixed */
-    public function validate($params) {
+    public function validate($params): bool {
         if (!is_array($params))
             $params = ['token' => (string)$params];
 
-        return $this->call('validate', $params);
+        $response = $this->call('validate', $params);
+
+        return is_array($response) && ($response['status'] ?? '') === 'ok';
     }
 
     public function includeCDN(): string {
