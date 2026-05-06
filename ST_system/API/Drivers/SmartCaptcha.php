@@ -159,15 +159,96 @@ final class SmartCaptcha extends IntegrationDriver {
                             emit(container, 'ready', { widgetId: widgets[id] });
                         }
 
+                        function listenOnce(captchaId, types, cb) {
+                            function clean() { types.forEach(function(t) { window.removeEventListener(t, on); }); }
+                            function on(e) {
+                                if (e.detail && e.detail.containerId === captchaId) {
+                                    clean();
+                                    cb(e.type, e.detail);
+                                }
+                            }
+                            types.forEach(function(t) { window.addEventListener(t, on); });
+                        }
+
+                        function findInstanceCfg(alias) {
+                            if (alias && instances[alias]) return instances[alias];
+                            for (var k in instances) if (instances.hasOwnProperty(k)) return instances[k];
+                            return null;
+                        }
+
                         window.STSmartCaptcha = {
                             get ready() { return ready; },
                             instances:        instances,
                             registerInstance: function(cfg) { if (cfg && cfg.alias) instances[cfg.alias] = cfg; },
                             mount:            function(id, options) { ready ? render(id, options) : queue.push([id, options]); },
-                            execute:          function(id) { if (widgets[id] !== undefined) window.smartCaptcha.execute(widgets[id]); },
+                            execute:          function(id) { if (widgets[id] !== undefined) window.smartCaptcha.execute(widgets[id]); else window.addEventListener('captcha:cdn-ready', function h() { window.removeEventListener('captcha:cdn-ready', h); if (widgets[id] !== undefined) window.smartCaptcha.execute(widgets[id]); }); },
                             reset:            function(id) { if (widgets[id] !== undefined) window.smartCaptcha.reset(widgets[id]); },
                             getResponse:      function(id) { return widgets[id] !== undefined ? window.smartCaptcha.getResponse(widgets[id]) : null; },
                             destroy:          function(id) { if (widgets[id] !== undefined && window.smartCaptcha.destroy) { window.smartCaptcha.destroy(widgets[id]); delete widgets[id]; } },
+
+                            executeAndGetToken: function(captchaId, cb) {
+                                listenOnce(captchaId, ['captcha:success', 'captcha:fail', 'captcha:expired'], function(type, detail) {
+                                    window.STSmartCaptcha.reset(captchaId);
+                                    cb(type === 'captcha:success' ? (detail.token || '') : '', type, detail);
+                                });
+                                window.STSmartCaptcha.execute(captchaId);
+                            },
+
+                            bindForm: function(captchaId, form) {
+                                if (!form) {
+                                    var c = document.getElementById(captchaId);
+                                    form = c && c.closest ? c.closest('form') : null;
+                                }
+                                if (!form || form.__stCaptchaBound) return;
+                                form.__stCaptchaBound = true;
+
+                                var input = form.querySelector('input[name="smart-token"]');
+                                if (!input) {
+                                    input = document.createElement('input');
+                                    input.type = 'hidden';
+                                    input.name = 'smart-token';
+                                    form.appendChild(input);
+                                }
+
+                                form.addEventListener('submit', function(ev) {
+                                    if (form.__stCaptchaPassed) { form.__stCaptchaPassed = false; return; }
+                                    ev.preventDefault();
+                                    ev.stopImmediatePropagation();
+                                    ev.stopPropagation();
+
+                                    window.STSmartCaptcha.executeAndGetToken(captchaId, function(token) {
+                                        if (!token) return;
+                                        input.value = token;
+                                        form.__stCaptchaPassed = true;
+                                        if (form.requestSubmit) form.requestSubmit();
+                                        else form.submit();
+                                    });
+                                }, true);
+                            },
+
+                            mountAndBind: function(form, opts) {
+                                if (!form) return null;
+                                var existing = form.querySelector('.smart-captcha');
+                                if (existing && existing.id) { window.STSmartCaptcha.bindForm(existing.id, form); return existing.id; }
+
+                                var cfg = findInstanceCfg(opts && opts.alias);
+                                if (!cfg) return null;
+
+                                var cid = 'st_cap_' + Math.random().toString(36).slice(2, 10);
+                                var div = document.createElement('div');
+                                div.id = cid;
+                                div.className = 'smart-captcha';
+                                div.setAttribute('data-captcha-alias', cfg.alias);
+
+                                var submit = form.querySelector('[type="submit"]');
+                                if (submit) submit.parentNode.insertBefore(div, submit);
+                                else form.appendChild(div);
+
+                                window.STSmartCaptcha.mount(cid, Object.assign({ sitekey: cfg.sitekey, hl: cfg.hl || 'ru', invisible: true, hideShield: true }, opts || {}));
+                                window.STSmartCaptcha.bindForm(cid, form);
+                                return cid;
+                            },
+
                             _onCdnReady:      function() {
                                 ready = true;
                                 queue.splice(0).forEach(function(t) { render(t[0], t[1]); });
@@ -229,7 +310,7 @@ final class SmartCaptcha extends IntegrationDriver {
         $optsJson = json_encode($opts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return "<div id=\"{$idAttr}\" class=\"smart-captcha{$classAttr}\" data-captcha-alias=\"{$aliasAttr}\"{$styleAttr}></div>"
-             . "<script type=\"text/javascript\">window.STSmartCaptcha&&window.STSmartCaptcha.mount('{$idAttr}',{$optsJson});</script>";
+             . "<script type=\"text/javascript\">window.STSmartCaptcha&&(window.STSmartCaptcha.mount('{$idAttr}',{$optsJson}),window.STSmartCaptcha.bindForm('{$idAttr}'));</script>";
     }
 
 }
