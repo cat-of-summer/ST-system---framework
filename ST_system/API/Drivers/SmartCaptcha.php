@@ -110,76 +110,85 @@ final class SmartCaptcha extends IntegrationDriver {
         return is_array($response) && ($response['status'] ?? '') === 'ok';
     }
 
-    public static function includeCDN(): string {
-        if (self::$cdnIncluded) return '';
-        self::$cdnIncluded = true;
+    public function __call(string $name, array $args): mixed {
+        switch ($name) {
+            case 'includeCDN':
+                if ($this->jsRegistered) return '';
+                $this->jsRegistered = true;
 
-        $bootstrap = <<<'JS'
-            <script type="text/javascript">
-            (function(){
-                if (window.STSmartCaptcha) return;
-                var queue = [], widgets = {}, ready = false, instances = {};
+                $payload = json_encode([
+                    'alias'   => $this->alias,
+                    'sitekey' => $this->clientKey,
+                    'hl'      => $this->config['hl'],
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-                function emit(container, name, detail) {
-                    var alias = container.getAttribute('data-captcha-alias') || '';
-                    var payload = Object.assign({ alias: alias }, detail);
-                    container.dispatchEvent(new CustomEvent('captcha:' + name, { detail: payload, bubbles: true }));
-                    window.dispatchEvent(new CustomEvent('captcha:' + name, { detail: Object.assign({ containerId: container.id }, payload) }));
-                }
-
-                function render(id, options) {
-                    var container = document.getElementById(id);
-                    if (!container || !window.smartCaptcha) return;
-                    container.setAttribute('data-captcha-state', 'pending');
-
-                    widgets[id] = window.smartCaptcha.render(container, Object.assign({}, options, {
-                        callback:  function(token) { container.setAttribute('data-captcha-state', 'valid');   emit(container, 'success', { token: token }); },
-                        onFail:    function()      { container.setAttribute('data-captcha-state', 'invalid'); emit(container, 'fail', {}); },
-                        onExpired: function()      { container.setAttribute('data-captcha-state', 'expired'); emit(container, 'expired', {}); }
-                    }));
-                    emit(container, 'ready', { widgetId: widgets[id] });
-                }
-
-                window.STSmartCaptcha = {
-                    get ready() { return ready; },
-                    instances:        instances,
-                    registerInstance: function(cfg) { if (cfg && cfg.alias) instances[cfg.alias] = cfg; },
-                    mount:            function(id, options) { ready ? render(id, options) : queue.push([id, options]); },
-                    execute:          function(id) { if (widgets[id] !== undefined) window.smartCaptcha.execute(widgets[id]); },
-                    reset:            function(id) { if (widgets[id] !== undefined) window.smartCaptcha.reset(widgets[id]); },
-                    getResponse:      function(id) { return widgets[id] !== undefined ? window.smartCaptcha.getResponse(widgets[id]) : null; },
-                    destroy:          function(id) { if (widgets[id] !== undefined && window.smartCaptcha.destroy) { window.smartCaptcha.destroy(widgets[id]); delete widgets[id]; } },
-                    _onCdnReady:      function() {
-                        ready = true;
-                        queue.splice(0).forEach(function(t) { render(t[0], t[1]); });
-                        window.dispatchEvent(new CustomEvent('captcha:cdn-ready'));
-                    }
-                };
-                window.__stSmartCaptchaOnload = function() { window.STSmartCaptcha._onCdnReady(); };
-            })();
-            </script>
-            <script src="https://smartcaptcha.yandexcloud.net/captcha.js?render=onload&onload=__stSmartCaptchaOnload" defer></script>
-        JS;
-
-        $registrations = '';
-        foreach (self::$instances as $inst)
-            $registrations .= $inst->include();
-
-        return $bootstrap . $registrations;
+                return "<script type=\"text/javascript\">window.STSmartCaptcha&&window.STSmartCaptcha.registerInstance({$payload});</script>";
+        }
+        throw new \BadMethodCallException("SmartCaptcha: unknown method '{$name}'");
     }
 
-    public function include(): string {
-        if ($this->jsRegistered) return '';
-        $this->jsRegistered = true;
+    public static function __callStatic(string $name, array $args): mixed {
+        switch ($name) {
+            case 'includeCDN':
+                if (self::$cdnIncluded) return '';
+                self::$cdnIncluded = true;
 
-        $payload = json_encode([
-            'alias'   => $this->alias,
-            'sitekey' => $this->clientKey,
-            'hl'      => $this->config['hl'],
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $bootstrap = <<<'JS'
+                    <script type="text/javascript">
+                    (function(){
+                        if (window.STSmartCaptcha) return;
+                        var queue = [], widgets = {}, ready = false, instances = {};
 
-        return "<script type=\"text/javascript\">window.STSmartCaptcha&&window.STSmartCaptcha.registerInstance({$payload});</script>";
+                        function emit(container, name, detail) {
+                            var alias = container.getAttribute('data-captcha-alias') || '';
+                            var payload = Object.assign({ alias: alias }, detail);
+                            container.dispatchEvent(new CustomEvent('captcha:' + name, { detail: payload, bubbles: true }));
+                            window.dispatchEvent(new CustomEvent('captcha:' + name, { detail: Object.assign({ containerId: container.id }, payload) }));
+                        }
+
+                        function render(id, options) {
+                            var container = document.getElementById(id);
+                            if (!container || !window.smartCaptcha) return;
+                            container.setAttribute('data-captcha-state', 'pending');
+
+                            widgets[id] = window.smartCaptcha.render(container, Object.assign({}, options, {
+                                callback:  function(token) { container.setAttribute('data-captcha-state', 'valid');   emit(container, 'success', { token: token }); },
+                                onFail:    function()      { container.setAttribute('data-captcha-state', 'invalid'); emit(container, 'fail', {}); },
+                                onExpired: function()      { container.setAttribute('data-captcha-state', 'expired'); emit(container, 'expired', {}); }
+                            }));
+                            emit(container, 'ready', { widgetId: widgets[id] });
+                        }
+
+                        window.STSmartCaptcha = {
+                            get ready() { return ready; },
+                            instances:        instances,
+                            registerInstance: function(cfg) { if (cfg && cfg.alias) instances[cfg.alias] = cfg; },
+                            mount:            function(id, options) { ready ? render(id, options) : queue.push([id, options]); },
+                            execute:          function(id) { if (widgets[id] !== undefined) window.smartCaptcha.execute(widgets[id]); },
+                            reset:            function(id) { if (widgets[id] !== undefined) window.smartCaptcha.reset(widgets[id]); },
+                            getResponse:      function(id) { return widgets[id] !== undefined ? window.smartCaptcha.getResponse(widgets[id]) : null; },
+                            destroy:          function(id) { if (widgets[id] !== undefined && window.smartCaptcha.destroy) { window.smartCaptcha.destroy(widgets[id]); delete widgets[id]; } },
+                            _onCdnReady:      function() {
+                                ready = true;
+                                queue.splice(0).forEach(function(t) { render(t[0], t[1]); });
+                                window.dispatchEvent(new CustomEvent('captcha:cdn-ready'));
+                            }
+                        };
+                        window.__stSmartCaptchaOnload = function() { window.STSmartCaptcha._onCdnReady(); };
+                    })();
+                    </script>
+                    <script src="https://smartcaptcha.yandexcloud.net/captcha.js?render=onload&onload=__stSmartCaptchaOnload" defer></script>
+                JS;
+
+                $registrations = '';
+                foreach (self::$instances as $inst)
+                    $registrations .= $inst->includeCDN();
+
+                return $bootstrap . $registrations;
+        }
+        throw new \BadMethodCallException("SmartCaptcha: unknown static method '{$name}'");
     }
+
 
     public function putCaptcha(array $params = []): string {
         if (!self::$cdnIncluded)
