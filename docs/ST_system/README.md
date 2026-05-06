@@ -24,6 +24,5 @@
 - [Menu.php](Menu.php.md)
 - [Rule.php](Rule.php.md)
 - [Schema.php](Schema.php.md)
-- [Yandex_captcha.php](Yandex_captcha.php.md)
 
 <!-- DOCGEN:END -->
