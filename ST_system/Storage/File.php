@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\Storage;
 
@@ -346,7 +346,7 @@ final class File {
         return $meta;
     }
 
-    /** @return static */
+    
     private function fetch(bool $force = false): self {
         $this->info_data = [];
         $this->mime_data = [];
@@ -438,7 +438,7 @@ final class File {
         throw $th;
     }
 
-    /** @return int|float */
+    
     public function getSize(string $unit = 'b') {
         $bytes = $this->isUri()
             ? (int)$this->getMeta()['content-length']
@@ -459,7 +459,7 @@ final class File {
         ])->purgeBase();
     }
 
-    /** @return static */
+    
     public function purgeCache(): self {
         $this->cache->purge();
 

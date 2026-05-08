@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\Cache;
 
@@ -162,6 +162,6 @@ final class Manager {
         return $this->driver->{$name};
     }
 
-    /** @return static */
+    
     private static function make(...$args): self { return new static(...$args); }
 }

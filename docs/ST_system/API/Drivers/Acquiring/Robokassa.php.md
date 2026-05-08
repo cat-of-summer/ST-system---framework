@@ -54,15 +54,34 @@ echo Robokassa::mapStateCode($state['state_code']); // 'completed'
 Получение статуса платежа через XML-интерфейс OpStateExt. Подпись рассчитывается автоматически.
 
 ### `static hashSignature(string $data, string $algo = 'md5'): string`
-### `static buildInitSignature(...): string`
-Подпись инициализации по формуле: `MerchantLogin:OutSum:InvId:Password1[:Shp_*]`.
-### `static buildResultSignature(...): string`
-Подпись вебхука ResultURL: `OutSum:InvId:Password2[:Shp_*]`.
-### `static buildSuccessSignature(...): string`
-Подпись SuccessURL: `OutSum:InvId:Password1[:Shp_*]`.
+Хеширует строку заданным алгоритмом.
+
+### `static buildInitSignature(string $merchantLogin, string $outSum, int|string $invId, string $password1, array $shpParams = [], string $algo = 'md5'): string`
+Подпись инициализации. Формула: `MerchantLogin:OutSum:InvId:Password#1[:Shp_key=val…]`  
+`Shp_*`-параметры сортируются по ключу (strnatcasecmp) и добавляются как `:Shp_key=value`.
+
+### `static buildResultSignature(string $outSum, int|string $invId, string $password2, array $shpParams = [], string $algo = 'md5'): string`
+Подпись вебхука ResultURL. Формула: `OutSum:InvId:Password#2[:Shp_*]`.
+
+### `static buildSuccessSignature(string $outSum, int|string $invId, string $password1, array $shpParams = [], string $algo = 'md5'): string`
+Подпись редиректа SuccessURL. Формула: `OutSum:InvId:Password#1[:Shp_*]`.
+
+### `static buildOpStateSignature(string $merchantLogin, int|string $invoiceId, string $password2, string $algo = 'md5'): string`
+Подпись запроса OpStateExt. Формула: `MerchantLogin:InvoiceID:Password#2`.
+
 ### `static verifyResultSignature(array $data, string $password2, string $algo = 'md5'): bool`
-Проверка `SignatureValue` вебхука `ResultURL`.
+Проверяет `SignatureValue` вебхука ResultURL. `$data` — POST-массив (`OutSum`, `InvId`, `SignatureValue`, `Shp_*`). Использует `hash_equals` для сравнения.
+
 ### `static mapStateCode(int $stateCode): string`
 Преобразование кода OpStateExt в строку: `completed` (100), `processing` (50), `hold` (20), `pending` (5/80), `canceled` (10), `refunded` (60), `unknown`.
+
 ### `static extractShpParams(array $data): array`
-Извлекает `Shp_*` параметры из массива..php
+Извлекает `Shp_*`-параметры из массива (сравнение без учёта регистра).
+
+---
+
+> Официальная документация Robokassa:
+> - https://docs.robokassa.ru/ru/pay-interface
+> - https://docs.robokassa.ru/ru/recurring-payments
+> - https://docs.robokassa.ru/ru/notifications-and-redirects
+> - https://docs.robokassa.ru/ru/xml-interfaces

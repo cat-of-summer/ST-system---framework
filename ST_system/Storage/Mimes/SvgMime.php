@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\Storage\Mimes;
 
@@ -81,7 +81,7 @@ class SvgMime extends Mime {
                     $configAttrs .= sprintf(' %s="%s"', $k, htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE));
                 }
                 
-                // 4. Собираем новый SVG
+                
                 $newSvg = sprintf(
                     '<svg xmlns="http://www.w3.org/2000/svg"%s%s>%s</svg>',
                     ($viewBoxAttr ? ' ' . $viewBoxAttr : ''),

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\Storage\Mimes;
 
@@ -34,10 +34,8 @@ class ImageMime extends Mime {
                         'has_quality' => false, 
                         'function' => 'imagepng'
                     ],
-                    // 'gif'  => [
-                    //     'has_quality' => false, 
-                    //     'function' => 'imagegif'
-                    // ],
+                    
+                    
                     'webp' => [
                         'has_quality' => true, 
                         'function' => 'imagewebp'
@@ -58,7 +56,7 @@ class ImageMime extends Mime {
                 'imagick' => [
                     'jpg' => true,
                     'jpeg' => true,
-                    // 'gif' => true,
+                    
                     'webp' => true,
                     'bmp' => true,
                     'tiff' => true,

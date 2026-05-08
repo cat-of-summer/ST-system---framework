@@ -70,7 +70,7 @@ $files = Assets::resources('/assets/*.css');
 Добавляет `@font-face` в `<style>`. Имя шрифта, начертание и вес определяются автоматически из имени файла через `weights_map` и `styles_map`.
 
 ### `static add_string(string|array $strings, string $buffer = ''): static`
-Добавляет произвольную HTML-строку в буфер (полезно для `<meta>`, `<link rel="canonical">` и т.&nbsp;п.).
+Добавляет произвольную HTML-строку в буфер (полезно для `<meta>`, `<link rel="canonical">` и т.п.).
 
 ### `static resources(string $path, array $params = []): array`
 Возвращает список файлов по пути (директория, глоб-паттерн, отдельный файл, URI). Поддерживает регулярные выражения.

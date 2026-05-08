@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\Cache\Drivers\Database;
 
@@ -18,7 +18,7 @@ class PostgresAdapter implements DatabaseAdapterInterface {
         return class_exists(\PDO::class) && in_array('pgsql', \PDO::getAvailableDrivers(), true);
     }
 
-    /** @return static */
+    
     public static function connect(array $cfg): self {
         $engine = isset($cfg['engine']) ? strtolower((string)$cfg['engine']) : '';
         if (!in_array($engine, ['pgsql', 'postgres', 'postgresql'], true))
@@ -52,7 +52,7 @@ class PostgresAdapter implements DatabaseAdapterInterface {
         $stmt->execute([$bucket, $field, $value]);
     }
 
-    /** @return string|false */
+    
     public function read(string $bucket, string $field) {
         $stmt = $this->pdo->prepare("SELECT \"value\" FROM \"{$this->table}\" WHERE \"bucket\" = ? AND \"field\" = ? LIMIT 1");
         $stmt->execute([$bucket, $field]);
@@ -66,7 +66,7 @@ class PostgresAdapter implements DatabaseAdapterInterface {
         return (bool)$stmt->fetchColumn();
     }
 
-    /** @param string|array $buckets */
+    
     public function delete($buckets): void {
         $list = array_values(array_filter((array)$buckets, fn($b) => is_string($b) && $b !== ''));
         if (!$list) return;
@@ -75,10 +75,7 @@ class PostgresAdapter implements DatabaseAdapterInterface {
         $stmt->execute($list);
     }
 
-    /**
-     * @param int|string|null $cursor
-     * @return array|false
-     */
+    
     public function scan(&$cursor, string $pattern, int $count) {
         $offset = (int)($cursor ?: 0);
         if ($count <= 0) $count = 100;

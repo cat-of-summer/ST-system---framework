@@ -1,40 +1,8 @@
-<?php
+﻿<?php
 
-/**
- * Схема микроразметки Schema.org — ItemList.
- *
- * Использование:
- *   require_once __DIR__ . '/item-list.php';
- *
- *   $markup = Schema::create('schema.item-list')->fill([
- *       'name'  => 'Основные направления пластической хирургии в пиона едикус',
- *       'items' => [
- *           [
- *               'position'  => 1,
- *               'item_type' => 'MedicalProcedure',
- *               'item_name' => 'Липофилинг лица',
- *               'item_url'  => 'https://epiona-medicus.ru/services/lipofiling-zon-litsa/',
- *           ],
- *           [
- *               'position'  => 2,
- *               'item_type' => 'MedicalProcedure',
- *               'item_name' => 'Пластика век (лефаропластика)',
- *               'item_url'  => 'https://epiona-medicus.ru/services/plastika-vek/',
- *           ],
- *           [
- *               'position'  => 3,
- *               'item_type' => 'MedicalProcedure',
- *               'item_name' => 'Ринопластика',
- *               'item_url'  => 'https://epiona-medicus.ru/services/plastika-nosa-rinoplastika/',
- *           ],
- *       ],
- *   ]);
- *   echo $markup->print();
- */
 
 use ST_system\Schema;
 
-// ─────────────────────────────────────────────────────────────────────────────
 
 Schema::scope('schema', function (): void {
 
@@ -75,7 +43,7 @@ Schema::scope('schema', function (): void {
 
     }])->scope(function (): void {
 
-        // ── ListItem ──────────────────────────────────────────────────────────
+        
         Schema::entity('list-item', ['fields' => [
             'position'  => 'required|int',
             'name'      => 'sometimes|string',

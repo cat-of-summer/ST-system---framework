@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\Cache\Drivers\Redis;
 
@@ -16,7 +16,7 @@ class PredisAdapter implements RedisAdapterInterface {
         return class_exists(\Predis\Client::class);
     }
 
-    /** @return static */
+    
     public static function connect(array $cfg): self {
         $params = ['host' => $cfg['host'], 'port' => (int)$cfg['port']];
         if (!empty($cfg['auth'])) $params['password'] = $cfg['auth'];
@@ -28,7 +28,7 @@ class PredisAdapter implements RedisAdapterInterface {
         $this->client->hset($key, $field, $value);
     }
 
-    /** @return string|false */
+    
     public function hGet(string $key, string $field) {
         $r = $this->client->hget($key, $field);
         return ($r === null) ? false : (string)$r;
@@ -38,15 +38,12 @@ class PredisAdapter implements RedisAdapterInterface {
         return (bool)$this->client->hexists($key, $field);
     }
 
-    /** @param string|array $keys */
+    
     public function del($keys): void {
         $this->client->del(...(array)$keys);
     }
 
-    /**
-     * @param int|string|null $cursor
-     * @return array|false
-     */
+    
     public function scan(&$cursor, string $pattern, int $count) {
         if ($cursor === null || $cursor === false) $cursor = 0;
         [$cursor, $keys] = $this->client->scan($cursor, ['match' => $pattern, 'count' => $count]);

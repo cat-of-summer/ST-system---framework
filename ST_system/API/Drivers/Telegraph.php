@@ -1,21 +1,11 @@
-<?php
+﻿<?php
 
 namespace ST_system\API\Drivers;
 
 use ST_system\API\IntegrationDriver;
 use ST_system\Rule;
 
-/**
- * Telegra.ph API driver.
- *
- * Handles account creation (with permanent token caching), page creation and editing.
- * The access token is stored permanently via Cache (ttl = -1).
- *
- * Usage:
- *   $t = Telegraph::create(['short_name' => 'mysite', 'author_name' => 'John']);
- *   $page = $t->call('createPage', ['title' => 'Hello', 'content' => '<p>World</p>']);
- *   $t->call('editPage/my-page-slug', ['title' => 'Updated', 'content' => '<p>New</p>']);
- */
+
 final class Telegraph extends IntegrationDriver {
 
     protected static function getDefaultConfig(): array {
@@ -29,8 +19,7 @@ final class Telegraph extends IntegrationDriver {
     private string $author_url   = '';
     private string $base_url     = '';
 
-    // ── HTML node map for normalize_content() ─────────────────────────
-
+    
     private static array $nodes_map = [
         'h1'         => 'h3',
         'h2'         => 'h3',
@@ -72,11 +61,11 @@ final class Telegraph extends IntegrationDriver {
                 return;
             }
 
-            // Unwrap result so the default json_decode step returns it directly
+            
             $raw_data['response'] = json_encode($decoded['result'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         });
 
-        // Inject access_token into all methods except createAccount
+        
         $this->on('call', function (string $method, array &$params) {
             if ($method !== 'createAccount' && $this->access_token !== '')
                 $params['access_token'] = $this->access_token;
@@ -178,8 +167,7 @@ final class Telegraph extends IntegrationDriver {
         ]);
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────
-
+    
     private function detectBaseUrl(): string {
         $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
         $host  = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -193,13 +181,7 @@ final class Telegraph extends IntegrationDriver {
         return $trimmed;
     }
 
-    /**
-     * Convert HTML string, DOMDocument, or raw Telegraph node array into a Telegraph
-     * content node array suitable for createPage / editPage.
-     *
-     * @param string|array|\DOMDocument $content
-     * @return array
-     */
+    
     private function normalize_content($content): array {
         if (is_array($content))
             return $content;

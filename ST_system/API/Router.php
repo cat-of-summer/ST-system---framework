@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\API;
 
@@ -18,25 +18,8 @@ class Router {
     ];
  
     public function __construct($PARAMS = []) {
-        /*
-            [
-                'url_rules' => [],
-                 Пример url_rules => [ //Первый парметр, url, потом передача аргумента, третий параметр - приориетность. Возвращаться будут все валидные правила высшего приоритета
-                    ['/local/', ['test']],
-                    ['/local/test.php', 'value', 1],
-                    ['/local/test/test.php', $param, 2]
-                 ],
-                'apply_once' => false, 'Если несколько валидных правил, будешь лишь первое применяться'
-                'strict_mode' => false, 'Если false, то ищет в url подстроку с правилом, если true, то совпадение ^...&'
-                'rules_handler' => function($PARSER_PARAMS, $URL_PARAMS, $PAGE_PARAMS) {
-                return ['PARSER_PARAMS' => $PARSER_PARAMS, 'URL_PARAMS' => $URL_PARAMS, 'PAGE_PARAMS' => $PAGE_PARAMS];
-            },
-                'key' => null //index,
-            ]
-        */
         
-
-
+        
         $this->UrlRules = (isset($PARAMS['url_rules']) && is_array($PARAMS['url_rules']))
             ? $PARAMS['url_rules']
             : [];

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\Cache;
 
@@ -32,7 +32,7 @@ abstract class CacheDriver {
         $this->attributes['ttl']  = (int)($config['ttl']  ?? 0);
     }
 
-    /** @return static */
+    
     final public function spawn($key, array $override = []): self {
         $clone = clone $this;
         $clone->attributes['raw_key'] = $key;

@@ -8,17 +8,9 @@ use ST_system\Rule;
 final class Bitrix24 extends IntegrationDriver {
 
     private array $SETTINGS    = [];
-    private array $extraSchemas = []; // [method => ['FIELDS' => Rule[], 'PARAMS' => Rule[]]]
+    private array $extraSchemas = []; 
 
-    // ── Field / Param extension ───────────────────────────────────────────────
-
-    /**
-     * Добавить дополнительные поля в схему FIELDS указанного метода.
-     * Вызывается до первого использования метода.
-     *
-     * Пример:
-     *   $b24->extendFields('crm.contact.add', ['UF_CRM_MY_FIELD' => 'nullable|string']);
-     */
+    
     public function extendFields(string $method, array $fields): self {
         $this->extraSchemas[$method]['FIELDS'] = array_merge(
             $this->extraSchemas[$method]['FIELDS'] ?? [],
@@ -27,9 +19,7 @@ final class Bitrix24 extends IntegrationDriver {
         return $this;
     }
 
-    /**
-     * Добавить дополнительные поля в схему PARAMS указанного метода.
-     */
+    
     public function extendParams(string $method, array $params): self {
         $this->extraSchemas[$method]['PARAMS'] = array_merge(
             $this->extraSchemas[$method]['PARAMS'] ?? [],
@@ -40,8 +30,7 @@ final class Bitrix24 extends IntegrationDriver {
 
     protected function __init(): void {
 
-        // ── Rule aliases ──────────────────────────────────────────────────────
-
+        
         Rule::create(fn(&$v) => $v === null || $v instanceof \DateTimeInterface || is_string($v))
             ->after(function(&$v) {
                 if ($v === null) return;
@@ -84,8 +73,7 @@ final class Bitrix24 extends IntegrationDriver {
         ->handleError(fn($v) => 'Некорректный multifield')
         ->alias('multifield', 1);
 
-        // ── Constructor / events ──────────────────────────────────────────────
-
+        
         $this->on('__construct', function(array $PARAMS = []) {
             $errors = Rule::object([
                 'endpoint' => Rule::create(fn(&$v) => filter_var($v, FILTER_VALIDATE_URL) !== false)
@@ -101,8 +89,7 @@ final class Bitrix24 extends IntegrationDriver {
             $request_url = ($this->SETTINGS['endpoint'] ?? '') . $request_url;
         });
 
-        // ── Methods ───────────────────────────────────────────────────────────
-
+        
         $this->registerMethodsMap([
             'calendar.event.get' => [
                 'params' => [

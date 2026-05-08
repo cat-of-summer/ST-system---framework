@@ -13,8 +13,7 @@ final class Sdek extends IntegrationDriver {
 
     protected function __init(): void {
 
-        // -- Local Rule helpers ----------------------------------------
-
+        
         $r_location = Rule::create(function(&$v) {
             if (!is_array($v)) return false;
             $errors = Rule::object([
@@ -46,8 +45,7 @@ final class Sdek extends IntegrationDriver {
             return true;
         })->handleError(fn($v) => '������������ array_of_CalcPackageRequestDto')->skip(true);
 
-        // -- Common param groups ---------------------------------------
-
+        
         $default_params = [
             'lang'         => 'nullable|string',
             'country_code' => 'nullable|string',
@@ -65,8 +63,7 @@ final class Sdek extends IntegrationDriver {
                 $params['size'] = 1000;
         };
 
-        // -- Constructor / events --------------------------------------
-
+        
         $this->on('__construct', function(array $PARAMS) {
             $this->SETTINGS = array_intersect_key(
                 $this->call('oauth/token', $PARAMS),
@@ -89,8 +86,7 @@ final class Sdek extends IntegrationDriver {
                 $meta['ttl'] = (int)$cache_ttl;
         });
 
-        // -- Methods ---------------------------------------------------
-
+        
         $this->registerMethodsMap([
             'oauth/token' => [
                 'method'    => 'POST',

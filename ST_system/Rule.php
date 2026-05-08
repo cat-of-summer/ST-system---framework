@@ -1,32 +1,32 @@
-<?php
+﻿<?php
 
 namespace ST_system;
 
 final class Rule {
 
-    /** @var array<string, Rule> */
+    
     private static $registry = [];
 
-    /** @var string[] */
+    
     private static array $prefixStack = [];
 
-    /** @var \Closure|null */
+    
     private $callback;
-    /** @var \Closure|null */
+    
     private $before;
-    /** @var \Closure|null */
+    
     private $after;
-    /** @var \Closure|null */
+    
     private $handleError;
-    /** @var int */
+    
     private $order = 600;
-    /** @var bool */
+    
     private $skip = false;
-    /** @var array */
+    
     private $params = [];
-    /** @var bool */
+    
     private $frozen = false;
-    /** @var bool Видит ли правило sentinel (true) или null (false) */
+    
     private bool $seesSentinel = false;
 
     private function __construct(\Closure $callback) {
@@ -34,9 +34,7 @@ final class Rule {
         $this->callback = $callback;
     }
 
-    // ─── Геттеры ─────────────────────────────────────────────────────
-
-    /** @param string $name callback|before|after|handleError|order|skip|params|frozen */
+    
     public function __get(string $name) {
         if (in_array($name, ['callback', 'before', 'after', 'handleError', 'order', 'skip', 'params', 'frozen'])) {
             return $this->$name;
@@ -44,29 +42,28 @@ final class Rule {
         throw new \RuntimeException("Unknown property Rule::\${$name}");
     }
 
-    // ─── Fluent-сеттеры ──────────────────────────────────────────────
-
+    
     private function guardFrozen(): void {
         if ($this->frozen) {
             throw new \RuntimeException('Cannot modify a frozen Rule (aliased rules are immutable)');
         }
     }
 
-    /** @param mixed $fn  Closure — устанавливает, иное — обнуляет */
+    
     public function before($fn): self {
         $this->guardFrozen();
         $this->before = ($fn instanceof \Closure) ? $fn : null;
         return $this;
     }
 
-    /** @param mixed $fn  Closure — устанавливает, иное — обнуляет */
+    
     public function after($fn): self {
         $this->guardFrozen();
         $this->after = ($fn instanceof \Closure) ? $fn : null;
         return $this;
     }
 
-    /** @param mixed $fn  Closure — устанавливает, иное — обнуляет */
+    
     public function handleError($fn): self {
         $this->guardFrozen();
         $this->handleError = ($fn instanceof \Closure) ? $fn : null;
@@ -91,24 +88,14 @@ final class Rule {
         return $this;
     }
 
-    // ─── copy (private) ──────────────────────────────────────────────
-
+    
     private function copy(): self {
         $clone = clone $this;
         $clone->frozen = false;
         return $clone;
     }
 
-    // ─── Scope / префиксы ─────────────────────────────────────────────
-
-    /**
-     * Выполнить $fn с активным префиксом $prefix. Внутри замыкания:
-     *  - alias('foo')     регистрируется как "$prefix\foo";
-     *  - get('foo')       и парсер ищут сначала "$prefix\foo", потом fallback на голое 'foo' (по всему стеку).
-     * Имя с обратным слэшем считается абсолютным и префикс не получает.
-     *
-     * @return mixed возвращаемое значение $fn
-     */
+    
     public static function scope(string $prefix, \Closure $fn) {
         self::init();
         self::$prefixStack[] = $prefix;
@@ -124,7 +111,7 @@ final class Rule {
         return $n > 0 ? self::$prefixStack[$n - 1] : null;
     }
 
-    /** Lookup алиаса с учётом стека префиксов. */
+    
     private static function resolveAlias(string $name): ?Rule {
         if (strpos($name, '\\') !== false) {
             $name = ltrim($name, '\\');
@@ -137,8 +124,7 @@ final class Rule {
         return self::$registry[$name] ?? null;
     }
 
-    // ─── Реестр ──────────────────────────────────────────────────────
-
+    
     public static function get(string $alias): ?Rule {
         self::init();
         return self::resolveAlias($alias);
@@ -163,12 +149,7 @@ final class Rule {
         return $this;
     }
 
-    // ─── Ядро: execute / apply ───────────────────────────────────────
-
-    /**
-     * @param mixed $data
-     * @return array{0: bool, 1: string[]}
-     */
+    
     private function execute(&$data): array {
         if (!$this->seesSentinel && self::isSentinel($data)) {
             $masked = null;
@@ -179,10 +160,7 @@ final class Rule {
         return $this->executeRaw($data);
     }
 
-    /**
-     * @param mixed $data
-     * @return array{0: bool, 1: string[]}
-     */
+    
     private function executeRaw(&$data): array {
         if ($this->before !== null) {
             ($this->before)($data, $this->params);
@@ -224,33 +202,17 @@ final class Rule {
         return [$passed, $errors];
     }
 
-    /**
-     * Применить правило к значению. Мутирует $data, возвращает массив ошибок.
-     *
-     * @param mixed $data
-     * @return string[]
-     */
+    
     public function apply(&$data): array {
         return $this->execute($data)[1];
     }
 
-    /**
-     * Проверить значение без мутации вызывающего кода. Принимает по значению.
-     * Удобно для передачи литералов: Rule::create('required|int')->check('abc')
-     *
-     * @param mixed $data
-     * @return string[]
-     */
+    
     public function check($data): array {
         return $this->execute($data)[1];
     }
 
-    // ─── Парсинг строки ──────────────────────────────────────────────
-
-    /**
-     * Разбирает строку 'required|string|max:50' в массив Rule.
-     * @return Rule[]
-     */
+    
     private static function parseString(string $spec): array {
         $segments = array_map('trim', explode('|', trim($spec)));
         $rules    = [];
@@ -282,12 +244,7 @@ final class Rule {
         return $rules;
     }
 
-    /**
-     * Компилирует спецификацию поля в отсортированный массив Rule.
-     *
-     * @param string|array|Rule $spec
-     * @return Rule[]
-     */
+    
     private static function compileFieldRules($spec): array {
         $rules = [];
 
@@ -313,12 +270,7 @@ final class Rule {
         return $rules;
     }
 
-    // ─── Фабрика ─────────────────────────────────────────────────────
-
-    /**
-     * @param string|\Closure $spec
-     * @return Rule
-     */
+    
     public static function create($spec): Rule {
         self::init();
 
@@ -376,15 +328,11 @@ final class Rule {
         throw new \InvalidArgumentException('Rule::create() expects string, Closure, or array');
     }
 
-    // ─── Хелперы ─────────────────────────────────────────────────────
-
-    /**
-     * Валидация ассоциативного массива / объекта по схеме полей.
-     */
+    
     public static function object(array $schema): Rule {
         self::init();
 
-        // ── отделяем dot-notation ключи от обычных ──────────────────
+        
         $regular  = [];
         $flatSpec = [];
 
@@ -444,11 +392,7 @@ final class Rule {
         })->seesSentinel();
     }
 
-    /**
-     * Валидация каждого элемента массива.
-     *
-     * @param string|Rule|\Closure $spec
-     */
+    
     public static function forEach($spec): Rule {
         self::init();
 
@@ -494,20 +438,15 @@ final class Rule {
         })->seesSentinel();
     }
 
-    // ─── Плоская (dot-notation) схема ────────────────────────────────
-
-    /**
-     * Рекурсивно вставляет $spec в дерево по массиву частей пути.
-     * Leaf-узел хранится как ['__spec__' => $spec].
-     */
+    
     private static function insertIntoTree(array &$node, array $parts, $spec): void {
         $key = array_shift($parts);
 
         if (empty($parts)) {
-            // Leaf
+            
             $node[$key] = ['__spec__' => $spec];
         } else {
-            // Если на этом уровне уже лежит leaf — заменяем его на subtree
+            
             if (!isset($node[$key]) || isset($node[$key]['__spec__'])) {
                 $node[$key] = [];
             }
@@ -515,13 +454,9 @@ final class Rule {
         }
     }
 
-    /**
-     * Рекурсивно превращает узел дерева в Rule.
-     *
-     * @param array $node
-     */
+    
     private static function treeNodeToRule(array $node): Rule {
-        // Leaf
+        
         if (array_key_exists('__spec__', $node)) {
             $spec = $node['__spec__'];
             if ($spec instanceof self) {
@@ -555,7 +490,7 @@ final class Rule {
             return self::forEach(self::object($innerSchema));
         }
 
-        // Ordinary object
+        
         $schema = [];
         foreach ($node as $childKey => $childNode) {
             $schema[$childKey] = self::treeNodeToRule($childNode);
@@ -563,11 +498,7 @@ final class Rule {
         return self::object($schema);
     }
 
-    // ─── Условные хелперы ────────────────────────────────────────────
-
-    /**
-     * @param bool|\Closure $cond
-     */
+    
     public static function requiredIf($cond): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -582,9 +513,7 @@ final class Rule {
         ->handleError(fn($v) => 'This field is required');
     }
 
-    /**
-     * @param bool|\Closure $cond
-     */
+    
     public static function prohibitedIf($cond): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -599,9 +528,7 @@ final class Rule {
         ->handleError(fn($v) => 'This field is not allowed');
     }
 
-    /**
-     * @param bool|\Closure $cond
-     */
+    
     public static function excludeIf($cond): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -616,10 +543,7 @@ final class Rule {
         ->seesSentinel();
     }
 
-    /**
-     * @param bool|\Closure $cond
-     * @param string|Rule $spec
-     */
+    
     public static function when($cond, $spec): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -646,17 +570,7 @@ final class Rule {
         ->handleError(fn($v) => 'Value is not allowed');
     }
 
-    /**
-     * Хелпер для default-значений PHP-типов (массивы, объекты и т.д.),
-     * которые нельзя передать через строковый синтаксис 'default:...'.
-     *
-     * Аналог 'default:x', но принимает настоящее PHP-значение.
-     * order=-1, поэтому выполняется до sometimes (order=0).
-     *
-     * Пример: Rule::default(['*'])
-     *
-     * @param mixed $value
-     */
+    
     public static function default($value): Rule {
         self::init();
 
@@ -668,9 +582,7 @@ final class Rule {
         })->order(-1)->seesSentinel();
     }
 
-    /**
-     * Статический хелпер для regex-паттернов, содержащих |
-     */
+    
     public static function regex(string $pattern): Rule {
         self::init();
         return self::create(fn(&$v) => is_string($v) && @preg_match($pattern, $v) === 1)
@@ -681,8 +593,7 @@ final class Rule {
         return $value === self::sentinel();
     }
 
-    // ─── Sentinel ────────────────────────────────────────────────────
-
+    
     private static function sentinel(): object {
         static $sentinel = null;
 
@@ -691,15 +602,14 @@ final class Rule {
         return $sentinel;
     }
 
-    // ─── Инициализация стандартных правил ─────────────────────────────
-
+    
     public static function init(): void {
         static $done = false;
 
         if ($done) return;
         $done = true;
 
-        // sometimes (order 0, skip=true, без handleError — поле пропускается если отсутствует)
+        
         (self::create(function(&$v): bool {
             return !self::isSentinel($v);
         }))
@@ -708,8 +618,7 @@ final class Rule {
         ->seesSentinel()
         ->alias('sometimes');
 
-        // default (order -1 — подставляет значение если sentinel/null/'';
-        //          запускается ДО sometimes, чтобы 'sometimes|default:x|...' работало)
+        
         (self::create(function(&$v, array $p): bool {
             if (self::isSentinel($v) || $v === null || $v === '') {
                 $v = $p[0] ?? null;
@@ -720,10 +629,10 @@ final class Rule {
         ->seesSentinel()
         ->alias('default');
 
-        // required (order 100, skip=true) — алиас requiredIf(true)
+        
         self::requiredIf(true)->alias('required');
 
-        // nullable (order 100, skip=true — если null/'' => пропускаем остальные правила без ошибки)
+        
         (self::create(function(&$v): bool {
             return !($v === null || $v === '' || self::isSentinel($v));
         }))
@@ -732,7 +641,7 @@ final class Rule {
         ->seesSentinel()
         ->alias('nullable');
 
-        // present (order 100, skip=true — поле должно существовать, пустое допустимо)
+        
         (self::create(function(&$v): bool {
             return !self::isSentinel($v);
         }))
@@ -742,7 +651,7 @@ final class Rule {
         ->handleError(fn($v) => 'This field must be present')
         ->alias('present');
 
-        // string
+        
         (self::create(function(&$v): bool {
             return is_string($v);
         }))
@@ -750,7 +659,7 @@ final class Rule {
         ->handleError(fn($v) => 'Must be a string')
         ->alias('string');
 
-        // int / integer (проверка + каст)
+        
         (self::create(function(&$v): bool {
             if (is_int($v)) return true;
             if (is_string($v) && ctype_digit(ltrim($v, '-'))) {
@@ -764,7 +673,7 @@ final class Rule {
         ->alias('int')
         ->alias('integer');
 
-        // float (проверка + каст)
+        
         (self::create(function(&$v): bool {
             if (is_float($v)) return true;
             if (is_numeric($v)) {
@@ -777,7 +686,7 @@ final class Rule {
         ->handleError(fn($v) => 'Must be a number')
         ->alias('float');
 
-        // bool (проверка + каст)
+        
         (self::create(function(&$v): bool {
             if (is_bool($v)) return true;
             if (in_array($v, ['0', '1', 0, 1, 'true', 'false', 'checked'], true)) {
@@ -790,7 +699,7 @@ final class Rule {
         ->handleError(fn($v) => 'Must be a boolean')
         ->alias('bool');
 
-        // email
+        
         (self::create(function(&$v): bool {
             return is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) !== false;
         }))
@@ -798,7 +707,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid email address')
         ->alias('email');
 
-        // url
+        
         (self::create(function(&$v): bool {
             return is_string($v) && filter_var($v, FILTER_VALIDATE_URL) !== false;
         }))
@@ -806,7 +715,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid URL')
         ->alias('url');
 
-        // array
+        
         (self::create(function(&$v): bool {
             return is_array($v);
         }))
@@ -814,7 +723,7 @@ final class Rule {
         ->handleError(fn($v) => 'Must be an array')
         ->alias('array');
 
-        // max:n
+        
         (self::create(function(&$v, array $p): bool {
             $l = $p[0] ?? null;
             if ($l === null) return true;
@@ -827,7 +736,7 @@ final class Rule {
         ->handleError(fn($v) => 'Value is too large')
         ->alias('max');
 
-        // min:n
+        
         (self::create(function(&$v, array $p): bool {
             $l = $p[0] ?? null;
             if ($l === null) return true;
@@ -840,7 +749,7 @@ final class Rule {
         ->handleError(fn($v) => 'Value is too small')
         ->alias('min');
 
-        // in:a,b,c
+        
         (self::create(function(&$v, array $p): bool {
             return in_array($v, $p, false);
         }))
@@ -848,7 +757,7 @@ final class Rule {
         ->handleError(fn($v) => 'Not a valid option')
         ->alias('in');
 
-        // notIn / not_in
+        
         (self::create(function(&$v, array $p): bool {
             return !in_array($v, $p, false);
         }))
@@ -857,7 +766,7 @@ final class Rule {
         ->alias('notIn')
         ->alias('not_in');
 
-        // regex:pattern
+        
         (self::create(function(&$v, array $p): bool {
             $pattern = $p[0] ?? '';
             if (!is_string($v)) return false;
@@ -867,7 +776,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid format')
         ->alias('regex');
 
-        // digits:n
+        
         (self::create(function(&$v, array $p): bool {
             $n = (int)($p[0] ?? 0);
             return is_string($v) && ctype_digit($v) && strlen($v) === $n;
@@ -876,7 +785,7 @@ final class Rule {
         ->handleError(fn($v) => 'Must be digits only')
         ->alias('digits');
 
-        // between:min,max
+        
         (self::create(function(&$v, array $p): bool {
             $min = (float)($p[0] ?? 0);
             $max = (float)($p[1] ?? 0);
@@ -888,7 +797,7 @@ final class Rule {
         ->handleError(fn($v) => 'Value is out of range')
         ->alias('between');
 
-        // date
+        
         (self::create(function(&$v): bool {
             return is_string($v) && strtotime($v) !== false;
         }))
@@ -896,7 +805,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid date')
         ->alias('date');
 
-        // date_format:format
+        
         (self::create(function(&$v, array $p): bool {
             $fmt = $p[0] ?? '';
             if (!is_string($v)) return false;
@@ -907,7 +816,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid date format')
         ->alias('date_format');
 
-        // json
+        
         (self::create(function(&$v): bool {
             if (!is_string($v)) return false;
             @json_decode($v);
@@ -917,7 +826,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid JSON')
         ->alias('json');
 
-        // starts_with:prefix
+        
         (self::create(function(&$v, array $p): bool {
             if (!is_string($v)) return false;
             foreach ($p as $prefix) {
@@ -929,7 +838,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid prefix')
         ->alias('starts_with');
 
-        // ends_with:suffix
+        
         (self::create(function(&$v, array $p): bool {
             if (!is_string($v)) return false;
             foreach ($p as $suffix) {
@@ -942,7 +851,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid suffix')
         ->alias('ends_with');
 
-        // contains:substring
+        
         (self::create(function(&$v, array $p): bool {
             if (!is_string($v)) return false;
             foreach ($p as $sub) {
@@ -954,7 +863,7 @@ final class Rule {
         ->handleError(fn($v) => 'Must contain')
         ->alias('contains');
 
-        // trim (order -1, трансформер)
+        
         (self::create(function(&$v, array $p = []): bool {
             if (is_string($v))
                 $v = !empty($p) ? trim($v, implode('', $p)) : trim($v);
@@ -963,7 +872,7 @@ final class Rule {
         ->order(-1)
         ->alias('trim');
 
-        // ltrim (order -1, трансформер)
+        
         (self::create(function(&$v, array $p = []): bool {
             if (is_string($v))
                 $v = !empty($p) ? ltrim($v, implode('', $p)) : ltrim($v);
@@ -972,7 +881,7 @@ final class Rule {
         ->order(-1)
         ->alias('ltrim');
 
-        // rtrim (order -1, трансформер)
+        
         (self::create(function(&$v, array $p = []): bool {
             if (is_string($v))
                 $v = !empty($p) ? rtrim($v, implode('', $p)) : rtrim($v);
@@ -981,7 +890,7 @@ final class Rule {
         ->order(-1)
         ->alias('rtrim');
 
-        // uppercase (order 1000, трансформер)
+        
         (self::create(function(&$v): bool {
             if (is_string($v)) $v = mb_strtoupper($v);
             return true;
@@ -989,7 +898,7 @@ final class Rule {
         ->order(1000)
         ->alias('uppercase');
 
-        // lowercase (order 1000, трансформер)
+        
         (self::create(function(&$v): bool {
             if (is_string($v)) $v = mb_strtolower($v);
             return true;
@@ -997,7 +906,7 @@ final class Rule {
         ->order(1000)
         ->alias('lowercase');
 
-        // accepted
+        
         (self::create(function(&$v): bool {
             return in_array($v, [true, 1, '1', 'yes', 'on', 'true'], true);
         }))
@@ -1005,7 +914,7 @@ final class Rule {
         ->handleError(fn($v) => 'Must be accepted')
         ->alias('accepted');
 
-        // declined
+        
         (self::create(function(&$v): bool {
             return in_array($v, [false, 0, '0', 'no', 'off', 'false'], true);
         }))
@@ -1013,7 +922,7 @@ final class Rule {
         ->handleError(fn($v) => 'Must be declined')
         ->alias('declined');
 
-        // file
+        
         (self::create(function(&$v): bool {
             return is_array($v)
                 && isset($v['tmp_name'], $v['error'], $v['size'], $v['name'])
@@ -1024,7 +933,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid file upload')
         ->alias('file');
 
-        // mimes:image/jpeg,image/png
+        
         (self::create(function(&$v, array $p): bool {
             if (!is_array($v) || !isset($v['tmp_name']) || $v['error'] !== UPLOAD_ERR_OK) return false;
             if (!is_uploaded_file($v['tmp_name'])) return false;
@@ -1036,7 +945,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid MIME type')
         ->alias('mimes');
 
-        // extension:jpg,png
+        
         (self::create(function(&$v, array $p): bool {
             if (!is_array($v) || !isset($v['name'])) return false;
             $ext = strtolower(pathinfo($v['name'], PATHINFO_EXTENSION));
@@ -1046,7 +955,7 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid file extension')
         ->alias('extension');
 
-        // filesize:2048 (килобайты)
+        
         (self::create(function(&$v, array $p): bool {
             if (!is_array($v) || !isset($v['size'])) return false;
             $maxKb = (float)($p[0] ?? 0);

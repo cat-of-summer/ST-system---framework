@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system;
 
@@ -18,7 +18,7 @@ final class Main {
         return $ts;
     }
 
-    public static function pluralForm($n, $forms): string { //(1, ["яблоко", "яблока", "яблок"]);
+    public static function pluralForm($n, $forms): string { 
         $n = (int)$n;
         return $forms[($n % 10 == 1 && $n % 100 != 11) ? 0 : (($n % 10 >= 2 && $n % 10 <= 4 && ($n % 100 < 10 || $n % 100 >= 20)) ? 1 : 2)];
     }
@@ -132,7 +132,7 @@ final class Main {
                 $data[6] = chr((ord($data[6]) & 0x0f) | 0x40);
                 break;
 
-            default: // v7
+            default: 
                 $ms = (int)(microtime(true) * 1000);
                 $data = substr(pack('J', $ms), 0, 6) . random_bytes(10);
                 $data[6] = chr((ord($data[6]) & 0x0f) | 0x70);

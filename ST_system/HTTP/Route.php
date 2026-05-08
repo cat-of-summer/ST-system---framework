@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\HTTP;
 
@@ -89,12 +89,7 @@ final class Route {
         ];
     }
 
-    /*
-    ?? array $methods
-    string $uri, 
-    $controller, 
-    array $PARAMS = []
-    */
+    
     public static function __callStatic($name, $arguments) {
         $methods = [];
 

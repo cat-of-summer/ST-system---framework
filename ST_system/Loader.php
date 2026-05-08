@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system;
 
@@ -27,7 +27,7 @@ final class Loader {
         }
     }
 
-    /** @return static */
+    
     public static function create(...$args): self { return new static(...$args); }
 
     public static function __callStatic(string $name, array $args) {

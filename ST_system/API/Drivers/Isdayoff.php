@@ -13,7 +13,7 @@ final class Isdayoff extends IntegrationDriver {
 
     protected function __init(): void {
 
-        // Date rule: converts to 'Ymd' format (isdayoff.ru specific)
+        
         $r_date = Rule::create(fn(&$v) => $v === null || $v instanceof \DateTimeInterface || is_string($v))
             ->after(function(&$v) {
                 if ($v === null) return;
@@ -66,7 +66,7 @@ final class Isdayoff extends IntegrationDriver {
             ],
         ]);
 
-        // Split the raw text response into an array of day codes
+        
         $this->on('prepare_response', function($method, $params, &$raw_data) {
             $delimeter = $params['delimeter'] ?? $this->SETTINGS['delimeter'] ?? null;
             $raw_data['response'] = !$delimeter
@@ -74,9 +74,9 @@ final class Isdayoff extends IntegrationDriver {
                 : explode($delimeter, $raw_data['response']);
         });
 
-        // Prevent call() from json_decoding the already-processed array
+        
         $this->on('decode_response', function($method, $params, &$raw_data) {
-            // no-op: response already split in prepare_response
+            
         });
     }
 

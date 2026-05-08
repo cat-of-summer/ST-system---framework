@@ -1,42 +1,8 @@
-<?php
+﻿<?php
 
-/**
- * Схема микроразметки Schema.org — Service.
- *
- * Использование:
- *   require_once __DIR__ . '/service.php';
- *
- *   $markup = Schema::create('schema.service')->fill([
- *       'service_type' => 'Липофилинг лица',
- *       'description'  => 'Коррекция возрастных изменений и восполнение объемов лица собственным жиром.',
- *       'area_served'  => 'Старый скол и Белгородская область',
- *       'provider'     => [
- *           'type'    => 'Hospital',
- *           'name'    => 'Клиника Пиона Едикус',
- *           'address' => [
- *               'address_locality' => 'Старый скол',
- *               'address_country'  => 'RU',
- *           ],
- *       ],
- *       'offers' => [
- *           'price'          => '58300',
- *           'price_currency' => 'RUB',
- *       ],
- *       'has_offer_catalog' => [
- *           'name'  => 'Услуги пластической хирургии',
- *           'items' => [
- *               ['name' => 'Пластика век (лефаропластика)'],
- *               ['name' => 'Пластика носа (ринопластика)'],
- *               ['name' => 'Липосакция'],
- *           ],
- *       ],
- *   ]);
- *   echo $markup->print();
- */
 
 use ST_system\Schema;
 
-// ─────────────────────────────────────────────────────────────────────────────
 
 Schema::scope('schema', function (): void {
 
@@ -95,7 +61,7 @@ Schema::scope('schema', function (): void {
 
     }])->scope(function (): void {
 
-        // ── PostalAddress ─────────────────────────────────────────────────────
+        
         Schema::entity('postal-address', ['fields' => [
             'street_address'   => 'sometimes|string',
             'address_locality' => 'sometimes|string',
@@ -123,7 +89,7 @@ Schema::scope('schema', function (): void {
             return $data;
         }]);
 
-        // ── Provider ──────────────────────────────────────────────────────────
+        
         Schema::entity('provider', ['fields' => [
             'type'      => 'sometimes|string',
             'name'      => 'required|string',
@@ -151,7 +117,7 @@ Schema::scope('schema', function (): void {
             return $data;
         }]);
 
-        // ── Offer ─────────────────────────────────────────────────────────────
+        
         Schema::entity('offer', ['fields' => [
             'price'          => 'required|string',
             'price_currency' => 'required|string',
@@ -180,7 +146,7 @@ Schema::scope('schema', function (): void {
             return $data;
         }]);
 
-        // ── OfferCatalog ──────────────────────────────────────────────────────
+        
         Schema::entity('offer-catalog', ['fields' => [
             'name'  => 'required|string',
             'items' => 'sometimes',

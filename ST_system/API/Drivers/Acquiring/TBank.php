@@ -11,9 +11,7 @@ final class TBank extends IntegrationDriver {
 
     private array $SETTINGS = [];
 
-    /**
-     * Verify the Token signature of an incoming T-Bank notification.
-     */
+    
     public static function verifyNotificationToken(array $data, string $password): bool
     {
         $receivedToken = $data['Token'] ?? null;
@@ -27,9 +25,7 @@ final class TBank extends IntegrationDriver {
         return hash_equals(strtolower($receivedToken), hash('sha256', implode('', array_map('strval', array_values($data)))));
     }
 
-    /**
-     * Generate the Token value for an outgoing API request.
-     */
+    
     public static function generateToken(array $params, string $password): string
     {
         unset($params['Token']);

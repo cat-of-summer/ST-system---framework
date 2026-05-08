@@ -184,9 +184,13 @@ $xml = $doctor->print(['format' => 'xml']); // параметр передаёт
 Читает поле или весь массив данных. Поддерживает dot-notation и `[N]`-индексы.
 
 ```php
-$doctor->field();           // весь $this->data
-$doctor->field('name');     // 'Иванов'
-$doctor->field('items.0.price'); // вложенный доступ
+$doctor->field();                // весь $this->data
+$doctor->field('name');          // 'Иванов'
+$doctor->field('address');       // Schema-инстанс address
+$doctor->field('address.city');  // делегирует → $address->field('city')
+$doctor->field('items.0');       // $data['items'][0]
+$doctor->field('items.[0]');     // то же самое
+$doctor->field('items.0.price'); // $data['items'][0]->field('price')
 ```
 
 ---

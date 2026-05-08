@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system;
 
@@ -71,9 +71,7 @@ class Menu {
         return $html;
     }
 
-    /*
-    render()
-    */
+    
     public function __call($name, $arguments) {
         switch ($name) {
             case 'render':
@@ -87,30 +85,3 @@ class Menu {
         }
     }
 }
-
-/*
-$Menu = new \ST_system\Menu([
-    'menu' => [
-        'ITEMS' => [],
-        'FIELDS' => [],
-        'PROPERTIES' => []
-    ],
-    'render_empty' => true,
-    'render_rules' => [
-        [
-            'OPEN' => fn() => '<div>',
-            'ITEM' => function($FIELDS, $PROPERTIES) use ($arParams) {
-                return 
-                <<<HTML
-                    <a href="{$FIELDS['SECTION_PAGE_URL']}">
-                        <p>{$FIELDS['NAME']}</p>
-                    </a>
-                HTML;
-            },
-            'CLOSE' => '</div>',
-        ],
-    ]
-]);
-
-$Menu->render();
-*/

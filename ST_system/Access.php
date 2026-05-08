@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system;
 
@@ -155,18 +155,5 @@ final class Access {
         }
     }
 
-    // public static function proactiefFilter(array $config = []) {
-    //     $config['timeout'];
-    //     $config['ban_time'];
-    // }
-
-    // /** @param mixed $ips */
-    // public static function banIp($ips) { //Диапазон, массив, строка
-    //     $config['ban_time'];
-    // }
-
-    // /** @param mixed $ips */
-    // public static function unbanIp($ips) { //Диапазон, массив, строка
-    // }
-
+    
 }

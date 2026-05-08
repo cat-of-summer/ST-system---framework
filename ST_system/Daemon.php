@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system;
 
@@ -57,7 +57,7 @@ class Daemon {
         });
     }
 
-    /** @return mixed */
+    
     final public static function __callStatic(string $name, array $args) {
         $instance = new static();
 
@@ -76,7 +76,7 @@ class Daemon {
         return $instance->__call($name, $args);
     }
 
-    /** @return mixed */
+    
     final public function __call(string $name, array $args) {
         $fn = $args[0] ?? null;
 
@@ -107,7 +107,7 @@ class Daemon {
         $last_checkpoint = $name;
     }
 
-    /** @param mixed ...$params */
+    
     final protected function goal(string $name, &...$params): void {
         if (!isset($this->checkpoints[$name]))
             throw new \LogicException("Checkpoint '{$name}' is not registered.");

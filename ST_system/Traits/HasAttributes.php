@@ -1,14 +1,10 @@
-<?php
+﻿<?php
 
 namespace ST_system\Traits;
 
 trait HasAttributes {
 
-    // use HasAttributes {
-    //     __get as private getAttribute;
-    //     __set as private setAttribute;
-    // }
-
+    
     protected array $attributes = [];
 
     public function __get(string $name) {

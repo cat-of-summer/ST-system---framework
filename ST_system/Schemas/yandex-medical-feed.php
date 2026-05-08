@@ -1,75 +1,9 @@
-<?php
+﻿<?php
 
-/**
- * Схема фида специалистов Яндекс.Врачи.
- *
- * Использование:
- *   require_once __DIR__ . '/yandex-medical-feed.php';
- *
- *   $feed = Schema::create('yandex-medical-feed')->fill([
- *       'name'    => 'АмберМед',
- *       'company' => 'ООО "АмберМед"',
- *       'url'     => 'https://example.com',
- *       'email'   => 'office@example.com',
- *       'doctors' => [
- *           [
- *               'id'               => '123',
- *               'name'             => 'Иванов Иван Иванович',
- *               'url'              => 'https://example.com/doctors/ivanov',
- *               'description'      => 'Опытный терапевт.',
- *               'surname'          => 'Иванов',
- *               'first_name'       => 'Иван',
- *               'patronymic'       => 'Иванович',
- *               'experience_years' => 10,
- *               'picture'          => 'https://example.com/images/ivanov.jpg',
- *           ],
- *       ],
- *       'clinics' => [
- *           [
- *               'id'      => '1',
- *               'name'    => 'Клиника Здоровья',
- *               'url'     => 'https://example.com',
- *               'city'    => 'г. Москва',
- *               'address' => 'ул. Примерная, д. 1',
- *               'phone'   => '+7 (495) 000-00-00',
- *           ],
- *       ],
- *       'services' => [
- *           [
- *               'id'   => '1',
- *               'name' => 'Первичный приём (терапевт)',
- *           ],
- *       ],
- *       'offers' => [
- *           [
- *               'id'                   => 'offer_1',
- *               'url'                  => 'https://example.com/appointment/?doctor=ivanov',
- *               'oms'                  => false,
- *               'online_schedule'      => false,
- *               'appointment'          => true,
- *               'price'                => [
- *                   'base_price'       => 2000,
- *                   'currency'         => 'RUB',
- *                   'discounts'        => [['name' => 'Клубная карта', 'amount' => 1500]],
- *                   'free_appointment' => 'При условии дальнейшего лечения',
- *               ],
- *               'doctor_id'            => '123',
- *               'clinic_id'            => '1',
- *               'service_id'           => '1',
- *               'speciality'           => 'терапевт',
- *               'children_appointment' => false,
- *               'adult_appointment'    => true,
- *               'is_base_service'      => true,
- *           ],
- *       ],
- *   ]);
- *   echo $feed->print();
- */
 
 use ST_system\Schema;
 use ST_system\Rule;
 
-// ─────────────────────────────────────────────────────────────────────────────
 
 Schema::entity('yandex-medical-feed', ['fields' => [
     'date'     => 'date_format:Y-m-d H:i|default:' . date('Y-m-d H:i'),
@@ -138,7 +72,7 @@ Schema::entity('yandex-medical-feed', ['fields' => [
     },
 ])->scope(function () {
 
-    // ── Алиасы ───────────────────────────────────────────────────────────────
+    
     Rule::create('bool')->after(function (&$v): void { $v = $v ? 'true' : 'false'; })->alias('bool', 1);
 
     Rule::create(['string', Rule::in([
@@ -293,7 +227,7 @@ Schema::entity('yandex-medical-feed', ['fields' => [
         'эпилептолог',
     ])])->alias('speciality', 1);
 
-    // ── Образование ───────────────────────────────────────────────────────
+    
     Schema::entity('education', ['fields' => [
         'organization'   => 'required|string',
         'finish_year'    => 'sometimes|int',
@@ -316,7 +250,7 @@ Schema::entity('yandex-medical-feed', ['fields' => [
         },
     ]);
 
-    // ── Место работы ──────────────────────────────────────────────────────
+    
     Schema::entity('job', ['fields' => [
         'organization' => 'required|string',
         'period_years' => 'sometimes|string',
@@ -335,7 +269,7 @@ Schema::entity('yandex-medical-feed', ['fields' => [
         },
     ]);
 
-    // ── Сертификат ────────────────────────────────────────────────────────
+    
     Schema::entity('certificate', ['fields' => [
         'organization' => 'required|string',
         'finish_year'  => 'sometimes|int',
@@ -352,7 +286,7 @@ Schema::entity('yandex-medical-feed', ['fields' => [
         },
     ]);
 
-    // ── Отзыв ─────────────────────────────────────────────────────────────
+    
     Schema::entity('review', ['fields' => [
         'date'           => 'required|string',
         'checked'        => 'sometimes|bool',
@@ -403,7 +337,7 @@ Schema::entity('yandex-medical-feed', ['fields' => [
         },
     ]);
 
-    // ── Врач ──────────────────────────────────────────────────────────────
+    
     Schema::entity('doctor', ['fields' => [
         'id'                  => 'required|string',
         'internal_id'         => 'sometimes|string',
@@ -482,7 +416,7 @@ Schema::entity('yandex-medical-feed', ['fields' => [
         },
     ]);
 
-    // ── Клиника ───────────────────────────────────────────────────────────
+    
     Schema::entity('clinic', ['fields' => [
         'id'         => 'required|string',
         'internal_id'=> 'sometimes|string',
@@ -525,7 +459,7 @@ Schema::entity('yandex-medical-feed', ['fields' => [
         },
     ]);
 
-    // ── Услуга ────────────────────────────────────────────────────────────
+    
     Schema::entity('service', ['fields' => [
         'id'          => 'required|string',
         'internal_id' => 'sometimes|string',
@@ -550,7 +484,7 @@ Schema::entity('yandex-medical-feed', ['fields' => [
         },
     ]);
 
-    // ── Цена ──────────────────────────────────────────────────────────────
+    
     Schema::entity('price', ['fields' => [
         'base_price'       => 'required|float',
         'currency'         => 'required|string',
@@ -571,7 +505,7 @@ Schema::entity('yandex-medical-feed', ['fields' => [
         },
     ]);
 
-    // ── Оффер ─────────────────────────────────────────────────────────────
+    
     Schema::entity('offer', ['fields' => [
         'id'                   => 'required|string',
         'url'                  => 'required|url',

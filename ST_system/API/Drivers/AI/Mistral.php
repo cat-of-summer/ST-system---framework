@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\API\Drivers\AI;
 
@@ -140,7 +140,7 @@ final class Mistral extends OpenAICompatibleDriver {
         return array_slice($this->conversation, $start, $count ?: null);
     }
 
-    /** @return int|float */
+    
     public function getHistorySize(string $unit = 'b') {
         $bytes = mb_strlen(json_encode($this->conversation), '8bit');
 

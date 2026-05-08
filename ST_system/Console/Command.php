@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace ST_system\Console;
 
@@ -20,30 +20,17 @@ abstract class Command {
         echo $text . PHP_EOL;
     }
 
-    /**
-     * @param string $key
-     * @param mixed  $default
-     * @return mixed
-     */
+    
     protected function option(string $key = '', $default = null) {
         return $key === '' ? $this->options : ($this->options[$key] ?? $default);
     }
 
-    /**
-     * @param string $key
-     * @param mixed  $default
-     * @return mixed
-     */
+    
     protected function argument(string $key = '', $default = null) {
         return $key === '' ? $this->arguments : ($this->arguments[$key] ?? $default);
     }
 
-    // ─── Signature parser ─────────────────────────────────────────────
-
-    /**
-     * Parses 'cmd:name {arg} {opt?} {arg=def} {--flag} {--opt=} {--opt=def} {--a|opt=def}'
-     * Returns [argDefs[], optDefs[]]
-     */
+    
     private static function parseSignature(string $signature): array {
         preg_match_all('/\{([^}]+)\}/', $signature, $tokens);
 
