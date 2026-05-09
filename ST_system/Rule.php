@@ -380,7 +380,7 @@ final class Rule {
             $rules = self::parseString($spec);
             usort($rules, fn(Rule $a, Rule $b) => $a->order <=> $b->order);
         } elseif (is_array($spec)) {
-            $rules = Rule::object($spec);
+            $rules = self::compileFieldRules($spec);
         } else {
             throw new \InvalidArgumentException('Rule::forEach() expects string, Closure, array or Rule');
         }
@@ -410,7 +410,9 @@ final class Rule {
             foreach ($toRemove as $i) unset($data[$i]);
             
             return $errors;
-        })->seesSentinel();
+        })
+        ->order(500)
+        ->seesSentinel();
     }
 
     private static function insertIntoTree(array &$node, array $parts, $spec): void {
@@ -522,13 +524,14 @@ final class Rule {
             if (!$fn()) return true;
             $errors = $thenRule->apply($v);
             return empty($errors) ? true : $errors;
-        });
+        })->order(-2);
     }
 
     public static function in(array $values): Rule {
         self::init();
 
         return self::create(fn(&$v) => in_array($v, $values, false))
+        ->order(700)
         ->handleError(fn($v) => 'Not a valid option');
     }
 
@@ -536,6 +539,7 @@ final class Rule {
         self::init();
 
         return self::create(fn(&$v) => !in_array($v, $values, false))
+        ->order(700)
         ->handleError(fn($v) => 'Value is not allowed');
     }
 
@@ -552,7 +556,9 @@ final class Rule {
                 }
             }
             return false;
-        })->handleError(fn($v) => 'Value does not match any allowed type');
+        })
+        ->order(500)
+        ->handleError(fn($v) => 'Value does not match any allowed type');
     }
 
     public static function default($value, bool $valid = false): Rule {
@@ -567,7 +573,9 @@ final class Rule {
 
     public static function regex(string $pattern): Rule {
         self::init();
+        
         return self::create(fn(&$v) => is_string($v) && @preg_match($pattern, $v) === 1)
+        ->order(700)
         ->handleError(fn($v) => 'Invalid format');
     }
 
@@ -723,7 +731,7 @@ final class Rule {
         
         (self::create(function(&$v, array $p): array {
             if (is_array($v) && !empty($v))
-                return self::forEach(implode('|', $p))->apply($v);
+                return self::forEach($p)->apply($v);
             
             return [];
         }))
@@ -914,14 +922,9 @@ final class Rule {
         ->alias('rtrim');
 
 
-        (self::create(function(&$v, array $p = []): bool {
+        (self::create(function(&$v): bool {
             if (is_string($v))
-                $v = htmlspecialchars(
-                    $v,
-                    $p[0] ?? ENT_QUOTES | ENT_SUBSTITUTE,
-                    $p[1] ?? 'UTF-8',
-                    $p[2] ?? true
-                );
+                $v = htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             return true;
         }))
         ->order(-1)
