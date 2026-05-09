@@ -70,6 +70,11 @@ final class Rule {
         return $this;
     }
 
+    public function throwable(): self {
+        $this->handleError(fn($v, $errors) => throw new \Exception(implode(PHP_EOL, $errors)));
+        return $this;
+    }
+
     public function order(int $o): self {
         $this->guardFrozen();
         $this->order = $o;
@@ -699,6 +704,26 @@ final class Rule {
         ->handleError(fn($v) => 'Must be a boolean')
         ->alias('bool');
 
+
+        (self::create(function(&$v): bool {
+            if (is_callable($v)) return true;
+
+            return false;
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be callable')
+        ->alias('callable');
+
+
+        (self::create(function(&$v): bool {
+            if ($v instanceof \Closure) return true;
+
+            return false;
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be closure')
+        ->alias('closure');
+
         
         (self::create(function(&$v): bool {
             return is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) !== false;
@@ -871,7 +896,6 @@ final class Rule {
         }))
         ->order(-1)
         ->alias('trim');
-
         
         (self::create(function(&$v, array $p = []): bool {
             if (is_string($v))
@@ -889,6 +913,20 @@ final class Rule {
         }))
         ->order(-1)
         ->alias('rtrim');
+
+
+        (self::create(function(&$v, array $p = []): bool {
+            if (is_string($v))
+                $v = htmlspecialchars(
+                    $v,
+                    $p[0] ?? ENT_QUOTES | ENT_SUBSTITUTE,
+                    $p[1] ?? 'UTF-8',
+                    $p[2] ?? true
+                );
+            return true;
+        }))
+        ->order(-1)
+        ->alias('escape_html');
 
         
         (self::create(function(&$v): bool {

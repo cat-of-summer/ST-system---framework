@@ -163,7 +163,7 @@ $rule->apply($v);
 
 ---
 
-### 4.6 `->handleError(Closure|mixed): self` — обработчик ошибки
+### 4.6.1 `->handleError(Closure|mixed): self` — обработчик ошибки
 
 Вызывается когда callback вернул `false`/`0` или непустой массив.  
 Должна вернуть **строку** — это и будет сообщение об ошибке.  
@@ -190,6 +190,15 @@ $rule = Rule::create(fn(&$v) => ['error_a', 'error_b'])
     ->handleError(fn($v, array $errors) => 'Overridden: ' . implode(', ', $errors));
 // Ошибки заменяются одной строкой: ['Overridden: error_a, error_b']
 ```
+
+---
+
+### 4.6.2 `->throwable(): self` — обработчик ошибки
+
+Обёртка над `->handleError(Closure|mixed): self`.
+Переопределяется обработчик ошибки, как замыкание, вызывающее `throw \Exception`.
+Необходимо, если достаточно вызывать исключение в качестве обработки ошибок.
+Передаёт построчно ошибки, которые были допущены при валидации.
 
 ---
 
@@ -568,6 +577,36 @@ Rule::create('trim|required|string')->apply($v);
 // $v === 'hello'
 ```
 
+#### `rtrim` (order=-1)
+
+Убирает пробелы с правого края строки. Выполняется раньше всех остальных правил.
+
+```php
+$v = '  hello  ';
+Rule::create('rtrim|required|string')->apply($v);
+// $v === '  hello'
+```
+
+#### `ltrim` (order=-1)
+
+Убирает пробелы с левого края строки. Выполняется раньше всех остальных правил.
+
+```php
+$v = '  hello  ';
+Rule::create('ltrim|required|string')->apply($v);
+// $v === 'hello  '
+```
+
+#### `escape_html` (order=-1)
+
+Применяет htmlspecialchars на строку. Выполняется раньше всех остальных правил.
+
+```php
+$v = '  hello  ';
+Rule::create('escape_html|required|string')->apply($v);
+// $v === 'hello'
+```
+
 #### `default:value` (order=50)
 
 Подставляет значение если поле `null`, `''` или отсутствует.
@@ -603,6 +642,14 @@ Rule::create('required|lowercase')->apply($v); // $v === 'world'
 #### `string`
 
 Проверяет `is_string`. Не кастует — если не строка, возвращает ошибку.
+
+#### `callable`
+
+Проверяет `is_callable`. Не кастует — если не callable, возвращает ошибку.
+
+#### `closure`
+
+Проверяет `instanceof \Closure`. Не кастует — если не instanceof \Closure, возвращает ошибку.
 
 #### `int` / `integer`
 
