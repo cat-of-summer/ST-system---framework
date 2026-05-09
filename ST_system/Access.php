@@ -41,7 +41,7 @@ final class Access {
         ];
     }
 
-    private static $block_password = [
+    private static $block = [
         'name'         => null,
         'value'        => null,
         'accessMethod' => null,
@@ -126,7 +126,7 @@ final class Access {
             ])->throwable()->apply($config);
         });
 
-        self::$block_password = [
+        self::$block = [
             'name'         => $config['name'],
             'value'        => $config['value'],
             'accessMethod' => $config['accessMethod'],
@@ -136,13 +136,13 @@ final class Access {
     }
 
     public static function endBlock() {
-        if (!self::$block_password['name'] || !self::$block_password['value']) return;
+        if (!self::$block['name'] || !self::$block['value'] || !self::$block['accessMethod']) return;
 
         $content = ob_get_clean();
 
-        $val = self::extractCredential(self::$block_password['name'], self::$block_password['accessMethod']);
+        $val = self::extractCredential(self::$block['name'], self::$block['accessMethod']);
 
-        if ($val !== null && $val == self::$block_password['value'])
+        if ($val !== null && $val == self::$block['value'])
             echo $content;
     }
 
