@@ -558,13 +558,11 @@ final class Rule {
     public static function default($value, bool $valid = false): Rule {
         self::init();
 
-        $rule = self::create(function(&$v) use ($value, $valid): bool {
+        return self::create(function(&$v) use ($value, $valid): bool {
             $substituted = self::isSentinel($v) || $v === null || $v === '';
             if ($substituted) $v = $value;
-            return !$substituted || $valid;
-        })->order(-1)->seesSentinel();
-
-        return $valid ? $rule : $rule->skip();
+            return !($substituted || ($valid && $v == $value));
+        })->order(-1)->seesSentinel()->skip();
     }
 
     public static function regex(string $pattern): Rule {
@@ -605,7 +603,7 @@ final class Rule {
             $substituted = self::isSentinel($v) || $v === null || $v === '';
             if ($substituted) $v = $p[0] ?? null;
             $valid = isset($p[1]) && $p[1] === 'true';
-            return !$substituted || $valid;
+            return !($substituted || ($valid && $v == ($p[0] ?? null)));
         }))
         ->order(-1)
         ->seesSentinel()
