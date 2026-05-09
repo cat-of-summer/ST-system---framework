@@ -10,7 +10,7 @@ trait HasEvents {
         return [];
     }
 
-    final public function on(string $event, callable $listener): void {
+    public function on(string $event, callable $listener): void {
         $this->listeners[$event][] = $listener;
     }
 
@@ -21,7 +21,7 @@ trait HasEvents {
             call_user_func_array($listener, $params);
     }
 
-    final public function trigger(string $event, &...$params) {
+    public function trigger(string $event, &...$params) {
         if (in_array($event, static::getReservedEvents(), true))
             throw new \LogicException("Event '{$event}' is reserved and cannot be triggered externally.");
 

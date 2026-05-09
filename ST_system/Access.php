@@ -1,8 +1,9 @@
-﻿<?php
+<?php
 
 namespace ST_system;
 
 use ST_system\Traits\HasConfig;
+use ST_system\Traits\HasEvents;
 use ST_system\HTTP\Request;
 use ST_system\HTTP\Response;
 use ST_system\Rule;
@@ -11,12 +12,28 @@ final class Access {
 
     use HasConfig;
 
+    use HasEvents {
+        on as private _on;
+    }
+
+    private function __construct() {}
+
+    private static function getInstance(): self {
+        static $instance = null;
+
+        if ($instance === null)
+            $instance = new static();
+
+        return $instance;
+    }
+
     protected static function getDefaultConfig(): array {
         return [
             'credentials' => [
                 'name' => 'pass',
-                'password' => date('dm')
+                'value' => date('dm')
             ],
+            'accessMethod' => 'GET',
             'CORS' => [
                 'methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
                 'headers' => ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -25,21 +42,42 @@ final class Access {
     }
 
     private static $block_password = [
-        'name' => null,
-        'value' => null
+        'name'         => null,
+        'value'        => null,
+        'accessMethod' => null,
     ];
+
+    public static function on(string $event, callable $listener): void {
+        self::getInstance()->_on($event, $listener);
+    }
+
+    private static function extractCredential(string $name, string $method): ?string {
+        switch ($method) {
+            case 'GET':     return Request::get($name);
+            case 'POST':
+            case 'PUT':
+            case 'DELETE':
+            case 'PATCH':   return Request::post($name);
+            case 'HEADERS': return Request::headers($name);
+            case 'COOKIE':  return Request::cookie($name);
+            case 'SESSION': return $_SESSION[$name] ?? null;
+        }
+
+        throw new \InvalidArgumentException("Access method not allowed: '$method'");
+    }
 
     public static function requestAccess(array $config = []) {
         Rule::scope(static::class, function() use (&$config) {
             Rule::object([
-                'name' => 'string|escape_html|defaultConfig:credentials.name',
-                'value' => 'string|escape_html|defaultConfig:credentials.value',
-                'onFail' => ['callable', Rule::default(fn() => self::throw(401))],
-                'onSuccess' => 'nullable|callable'
+                'name'         => 'string|escape_html|defaultConfig:credentials.name',
+                'value'        => 'string|escape_html|defaultConfig:credentials.value',
+                'accessMethod' => 'nullable|string|defaultConfig:accessMethod',
+                'onFail'       => ['callable', Rule::default(fn() => self::throw(401))],
+                'onSuccess'    => 'nullable|callable'
             ])->throwable()->apply($config);
         });
-        
-        $val = Request::data($config['name']);
+
+        $val = self::extractCredential($config['name'], $config['accessMethod']);
 
         return (empty($val) || $val != $config['value'])
             ? $config['onFail']
@@ -67,12 +105,13 @@ final class Access {
     public static function call(callable $f, array $config = []) {
         Rule::scope(static::class, function() use (&$config) {
             Rule::object([
-                'name'  => 'string|escape_html|defaultConfig:credentials.name',
-                'value' => 'string|escape_html|defaultConfig:credentials.value',
+                'name'         => 'string|escape_html|defaultConfig:credentials.name',
+                'value'        => 'string|escape_html|defaultConfig:credentials.value',
+                'accessMethod' => 'nullable|string|defaultConfig:accessMethod',
             ])->throwable()->apply($config);
         });
 
-        $val = Request::data($config['name']);
+        $val = self::extractCredential($config['name'], $config['accessMethod']);
 
         if ($val !== null && $val == $config['value'])
             return $f();
@@ -81,14 +120,16 @@ final class Access {
     public static function startBlock(array $config = []) {
         Rule::scope(static::class, function() use (&$config) {
             Rule::object([
-                'name'  => 'string|escape_html|defaultConfig:credentials.name',
-                'value' => 'string|escape_html|defaultConfig:credentials.value',
+                'name'         => 'string|escape_html|defaultConfig:credentials.name',
+                'value'        => 'string|escape_html|defaultConfig:credentials.value',
+                'accessMethod' => 'nullable|string|defaultConfig:accessMethod',
             ])->throwable()->apply($config);
         });
 
         self::$block_password = [
-            'name'  => $config['name'],
-            'value' => $config['value'],
+            'name'         => $config['name'],
+            'value'        => $config['value'],
+            'accessMethod' => $config['accessMethod'],
         ];
 
         ob_start();
@@ -99,14 +140,15 @@ final class Access {
 
         $content = ob_get_clean();
 
-        $val = Request::data(self::$block_password['name']);
+        $val = self::extractCredential(self::$block_password['name'], self::$block_password['accessMethod']);
 
         if ($val !== null && $val == self::$block_password['value'])
             echo $content;
     }
 
-    public static function throw(int $code = 404) {
-        Response::status($code)->header('X-Content-Type-Options', 'nosniff')->send();
+    public static function throw(int $code = 404): void {
+        if (self::getInstance()->fire('throw', $code) === false)
+            Response::status($code)->header('X-Content-Type-Options', 'nosniff')->send();
     }
 
     public static function getRequestOrigin(): string {
@@ -173,6 +215,4 @@ final class Access {
             Response::status(200)->send();
         }
     }
-
-    
 }
