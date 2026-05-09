@@ -46,7 +46,7 @@ trait HasConfig {
                 array_unshift($p, $prefix);
             }
         })
-        ->seesSentinel()->order(-1)->alias('\\defaultConfig');
+        ->seesSentinel()->order(-3)->alias('\\defaultConfig');
     }
 
     protected static function getDefaultConfig(): array {

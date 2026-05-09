@@ -145,24 +145,19 @@ final class Access {
             Rule::object([
                 'allowed_origins'    => ['array', Rule::default(['*'], true), Rule::forEach('url')],
                 'forbidden_origins'  => ['sometimes|array|foreach:url'],
-                'methods'            => ['array|defaultConfig:CORS.methods', Rule::forEach(['strtoupper', Rule::in(self::config('CORS.methods'))])],
-                'headers'            => ['array|defaultConfig:CORS.headers,foreach:escape_html'],
+                'methods'            => ['array|defaultConfig:CORS.methods', Rule::forEach(['required|string|strtoupper', Rule::in(self::config('CORS.methods'))])],
+                'headers'            => ['array|defaultConfig:CORS.headers,foreach:required|string|escape_html'],
             ])->throwable()->apply($config);
         });
 
-        $allowed_origins = array_filter($config['allowed_origins'], fn($origin) => !empty($origin) && (filter_var($origin, FILTER_VALIDATE_URL) || $origin === '*'));
-        $forbidden_origins = array_filter($config['forbidden_origins'], fn($origin) => !empty($origin) && filter_var($origin, FILTER_VALIDATE_URL));
-        $allowed_methods = array_intersect(array_map('strtoupper', $config['methods']), self::config('CORS.methods'));
-        $allowed_headers = array_map('htmlspecialchars', $config['headers']);
-
         $request_origin = self::getRequestOrigin();
 
-        if (!empty($request_origin) && in_array($request_origin, $forbidden_origins))
+        if (!empty($request_origin) && in_array($request_origin, $config['forbidden_origins']))
             self::throw(403);
 
-        $origin_header = in_array('*', $allowed_origins)
+        $origin_header = in_array('*', $config['allowed_origins'])
             ? '*'
-            : ((!empty($request_origin) && in_array($request_origin, $allowed_origins))
+            : ((!empty($request_origin) && in_array($request_origin, $config['allowed_origins']))
                 ? $request_origin
                 : null);
 
@@ -171,10 +166,10 @@ final class Access {
 
         header("Access-Control-Allow-Credentials: true");
         header("Access-Control-Allow-Origin: $origin_header");
-        header("Access-Control-Allow-Headers: " . implode(", ", $allowed_headers));
+        header("Access-Control-Allow-Headers: " . implode(", ", $config['headers']));
 
         if (Request::method() === 'OPTIONS') {
-            header("Access-Control-Allow-Methods: " . implode(", ", $allowed_methods));
+            header("Access-Control-Allow-Methods: " . implode(", ", $config['methods']));
             Response::status(200)->send();
         }
     }

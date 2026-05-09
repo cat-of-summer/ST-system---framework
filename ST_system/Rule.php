@@ -897,8 +897,13 @@ final class Rule {
 
         
         (self::create(function(&$v, array $p = []): bool {
+            $chars = !empty($p) ? implode('', $p) : null;
+            $fn = fn($x) => is_string($x) ? ($chars !== null ? trim($x, $chars) : trim($x)) : $x;
+
             if (is_string($v))
-                $v = !empty($p) ? trim($v, implode('', $p)) : trim($v);
+                $v = $fn($v);
+            elseif (is_array($v))
+                $v = array_filter(array_map($fn, $v), fn($x) => $x !== '');
             return true;
         }))
         ->order(-2)
