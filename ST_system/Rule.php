@@ -539,15 +539,32 @@ final class Rule {
         ->handleError(fn($v) => 'Value is not allowed');
     }
 
-    public static function default($value): Rule {
+    public static function anyOf(...$specs): Rule {
         self::init();
 
-        return self::create(function(&$v) use ($value): bool {
-            if (self::isSentinel($v) || $v === null || $v === '')
-                $v = $value;
+        return self::create(function(&$v) use ($specs): bool {
+            foreach ($specs as $spec) {
+                $copy = $v;
+                $rule = ($spec instanceof self) ? $spec : self::create($spec);
+                if (empty($rule->apply($copy))) {
+                    $v = $copy;
+                    return true;
+                }
+            }
+            return false;
+        })->handleError(fn($v) => 'Value does not match any allowed type');
+    }
 
-            return true;
+    public static function default($value, bool $valid = false): Rule {
+        self::init();
+
+        $rule = self::create(function(&$v) use ($value, $valid): bool {
+            $substituted = self::isSentinel($v) || $v === null || $v === '';
+            if ($substituted) $v = $value;
+            return !$substituted || $valid;
         })->order(-1)->seesSentinel();
+
+        return $valid ? $rule : $rule->skip();
     }
 
     public static function regex(string $pattern): Rule {
@@ -585,13 +602,14 @@ final class Rule {
 
         
         (self::create(function(&$v, array $p): bool {
-            if (self::isSentinel($v) || $v === null || $v === '') {
-                $v = $p[0] ?? null;
-            }
-            return true;
+            $substituted = self::isSentinel($v) || $v === null || $v === '';
+            if ($substituted) $v = $p[0] ?? null;
+            $valid = isset($p[1]) && $p[1] === 'true';
+            return !$substituted || $valid;
         }))
         ->order(-1)
         ->seesSentinel()
+        ->skip()
         ->alias('default');
 
         
@@ -714,7 +732,24 @@ final class Rule {
         ->order(500)
         ->alias('foreach');
 
-        
+
+        (self::create(function(&$v, array $p): bool {
+            foreach ($p as $spec) {
+                $copy = $v;
+                if (empty(self::create($spec)->apply($copy))) {
+                    $v = $copy;
+                    return true;
+                }
+            }
+            return false;
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Value does not match any allowed type')
+        ->alias('or')
+        ->alias('anyOf')
+        ->alias('any_of');
+
+
         (self::create(function(&$v, array $p): bool {
             $l = $p[0] ?? null;
             if ($l === null) return true;
