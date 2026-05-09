@@ -4,29 +4,17 @@ namespace ST_system;
 
 final class Rule {
 
-    
     private static $registry = [];
-
-    
     private static array $prefixStack = [];
 
-    
-    private $callback;
-    
-    private $before;
-    
-    private $after;
-    
-    private $handleError;
-    
-    private $order = 600;
-    
-    private $skip = false;
-    
-    private $params = [];
-    
-    private $frozen = false;
-    
+    private \Closure $callback;
+    private \Closure $before;
+    private \Closure $after;
+    private \Closure $handleError;
+    private int $order = 600;
+    private bool $skip = false;
+    private array $params = [];
+    private bool $frozen = false;
     private bool $seesSentinel = false;
 
     private function __construct(\Closure $callback) {
@@ -34,7 +22,6 @@ final class Rule {
         $this->callback = $callback;
     }
 
-    
     public function __get(string $name) {
         if (in_array($name, ['callback', 'before', 'after', 'handleError', 'order', 'skip', 'params', 'frozen'])) {
             return $this->$name;
@@ -42,31 +29,27 @@ final class Rule {
         throw new \RuntimeException("Unknown property Rule::\${$name}");
     }
 
-    
     private function guardFrozen(): void {
         if ($this->frozen) {
             throw new \RuntimeException('Cannot modify a frozen Rule (aliased rules are immutable)');
         }
     }
-
     
-    public function before($fn): self {
+    public function before(\Closure $fn): self {
         $this->guardFrozen();
-        $this->before = ($fn instanceof \Closure) ? $fn : null;
+        $this->before = $fn;
+        return $this;
+    }
+    
+    public function after(\Closure $fn): self {
+        $this->guardFrozen();
+        $this->after = $fn;
         return $this;
     }
 
-    
-    public function after($fn): self {
+    public function handleError(\Closure $fn): self {
         $this->guardFrozen();
-        $this->after = ($fn instanceof \Closure) ? $fn : null;
-        return $this;
-    }
-
-    
-    public function handleError($fn): self {
-        $this->guardFrozen();
-        $this->handleError = ($fn instanceof \Closure) ? $fn : null;
+        $this->handleError = $fn;
         return $this;
     }
 
@@ -93,13 +76,11 @@ final class Rule {
         return $this;
     }
 
-    
     private function copy(): self {
         $clone = clone $this;
         $clone->frozen = false;
         return $clone;
     }
-
     
     public static function scope(string $prefix, \Closure $fn) {
         self::init();
@@ -116,7 +97,6 @@ final class Rule {
         return $n > 0 ? self::$prefixStack[$n - 1] : null;
     }
 
-    
     private static function resolveAlias(string $name): ?Rule {
         if (strpos($name, '\\') !== false) {
             $name = ltrim($name, '\\');
@@ -128,7 +108,6 @@ final class Rule {
         }
         return self::$registry[$name] ?? null;
     }
-
     
     public static function get(string $alias): ?Rule {
         self::init();
@@ -153,7 +132,6 @@ final class Rule {
         $this->frozen = true;
         return $this;
     }
-
     
     private function execute(&$data): array {
         if (!$this->seesSentinel && self::isSentinel($data)) {
@@ -165,7 +143,6 @@ final class Rule {
         return $this->executeRaw($data);
     }
 
-    
     private function executeRaw(&$data): array {
         if ($this->before !== null) {
             ($this->before)($data, $this->params);
@@ -207,17 +184,14 @@ final class Rule {
         return [$passed, $errors];
     }
 
-    
     public function apply(&$data): array {
         return $this->execute($data)[1];
     }
 
-    
     public function check($data): array {
         return $this->execute($data)[1];
     }
 
-    
     private static function parseString(string $spec): array {
         $segments = array_map('trim', explode('|', trim($spec)));
         $rules    = [];
@@ -249,7 +223,6 @@ final class Rule {
         return $rules;
     }
 
-    
     private static function compileFieldRules($spec): array {
         $rules = [];
 
@@ -275,7 +248,6 @@ final class Rule {
         return $rules;
     }
 
-    
     public static function create($spec): Rule {
         self::init();
 
@@ -333,7 +305,6 @@ final class Rule {
         throw new \InvalidArgumentException('Rule::create() expects string, Closure, or array');
     }
 
-    
     public static function object(array $schema): Rule {
         self::init();
 
@@ -397,7 +368,6 @@ final class Rule {
         })->seesSentinel();
     }
 
-    
     public static function forEach($spec): Rule {
         self::init();
 
@@ -443,7 +413,6 @@ final class Rule {
         })->seesSentinel();
     }
 
-    
     private static function insertIntoTree(array &$node, array $parts, $spec): void {
         $key = array_shift($parts);
 
@@ -459,7 +428,6 @@ final class Rule {
         }
     }
 
-    
     private static function treeNodeToRule(array $node): Rule {
         
         if (array_key_exists('__spec__', $node)) {
@@ -503,7 +471,6 @@ final class Rule {
         return self::object($schema);
     }
 
-    
     public static function requiredIf($cond): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -518,7 +485,6 @@ final class Rule {
         ->handleError(fn($v) => 'This field is required');
     }
 
-    
     public static function prohibitedIf($cond): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -533,7 +499,6 @@ final class Rule {
         ->handleError(fn($v) => 'This field is not allowed');
     }
 
-    
     public static function excludeIf($cond): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -548,7 +513,6 @@ final class Rule {
         ->seesSentinel();
     }
 
-    
     public static function when($cond, $spec): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -575,7 +539,6 @@ final class Rule {
         ->handleError(fn($v) => 'Value is not allowed');
     }
 
-    
     public static function default($value): Rule {
         self::init();
 
@@ -587,7 +550,6 @@ final class Rule {
         })->order(-1)->seesSentinel();
     }
 
-    
     public static function regex(string $pattern): Rule {
         self::init();
         return self::create(fn(&$v) => is_string($v) && @preg_match($pattern, $v) === 1)
@@ -598,7 +560,6 @@ final class Rule {
         return $value === self::sentinel();
     }
 
-    
     private static function sentinel(): object {
         static $sentinel = null;
 
@@ -607,8 +568,7 @@ final class Rule {
         return $sentinel;
     }
 
-    
-    public static function init(): void {
+    private static function init(): void {
         static $done = false;
 
         if ($done) return;
@@ -706,9 +666,7 @@ final class Rule {
 
 
         (self::create(function(&$v): bool {
-            if (is_callable($v)) return true;
-
-            return false;
+            return is_callable($v);
         }))
         ->order(500)
         ->handleError(fn($v) => 'Must be callable')
@@ -716,9 +674,7 @@ final class Rule {
 
 
         (self::create(function(&$v): bool {
-            if ($v instanceof \Closure) return true;
-
-            return false;
+            return $v instanceof \Closure;
         }))
         ->order(500)
         ->handleError(fn($v) => 'Must be closure')
@@ -747,6 +703,16 @@ final class Rule {
         ->order(500)
         ->handleError(fn($v) => 'Must be an array')
         ->alias('array');
+
+        
+        (self::create(function(&$v, array $p): array {
+            if (is_array($v) && !empty($v))
+                return self::forEach(implode('|', $p))->apply($v);
+            
+            return [];
+        }))
+        ->order(500)
+        ->alias('foreach');
 
         
         (self::create(function(&$v, array $p): bool {

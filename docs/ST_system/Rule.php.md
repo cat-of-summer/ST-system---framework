@@ -483,17 +483,6 @@ Rule::regex('/^#[0-9a-f]{6}$/i')->apply($v); // []
 
 ---
 
-### 4.20 `Rule::init(): void` — инициализация реестра
-Регистрирует все встроенные правила. Вызывается автоматически при первом обращении к любому публичному методу.
-
-```php
-
-Rule::init();
-
-```
-
----
-
 ## 5. Встроенные правила
 
 ### 5.1 Правила наличия/обязательности
@@ -684,6 +673,44 @@ $v = 'yes';   Rule::create('bool')->apply($v); // ['Must be a boolean']
 #### `array`
 
 Проверяет `is_array`. Не кастует.
+
+#### `foreach:rule1,rule2,...`
+
+Проверяет, что если значение — массив, то применяет правила к каждому элементу. Ошибки prefixed индексом: `'0.Error'`, `'1.Error'`.
+
+Параметры через запятую объединяются в pipe-спеку: `'foreach:required,string,max:50'` → `Rule::forEach('required|string|max:50')`.  
+Ограничение: параметры с запятыми внутри (`in:a,b,c`) ломают парсинг — для таких случаев использовать `Rule::forEach(...)` напрямую.
+
+```php
+// Базовое использование
+$v = ['1', '2', 'abc'];
+$errors = Rule::create('foreach:int')->apply($v);
+// $errors === ['2.Must be an integer']
+// $v === [1, 2, 'abc']  — первые два прокастованы
+
+// Без параметров — только проверка типа
+$errors = Rule::create('foreach')->check([]);
+// $errors === []
+
+// Несколько правил
+$errors = Rule::create('foreach:required,string,max:50')->check(['alice', '', 'bob']);
+// $errors === ['1.This field is required']
+
+// В схеме объекта
+$rule = Rule::object([
+    'tags' => 'required|foreach:string|min:1',
+]);
+```
+
+> Для сложных спек используй `Rule::forEach(...)` напрямую:
+> ```php
+> Rule::object([
+>     'items' => ['required', 'array', Rule::forEach(Rule::object([
+>         'id'   => 'required|int',
+>         'name' => 'required|string',
+>     ]))],
+> ]);
+> ```
 
 #### `email`
 
