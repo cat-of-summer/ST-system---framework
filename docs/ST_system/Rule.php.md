@@ -16,7 +16,7 @@
 
 2. **Результат — массив строк ошибок.** Пустой массив `[]` означает успех. Ненулевой — список ошибок. Нет исключений при нормальной работе.
 
-3. **Порядок (`order`).** Когда несколько правил применяются к одному значению, они сортируются по `order` (от меньшего к большему). Это позволяет, например, `trim` (order=-1) отработать до `required` (order=100).
+3. **Порядок (`order`).** Когда несколько правил применяются к одному значению, они сортируются по `order` (от меньшего к большему). Это позволяет, например, `trim` (order=-2) отработать до `required` (order=100).
 
 4. **Skip (`skip=true`).** Если правило с `skip=true` не прошло — цепочка прерывается. Это позволяет `required` остановить все дальнейшие правила, если поле пусто.
 
@@ -50,14 +50,15 @@
 
 | order | Правила |
 |-------|---------|
-| -1 | `trim` |
+| -3 | `default` |
+| -2 | `trim`, `ltrim`, `rtrim`, `escape_html`, `uppercase`, `lowercase` |
 | 0 | `sometimes`, `excludeIf` |
-| 50 | `default` |
 | 100 | `required`, `nullable`, `present`, `requiredIf`, `prohibitedIf` |
-| 500 | `string`, `int`/`integer`, `float`, `bool`, `email`, `url`, `array`, `date`, `date_format`, `json`, `uuid`, `accepted`, `declined`, `file` |
+| 500 | `string`, `int`/`integer`, `float`, `bool`, `email`, `url`, `array`, `foreach`, `date`, `date_format`, `json`, `uuid`, `accepted`, `declined`, `callable`, `closure`, `file` |
 | 600 | `mimes`, `extension`, `filesize` |
 | 700 | `max`, `min`, `in`, `notIn`/`not_in`, `regex`, `digits`, `between`, `starts_with`, `ends_with`, `contains` |
-| 1000 | `uppercase`, `lowercase` |
+
+> Все трансформеры на `-2` — выполняются **до всех валидаторов**, чтобы проверки шли уже по нормализованному значению. `default` на `-3` — раньше трансформеров, чтобы подставленное значение тоже нормализовалось (например, `'default:  HELLO  |trim|lowercase'` корректно даст `'hello'`).
 
 ---
 
@@ -556,7 +557,7 @@ $rule = Rule::object(['field' => 'present']);
 
 ### 5.2 Трансформеры
 
-#### `trim` (order=-1)
+#### `trim` (order=-2)
 
 Убирает пробелы по краям строки. Выполняется раньше всех остальных правил.
 
@@ -566,7 +567,7 @@ Rule::create('trim|required|string')->apply($v);
 // $v === 'hello'
 ```
 
-#### `rtrim` (order=-1)
+#### `rtrim` (order=-2)
 
 Убирает пробелы с правого края строки. Выполняется раньше всех остальных правил.
 
@@ -576,7 +577,7 @@ Rule::create('rtrim|required|string')->apply($v);
 // $v === '  hello'
 ```
 
-#### `ltrim` (order=-1)
+#### `ltrim` (order=-2)
 
 Убирает пробелы с левого края строки. Выполняется раньше всех остальных правил.
 
@@ -586,7 +587,7 @@ Rule::create('ltrim|required|string')->apply($v);
 // $v === 'hello  '
 ```
 
-#### `escape_html` (order=-1)
+#### `escape_html` (order=-2)
 
 Применяет htmlspecialchars на строку. Выполняется раньше всех остальных правил.
 
@@ -596,7 +597,7 @@ Rule::create('escape_html|required|string')->apply($v);
 // $v === 'hello'
 ```
 
-#### `default:value,valid` (order=50)
+#### `default:value,valid` (order=-3)
 
 Подставляет значение если поле `null`, `''` или отсутствует.
 
@@ -616,7 +617,7 @@ $rule->apply($data);
 
   Если valid == true, то если $value == default, значение пропускается, иначе идут последующие проверки
 
-#### `uppercase` / `lowercase` (order=1000)
+#### `uppercase` / `lowercase` (order=-2)
 
 Преобразует строку в верхний/нижний регистр. Выполняется после всех валидаций.
 
@@ -1252,14 +1253,19 @@ $rule = Rule::object(['field' => 'required|string']);
 ### Трансформеры в цепочке с валидаторами
 
 ```php
-// trim (order=-1) всегда отработает до required (order=100)
+// Все трансформеры (order=-2) выполняются ДО всех валидаторов,
 // независимо от порядка написания:
 Rule::create('required|trim|string') // то же что 'trim|required|string'
 // После trim — если строка была '   ', она станет '' и required упадёт
 
-// uppercase (order=1000) — после всех валидаций
-Rule::create('required|string|max:10|uppercase')
-// max проверяет ДО uppercase — по исходной длине
+// uppercase/lowercase (order=-2) — также до валидаций
+Rule::create('lowercase|in:foo,bar')
+// 'FOO' → 'foo' → проходит in:foo,bar
+
+// default (order=-3) выполняется раньше трансформеров,
+// чтобы подставленное значение тоже нормализовалось:
+Rule::create('default:  HELLO  |trim|lowercase')
+// При пустом входе: подставится '  HELLO  ' → trim → 'HELLO' → lowercase → 'hello'
 ```
 
 ### Правило как часть массива-спецификации

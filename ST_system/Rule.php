@@ -568,7 +568,7 @@ final class Rule {
             $substituted = self::isSentinel($v) || $v === null || $v === '';
             if ($substituted) $v = $value;
             return !($substituted || ($valid && $v == $value));
-        })->order(-1)->seesSentinel()->skip();
+        })->order(-3)->seesSentinel()->skip();
     }
 
     public static function regex(string $pattern): Rule {
@@ -613,7 +613,7 @@ final class Rule {
             $valid = isset($p[1]) && $p[1] === 'true';
             return !($substituted || ($valid && $v == ($p[0] ?? null)));
         }))
-        ->order(-1)
+        ->order(-3)
         ->seesSentinel()
         ->skip()
         ->alias('default');
@@ -901,24 +901,24 @@ final class Rule {
                 $v = !empty($p) ? trim($v, implode('', $p)) : trim($v);
             return true;
         }))
-        ->order(-1)
+        ->order(-2)
         ->alias('trim');
-        
+
         (self::create(function(&$v, array $p = []): bool {
             if (is_string($v))
                 $v = !empty($p) ? ltrim($v, implode('', $p)) : ltrim($v);
             return true;
         }))
-        ->order(-1)
+        ->order(-2)
         ->alias('ltrim');
 
-        
+
         (self::create(function(&$v, array $p = []): bool {
             if (is_string($v))
                 $v = !empty($p) ? rtrim($v, implode('', $p)) : rtrim($v);
             return true;
         }))
-        ->order(-1)
+        ->order(-2)
         ->alias('rtrim');
 
 
@@ -927,23 +927,23 @@ final class Rule {
                 $v = htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             return true;
         }))
-        ->order(-1)
+        ->order(-2)
         ->alias('escape_html');
 
-        
+
         (self::create(function(&$v): bool {
             if (is_string($v)) $v = mb_strtoupper($v);
             return true;
         }))
-        ->order(1000)
+        ->order(-2)
         ->alias('uppercase');
 
-        
+
         (self::create(function(&$v): bool {
             if (is_string($v)) $v = mb_strtolower($v);
             return true;
         }))
-        ->order(1000)
+        ->order(-2)
         ->alias('lowercase');
 
         

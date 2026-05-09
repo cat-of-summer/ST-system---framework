@@ -18,7 +18,8 @@ final class Access {
                 'password' => date('dm')
             ],
             'CORS' => [
-                'methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
+                'methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+                'headers' => ['Content-Type', 'Authorization', 'X-Requested-With']
             ]
         ];
     }
@@ -64,18 +65,30 @@ final class Access {
     }
 
     public static function call(callable $f, array $config = []) {
-        $password_name = isset($config['name']) ? htmlspecialchars($config['name']) : self::config('credentials.name');
-        $password_value = isset($config['value']) ? htmlspecialchars($config['value']) : self::config('credentials.password');
+        Rule::scope(static::class, function() use (&$config) {
+            Rule::object([
+                'name'  => 'string|escape_html|defaultConfig:credentials.name',
+                'value' => 'string|escape_html|defaultConfig:credentials.value',
+            ])->throwable()->apply($config);
+        });
 
-        $val = Request::data($password_name);
-        if ($val !== null && $val == $password_value)
-            return call_user_func($f);
+        $val = Request::data($config['name']);
+
+        if ($val !== null && $val == $config['value'])
+            return $f();
     }
 
     public static function startBlock(array $config = []) {
+        Rule::scope(static::class, function() use (&$config) {
+            Rule::object([
+                'name'  => 'string|escape_html|defaultConfig:credentials.name',
+                'value' => 'string|escape_html|defaultConfig:credentials.value',
+            ])->throwable()->apply($config);
+        });
+
         self::$block_password = [
-            'name' => isset($config['name']) ? htmlspecialchars($config['name']) : self::config('credentials.name'),
-            'value' => isset($config['value']) ? htmlspecialchars($config['value']) : self::config('credentials.password')
+            'name'  => $config['name'],
+            'value' => $config['value'],
         ];
 
         ob_start();
@@ -87,6 +100,7 @@ final class Access {
         $content = ob_get_clean();
 
         $val = Request::data(self::$block_password['name']);
+
         if ($val !== null && $val == self::$block_password['value'])
             echo $content;
     }
@@ -97,44 +111,49 @@ final class Access {
 
     public static function getRequestOrigin(): string {
         static $data = null;
-        if ($data !== null) return $data;
 
-        $origin = Request::headers('Origin');
-        if (!$origin) {
-            $referer = Request::headers('Referer');
-            $origin = $referer ? (parse_url($referer, PHP_URL_HOST) ?? '') : '';
+        if ($data === null) {
+            $origin = Request::headers('Origin');
+
+            if (!$origin) {
+                $referer = Request::headers('Referer');
+                $origin = $referer ? (parse_url($referer, PHP_URL_HOST) ?? '') : '';
+            }
+
+            $data = (string)$origin;
         }
 
-        return $data = (string)$origin;
+        return $data;
     }
 
     public static function getClientIp(): string {
         static $data = null;
-        if ($data !== null) return $data;
 
-        $forwarded = Request::headers('X-Forwarded-For');
-        if ($forwarded)
-            return $data = trim(explode(',', $forwarded)[0]);
+        if ($data === null) {
+            $forwarded = Request::headers('X-Forwarded-For');
 
-        return $data = (string)(Request::headers('Client-Ip') ?: $_SERVER['REMOTE_ADDR'] ?? '');
+            $data = $forwarded
+                ? trim(explode(',', $forwarded)[0])
+                : (string)(Request::headers('Client-Ip') ?: $_SERVER['REMOTE_ADDR'] ?? '');
+        }
+
+        return $data;
     }
 
-    public static function handleCORS($config = []) {
-        $allowed_origins = (isset($config['allowed_origins']) && is_array($config['allowed_origins']))
-            ? array_filter($config['allowed_origins'], fn($origin) => !empty($origin) && (filter_var($origin, FILTER_VALIDATE_URL) || $origin === '*'))
-            : ['*'];
+    public static function handleCORS(array $config = []) {
+        Rule::scope(static::class, function() use (&$config) {
+            Rule::object([
+                'allowed_origins'    => ['array', Rule::default(['*'], true), Rule::forEach('url')],
+                'forbidden_origins'  => ['sometimes|array|foreach:url'],
+                'methods'            => ['array|defaultConfig:CORS.methods', Rule::forEach(['strtoupper', Rule::in(self::config('CORS.methods'))])],
+                'headers'            => ['array|defaultConfig:CORS.headers,foreach:escape_html'],
+            ])->throwable()->apply($config);
+        });
 
-        $forbidden_origins = (isset($config['forbidden_origins']) && is_array($config['forbidden_origins']))
-            ? array_filter($config['forbidden_origins'], fn($origin) => !empty($origin) && filter_var($origin, FILTER_VALIDATE_URL))
-            : [];
-
-        $allowed_methods = (isset($config['methods']) && is_array($config['methods']))
-            ? array_intersect(array_map('strtoupper', $config['methods']), self::config('CORS.methods'))
-            : self::config('CORS.methods');
-
-        $allowed_headers = (isset($config['headers']) && is_array($config['headers']))
-            ? array_map('htmlspecialchars', $config['headers'])
-            : ['Content-Type', 'Authorization', 'X-Requested-With'];
+        $allowed_origins = array_filter($config['allowed_origins'], fn($origin) => !empty($origin) && (filter_var($origin, FILTER_VALIDATE_URL) || $origin === '*'));
+        $forbidden_origins = array_filter($config['forbidden_origins'], fn($origin) => !empty($origin) && filter_var($origin, FILTER_VALIDATE_URL));
+        $allowed_methods = array_intersect(array_map('strtoupper', $config['methods']), self::config('CORS.methods'));
+        $allowed_headers = array_map('htmlspecialchars', $config['headers']);
 
         $request_origin = self::getRequestOrigin();
 
