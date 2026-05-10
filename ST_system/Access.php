@@ -6,6 +6,7 @@ use ST_system\Traits\HasConfig;
 use ST_system\Traits\HasEvents;
 use ST_system\HTTP\Request;
 use ST_system\HTTP\Response;
+use ST_system\Cache\Manager as Cache;
 use ST_system\Rule;
 
 final class Access {
@@ -16,7 +17,14 @@ final class Access {
         on as private _on;
     }
 
-    private function __construct() {}
+    private Cache $cache;
+
+    private function __construct() {
+        $this->cache = Cache::make(static::config('salt') ?: 'st_access', [
+            'driver' => static::config('firewall.driver'),
+            'ttl'    => static::config('firewall.ttl'),
+        ]);
+    }
 
     private static function getInstance(): self {
         static $instance = null;
@@ -37,7 +45,14 @@ final class Access {
             'CORS' => [
                 'methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
                 'headers' => ['Content-Type', 'Authorization', 'X-Requested-With']
-            ]
+            ],
+            'salt' => '',
+            'firewall' => [
+                'driver'  => 'session',
+                'limits'  => [[60, 60], [600, 3600]],
+                'ttl'     => 3600,
+                'exclude' => [],
+            ],
         ];
     }
 
@@ -180,6 +195,162 @@ final class Access {
         }
 
         return $data;
+    }
+
+    private function salt(): string {
+        static $salt = null;
+
+        if ($salt === null) {
+            $salt = self::config('salt');
+
+            if (empty($salt))
+                throw new \LogicException("Access: configure a non-empty 'salt' before using IP firewall (banIp/unbanIp/handleIp).");
+        }
+
+        return (string)$salt;
+    }
+
+    private function xorStream(string $data, string $salt): string {
+        $out = '';
+        $len = strlen($data);
+
+        for ($i = 0, $b = 0; $i < $len; $i += 32, $b++)
+            $out .= substr($data, $i, 32) ^ hash('sha256', $salt . pack('N', $b), true);
+
+        return $out;
+    }
+
+    private function seal(array $state): string {
+        $ct   = $this->xorStream((string)json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $this->salt());
+
+        return substr(hash_hmac('sha256', $ct, $this->salt(), true), 0, 8) . $ct;
+    }
+
+    private function unseal(?string $blob): array {
+        if ($blob === null || strlen($blob) < 8) return [];
+
+        $tag  = substr($blob, 0, 8);
+        $ct   = substr($blob, 8);
+
+        if (!hash_equals($tag, substr(hash_hmac('sha256', $ct, $this->salt(), true), 0, 8))) return [];
+
+        $data = json_decode($this->xorStream($ct, $this->salt()), true);
+
+        return is_array($data) ? $data : [];
+    }
+
+    public static function handleIp(): void {
+        $self = self::getInstance();
+        $self->salt();
+
+        $ip = self::getClientIp();
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) return;
+
+        static $handled = null;
+        if (isset($handled)) return;
+        $handled = $ip;
+
+        if (in_array($ip, (array)self::config('firewall.exclude'), true)) return;
+
+        $now   = time();
+        $cache = $self->cache->make(['access:fw', substr(hash('sha256', $self->salt().'|'.$ip), 0, 32)]);
+        $state = $self->unseal($cache->get());
+
+        if (($state['ban'] ?? 0) > $now) {
+            self::throw(429);
+            return;
+        }
+
+        unset($state['ban']);
+
+        $violated = false;
+        $ttl      = 1;
+
+        foreach ((array)self::config('firewall.limits') as $i => $limit) {
+            if (!is_array($limit)) continue;
+
+            $max    = (int)($limit[0] ?? 0);
+            $window = max(1, (int)($limit[1] ?? 1));
+            if ($max <= 0) continue;
+
+            $slot = intdiv($now, $window);
+
+            $w = $state['w'][$i] ?? null;
+            if (!is_array($w) || ($w[0] ?? null) !== $slot) $w = [$slot, 0];
+            $w[1]++;
+            $state['w'][$i] = $w;
+
+            if ($w[1] > $max) $violated = true;
+            $ttl = max($ttl, $window);
+        }
+
+        if ($violated) {
+            $banTtl       = max(1, (int)self::config('firewall.ttl'));
+            $state['ban'] = $now + $banTtl;
+            $ttl          = max($ttl, $banTtl);
+        }
+
+        if ($state)
+            $cache->set($self->seal($state), $ttl);
+
+        if ($violated) {
+            $self->fire('ban', $ip);
+            self::throw(429);
+        }
+    }
+
+    public static function banIp(string $ip, ?int $ttl = null): void {
+        $self = self::getInstance();
+        $self->salt();
+
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false)
+            throw new \InvalidArgumentException("Access::banIp(): invalid IP '{$ip}'");
+
+        $ttl = $ttl ?: (int)self::config('firewall.ttl');
+
+        $cache = $self->cache->make(['access:fw', substr(hash('sha256', $self->salt().'|'.$ip), 0, 32)]);
+        $state = $self->unseal($cache->get());
+        $state['ban'] = time() + $ttl;
+
+        $entryTtl = $ttl;
+        foreach ((array)self::config('firewall.limits') as $l)
+            $entryTtl = max($entryTtl, (int)($l[1] ?? 0));
+
+        $cache->set($self->seal($state), $entryTtl);
+        $self->fire('ban', $ip);
+    }
+
+    public static function unbanIp(string $ip): void {
+        $self = self::getInstance();
+        $self->salt();
+
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false)
+            throw new \InvalidArgumentException("Access::unbanIp(): invalid IP '{$ip}'");
+
+        $cache = $self->cache->make(['access:fw', substr(hash('sha256', $self->salt().'|'.$ip), 0, 32)]);
+        $state = $self->unseal($cache->get());
+        if (!$state) return;
+
+        unset($state['ban']);
+
+        if (empty($state['w'])) {
+            $cache->purge();
+        } else {
+            $entryTtl = 1;
+            foreach ((array)self::config('firewall.limits') as $l)
+                $entryTtl = max($entryTtl, (int)($l[1] ?? 0));
+
+            $cache->set($self->seal($state), $entryTtl);
+        }
+
+        $self->fire('unban', $ip);
+    }
+
+    public static function unbanAll(): void {
+        $self = self::getInstance();
+        $self->salt();
+        $self->cache->purgeBase();
+        $self->fire('unbanAll');
     }
 
     public static function handleCORS(array $config = []) {
