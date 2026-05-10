@@ -17,24 +17,6 @@ final class Access {
         on as private _on;
     }
 
-    private Cache $cache;
-
-    private function __construct() {
-        $this->cache = Cache::make(static::config('salt') ?: 'st_access', [
-            'driver' => static::config('firewall.driver'),
-            'ttl'    => static::config('firewall.ttl'),
-        ]);
-    }
-
-    private static function getInstance(): self {
-        static $instance = null;
-
-        if ($instance === null)
-            $instance = new static();
-
-        return $instance;
-    }
-
     protected static function getDefaultConfig(): array {
         return [
             'credentials' => [
@@ -61,6 +43,24 @@ final class Access {
         'value'        => null,
         'accessMethod' => null,
     ];
+
+    private Cache $cache;
+
+    private function __construct() {
+        $this->cache = Cache::make(static::config('salt') ?: 'st_access', [
+            'driver' => static::config('firewall.driver'),
+            'ttl'    => static::config('firewall.ttl'),
+        ]);
+    }
+
+    private static function getInstance(): self {
+        static $instance = null;
+
+        if ($instance === null)
+            $instance = new static();
+
+        return $instance;
+    }
 
     public static function on(string $event, callable $listener): void {
         self::getInstance()->_on($event, $listener);
@@ -200,12 +200,8 @@ final class Access {
     private function salt(): string {
         static $salt = null;
 
-        if ($salt === null) {
+        if ($salt === null)
             $salt = self::config('salt');
-
-            if (empty($salt))
-                throw new \LogicException("Access: configure a non-empty 'salt' before using IP firewall (banIp/unbanIp/handleIp).");
-        }
 
         return (string)$salt;
     }
@@ -221,27 +217,40 @@ final class Access {
     }
 
     private function seal(array $state): string {
-        $ct   = $this->xorStream((string)json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $this->salt());
+        $json = (string)json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $salt = $this->salt();
 
-        return substr(hash_hmac('sha256', $ct, $this->salt(), true), 0, 8) . $ct;
+        if (empty($salt)) return $json;
+
+        $ct = $this->xorStream($json, $salt);
+
+        return substr(hash_hmac('sha256', $ct, $salt, true), 0, 8) . $ct;
     }
 
     private function unseal(?string $blob): array {
-        if ($blob === null || strlen($blob) < 8) return [];
+        if ($blob === null) return [];
 
-        $tag  = substr($blob, 0, 8);
-        $ct   = substr($blob, 8);
+        $salt = $this->salt();
 
-        if (!hash_equals($tag, substr(hash_hmac('sha256', $ct, $this->salt(), true), 0, 8))) return [];
+        if (empty($salt)) {
+            $data = json_decode($blob, true);
+            return is_array($data) ? $data : [];
+        }
 
-        $data = json_decode($this->xorStream($ct, $this->salt()), true);
+        if (strlen($blob) < 8) return [];
+
+        $tag = substr($blob, 0, 8);
+        $ct  = substr($blob, 8);
+
+        if (!hash_equals($tag, substr(hash_hmac('sha256', $ct, $salt, true), 0, 8))) return [];
+
+        $data = json_decode($this->xorStream($ct, $salt), true);
 
         return is_array($data) ? $data : [];
     }
 
     public static function handleIp(): void {
         $self = self::getInstance();
-        $self->salt();
 
         $ip = self::getClientIp();
         if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) return;
@@ -301,7 +310,6 @@ final class Access {
 
     public static function banIp(string $ip, ?int $ttl = null): void {
         $self = self::getInstance();
-        $self->salt();
 
         if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false)
             throw new \InvalidArgumentException("Access::banIp(): invalid IP '{$ip}'");
@@ -322,7 +330,6 @@ final class Access {
 
     public static function unbanIp(string $ip): void {
         $self = self::getInstance();
-        $self->salt();
 
         if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false)
             throw new \InvalidArgumentException("Access::unbanIp(): invalid IP '{$ip}'");
@@ -348,7 +355,6 @@ final class Access {
 
     public static function unbanAll(): void {
         $self = self::getInstance();
-        $self->salt();
         $self->cache->purgeBase();
         $self->fire('unbanAll');
     }

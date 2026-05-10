@@ -8,19 +8,19 @@ class SessionCacheDriver extends CacheDriver {
 
     protected static function getDefaultConfig(): array {
         return [
-            'file'      => 'data',
-            'ttl'       => 0,
-            'namespace' => 'st_cache',
+            'file'   => 'data',
+            'ttl'    => 0,
+            'prefix' => 'st_cache',
         ];
     }
 
     protected function __init(array $config): void {
-        $this->attributes['namespace'] = (string)($config['namespace'] ?? 'st_cache');
+        $this->attributes['prefix'] = (string)($config['prefix'] ?? 'st_cache');
     }
 
     protected function __rebind(array $override): void {
-        if (isset($override['namespace']) && $override['namespace'] !== null)
-            $this->attributes['namespace'] = (string)$override['namespace'];
+        if (isset($override['prefix']) && $override['prefix'] !== null)
+            $this->attributes['prefix'] = (string)$override['prefix'];
     }
 
     public function isAvailable(): bool {
@@ -30,11 +30,11 @@ class SessionCacheDriver extends CacheDriver {
     }
 
     protected function writeBlob(string $file, string $payload): void {
-        $_SESSION[$this->attributes['namespace']][$this->id][$file] = $payload;
+        $_SESSION[$this->attributes['prefix']][$this->id][$file] = $payload;
     }
 
     protected function readBlob(string $file): ?string {
-        $v = $_SESSION[$this->attributes['namespace']][$this->id][$file] ?? null;
+        $v = $_SESSION[$this->attributes['prefix']][$this->id][$file] ?? null;
         return is_string($v) ? $v : null;
     }
 
@@ -49,23 +49,23 @@ class SessionCacheDriver extends CacheDriver {
                 );
         }
 
-        $_SESSION[$this->attributes['namespace']][$this->id][$file.'.meta'] = $meta;
+        $_SESSION[$this->attributes['prefix']][$this->id][$file.'.meta'] = $meta;
     }
 
     protected function readMeta(string $file): ?array {
-        $v = $_SESSION[$this->attributes['namespace']][$this->id][$file.'.meta'] ?? null;
+        $v = $_SESSION[$this->attributes['prefix']][$this->id][$file.'.meta'] ?? null;
         return is_array($v) ? $v : null;
     }
 
     protected function blobExists(string $file): bool {
-        return isset($_SESSION[$this->attributes['namespace']][$this->id][$file]);
+        return isset($_SESSION[$this->attributes['prefix']][$this->id][$file]);
     }
 
     protected function purgeStorage(): void {
-        unset($_SESSION[$this->attributes['namespace']][$this->id]);
+        unset($_SESSION[$this->attributes['prefix']][$this->id]);
     }
 
     protected function purgeBaseStorage(): void {
-        unset($_SESSION[$this->attributes['namespace']]);
+        unset($_SESSION[$this->attributes['prefix']]);
     }
 }
