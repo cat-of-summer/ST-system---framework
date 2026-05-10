@@ -30,7 +30,7 @@ final class Access {
             ],
             'salt' => '',
             'firewall' => [
-                'driver'  => 'session',
+                'driver'  => 'filesystem',
                 'limits'  => [[60, 60], [600, 3600]],
                 'ttl'     => 3600,
                 'exclude' => [],
