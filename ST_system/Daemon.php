@@ -16,7 +16,7 @@ class Daemon {
 
     protected static function getDefaultConfig(): array {
         return [
-            'interval' => 1,
+            'interval' => 0,
             'retries' => 3
         ];
     }
