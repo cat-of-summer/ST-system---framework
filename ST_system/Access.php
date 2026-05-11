@@ -31,7 +31,7 @@ final class Access {
             'salt' => '',
             'firewall' => [
                 'driver'  => 'filesystem',
-                'limits'  => [[60, 60], [600, 3600]],
+                'limits'  => [[5, 1, 10], [10, 2, 30], [60, 60], [600, 3600]],
                 'ttl'     => 3600,
                 'exclude' => [],
             ],
@@ -273,6 +273,7 @@ final class Access {
         unset($state['ban']);
 
         $violated = false;
+        $limitTtl = 0;
         $ttl      = 1;
 
         foreach ((array)self::config('firewall.limits') as $i => $limit) {
@@ -289,14 +290,16 @@ final class Access {
             $w[1]++;
             $state['w'][$i] = $w;
 
-            if ($w[1] > $max) $violated = true;
+            if ($w[1] > $max) {
+                $violated = true;
+                $limitTtl = max($limitTtl, isset($limit[2]) ? max(1, (int)$limit[2]) : max(1, (int)self::config('firewall.ttl')));
+            }
             $ttl = max($ttl, $window);
         }
 
         if ($violated) {
-            $banTtl       = max(1, (int)self::config('firewall.ttl'));
-            $state['ban'] = $now + $banTtl;
-            $ttl          = max($ttl, $banTtl);
+            $state['ban'] = $now + $limitTtl;
+            $ttl          = max($ttl, $limitTtl);
         }
 
         if ($state)
