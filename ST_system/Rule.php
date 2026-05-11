@@ -8,9 +8,9 @@ final class Rule {
     private static array $prefixStack = [];
 
     private \Closure $callback;
-    private \Closure $before;
-    private \Closure $after;
-    private \Closure $handleError;
+    private ?\Closure $before = null;
+    private ?\Closure $after = null;
+    private ?\Closure $handleError = null;
     private int $order = 600;
     private bool $skip = false;
     private array $params = [];
