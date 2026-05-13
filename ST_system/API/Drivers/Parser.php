@@ -33,8 +33,12 @@ final class Parser extends IntegrationDriver {
     }
 
     protected function __init(): void {
-        $this->on('__construct', function(array $schema) {
-            $this->schema = $schema;
+        $this->on('__construct', function(array $params) {
+            Rule::object([
+                'schema' => 'array|required',
+            ])->throwable()->apply($params);
+            
+            $this->schema = $params['schema'];
         });
 
         $this->on('before_curl_init', function(&$r, $m, $p, &$config) {
