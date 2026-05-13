@@ -10,12 +10,10 @@ final class Main {
         $now = time();
         $ts  = function_exists('hrtime') ? hrtime(true) / 1e9 : microtime(true);
 
-        if ($format) {
-            $dt = (new \DateTime())->setTimestamp($now);
-            $ts = $dt->format($format) . substr((string)$ts, strpos((string)$ts, '.'));
-        }
-
-        return $ts;
+        if ($format)
+            return (new \DateTime())->setTimestamp($now)->format($format);
+        
+        return (string)$ts;
     }
 
     public static function pluralForm($n, $forms): string { 
