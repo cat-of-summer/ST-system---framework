@@ -59,6 +59,14 @@ abstract class IntegrationDriver {
         return $this->cache;
     }
 
+    public function purge(): void {
+        if ($this->cache) $this->cache->purge();
+    }
+
+    final public function purgeBase(): void {
+        if ($this->cache) $this->cache->purgeBase();
+    }
+
     private function normalize_method(string $method): string {
         return preg_replace('/\{[^}]+\}/', '{%}', $method);
     }
@@ -126,7 +134,7 @@ abstract class IntegrationDriver {
         return $this;
     }
 
-    final protected function curl_init($request_url, $method, $params, $config) {
+    final protected function curl_init($request_url = '', $method = '', $params = [], $config = []) {
         $this->fire('before_curl_init', $request_url, $method, $params, $config);
 
         $curl = curl_init();
