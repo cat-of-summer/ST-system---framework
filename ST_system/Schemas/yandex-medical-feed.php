@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 
 use ST_system\Schema;

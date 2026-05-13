@@ -16,7 +16,7 @@
 
 2. **Результат — массив строк ошибок.** Пустой массив `[]` означает успех. Ненулевой — список ошибок. Нет исключений при нормальной работе.
 
-3. **Порядок (`order`).** Когда несколько правил применяются к одному значению, они сортируются по `order` (от меньшего к большему). Это позволяет, например, `trim` (order=-1) отработать до `required` (order=100).
+3. **Порядок (`order`).** Когда несколько правил применяются к одному значению, они сортируются по `order` (от меньшего к большему). Это позволяет, например, `trim` (order=-2) отработать до `required` (order=100).
 
 4. **Skip (`skip=true`).** Если правило с `skip=true` не прошло — цепочка прерывается. Это позволяет `required` остановить все дальнейшие правила, если поле пусто.
 
@@ -50,14 +50,15 @@
 
 | order | Правила |
 |-------|---------|
-| -1 | `trim` |
+| -3 | `default` |
+| -2 | `trim`, `ltrim`, `rtrim`, `escape_html`, `uppercase`, `lowercase` |
 | 0 | `sometimes`, `excludeIf` |
-| 50 | `default` |
 | 100 | `required`, `nullable`, `present`, `requiredIf`, `prohibitedIf` |
-| 500 | `string`, `int`/`integer`, `float`, `bool`, `email`, `url`, `array`, `date`, `date_format`, `json`, `uuid`, `accepted`, `declined`, `file` |
+| 500 | `string`, `int`/`integer`, `float`, `bool`, `email`, `url`, `array`, `foreach`, `date`, `date_format`, `json`, `uuid`, `accepted`, `declined`, `callable`, `closure`, `file` |
 | 600 | `mimes`, `extension`, `filesize` |
 | 700 | `max`, `min`, `in`, `notIn`/`not_in`, `regex`, `digits`, `between`, `starts_with`, `ends_with`, `contains` |
-| 1000 | `uppercase`, `lowercase` |
+
+> Все трансформеры на `-2` — выполняются **до всех валидаторов**, чтобы проверки шли уже по нормализованному значению. `default` на `-3` — раньше трансформеров, чтобы подставленное значение тоже нормализовалось (например, `'default:  HELLO  |trim|lowercase'` корректно даст `'hello'`).
 
 ---
 
@@ -163,7 +164,7 @@ $rule->apply($v);
 
 ---
 
-### 4.6 `->handleError(Closure|mixed): self` — обработчик ошибки
+### 4.6.1 `->handleError(Closure|mixed): self` — обработчик ошибки
 
 Вызывается когда callback вернул `false`/`0` или непустой массив.  
 Должна вернуть **строку** — это и будет сообщение об ошибке.  
@@ -190,6 +191,15 @@ $rule = Rule::create(fn(&$v) => ['error_a', 'error_b'])
     ->handleError(fn($v, array $errors) => 'Overridden: ' . implode(', ', $errors));
 // Ошибки заменяются одной строкой: ['Overridden: error_a, error_b']
 ```
+
+---
+
+### 4.6.2 `->throwable(): self` — обработчик ошибки
+
+Обёртка над `->handleError(Closure|mixed): self`.
+Переопределяется обработчик ошибки, как замыкание, вызывающее `throw \Exception`.
+Необходимо, если достаточно вызывать исключение в качестве обработки ошибок.
+Передаёт построчно ошибки, которые были допущены при валидации.
 
 ---
 
@@ -474,17 +484,6 @@ Rule::regex('/^#[0-9a-f]{6}$/i')->apply($v); // []
 
 ---
 
-### 4.20 `Rule::init(): void` — инициализация реестра
-Регистрирует все встроенные правила. Вызывается автоматически при первом обращении к любому публичному методу.
-
-```php
-
-Rule::init();
-
-```
-
----
-
 ## 5. Встроенные правила
 
 ### 5.1 Правила наличия/обязательности
@@ -558,17 +557,54 @@ $rule = Rule::object(['field' => 'present']);
 
 ### 5.2 Трансформеры
 
-#### `trim` (order=-1)
+#### `trim` (order=-2)
 
-Убирает пробелы по краям строки. Выполняется раньше всех остальных правил.
+Убирает пробелы по краям. Для строки — обычный `trim`. Для массива — применяет `trim` к каждому строковому элементу и фильтрует пустые значения через `array_filter`.
+
+Параметры (`'trim:/'`, `'trim:.,/'`) задают набор символов для удаления.
 
 ```php
 $v = '  hello  ';
 Rule::create('trim|required|string')->apply($v);
 // $v === 'hello'
+
+$v = ['  one  ', '', '  ', 'two', 42];
+Rule::create('trim')->apply($v);
+// $v === [0 => 'one', 3 => 'two', 4 => 42]
+// строки обрезаны, пустые после trim удалены, не-строки оставлены как есть
 ```
 
-#### `default:value` (order=50)
+#### `rtrim` (order=-2)
+
+Убирает пробелы с правого края строки. Выполняется раньше всех остальных правил.
+
+```php
+$v = '  hello  ';
+Rule::create('rtrim|required|string')->apply($v);
+// $v === '  hello'
+```
+
+#### `ltrim` (order=-2)
+
+Убирает пробелы с левого края строки. Выполняется раньше всех остальных правил.
+
+```php
+$v = '  hello  ';
+Rule::create('ltrim|required|string')->apply($v);
+// $v === 'hello  '
+```
+
+#### `escape_html` (order=-2)
+
+Применяет htmlspecialchars на строку. Выполняется раньше всех остальных правил.
+
+```php
+$v = '  hello  ';
+Rule::create('escape_html|required|string')->apply($v);
+// $v === 'hello'
+```
+
+#### `default:value,valid` (order=-3)
 
 Подставляет значение если поле `null`, `''` или отсутствует.
 
@@ -584,7 +620,11 @@ $rule->apply($data);
 // $data === ['status' => 'active', 'page' => 1, 'perPage' => 20]
 ```
 
-#### `uppercase` / `lowercase` (order=1000)
+Логика параметра valid
+
+  Если valid == true, то если $value == default, значение пропускается, иначе идут последующие проверки
+
+#### `uppercase` / `lowercase` (order=-2)
 
 Преобразует строку в верхний/нижний регистр. Выполняется после всех валидаций.
 
@@ -603,6 +643,14 @@ Rule::create('required|lowercase')->apply($v); // $v === 'world'
 #### `string`
 
 Проверяет `is_string`. Не кастует — если не строка, возвращает ошибку.
+
+#### `callable`
+
+Проверяет `is_callable`. Не кастует — если не callable, возвращает ошибку.
+
+#### `closure`
+
+Проверяет `instanceof \Closure`. Не кастует — если не instanceof \Closure, возвращает ошибку.
 
 #### `int` / `integer`
 
@@ -637,6 +685,44 @@ $v = 'yes';   Rule::create('bool')->apply($v); // ['Must be a boolean']
 #### `array`
 
 Проверяет `is_array`. Не кастует.
+
+#### `foreach:rule1,rule2,...`
+
+Проверяет, что если значение — массив, то применяет правила к каждому элементу. Ошибки prefixed индексом: `'0.Error'`, `'1.Error'`.
+
+Параметры через запятую объединяются в pipe-спеку: `'foreach:required,string,max:50'` → `Rule::forEach('required|string|max:50')`.  
+Ограничение: параметры с запятыми внутри (`in:a,b,c`) ломают парсинг — для таких случаев использовать `Rule::forEach(...)` напрямую.
+
+```php
+// Базовое использование
+$v = ['1', '2', 'abc'];
+$errors = Rule::create('foreach:int')->apply($v);
+// $errors === ['2.Must be an integer']
+// $v === [1, 2, 'abc']  — первые два прокастованы
+
+// Без параметров — только проверка типа
+$errors = Rule::create('foreach')->check([]);
+// $errors === []
+
+// Несколько правил
+$errors = Rule::create('foreach:required,string,max:50')->check(['alice', '', 'bob']);
+// $errors === ['1.This field is required']
+
+// В схеме объекта
+$rule = Rule::object([
+    'tags' => 'required|foreach:string|min:1',
+]);
+```
+
+> Для сложных спек используй `Rule::forEach(...)` напрямую:
+> ```php
+> Rule::object([
+>     'items' => ['required', 'array', Rule::forEach(Rule::object([
+>         'id'   => 'required|int',
+>         'name' => 'required|string',
+>     ]))],
+> ]);
+> ```
 
 #### `email`
 
@@ -1174,14 +1260,19 @@ $rule = Rule::object(['field' => 'required|string']);
 ### Трансформеры в цепочке с валидаторами
 
 ```php
-// trim (order=-1) всегда отработает до required (order=100)
+// Все трансформеры (order=-2) выполняются ДО всех валидаторов,
 // независимо от порядка написания:
 Rule::create('required|trim|string') // то же что 'trim|required|string'
 // После trim — если строка была '   ', она станет '' и required упадёт
 
-// uppercase (order=1000) — после всех валидаций
-Rule::create('required|string|max:10|uppercase')
-// max проверяет ДО uppercase — по исходной длине
+// uppercase/lowercase (order=-2) — также до валидаций
+Rule::create('lowercase|in:foo,bar')
+// 'FOO' → 'foo' → проходит in:foo,bar
+
+// default (order=-3) выполняется раньше трансформеров,
+// чтобы подставленное значение тоже нормализовалось:
+Rule::create('default:  HELLO  |trim|lowercase')
+// При пустом входе: подставится '  HELLO  ' → trim → 'HELLO' → lowercase → 'hello'
 ```
 
 ### Правило как часть массива-спецификации

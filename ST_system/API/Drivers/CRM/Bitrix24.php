@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace ST_system\API\Drivers\CRM;
 

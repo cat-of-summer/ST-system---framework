@@ -1,32 +1,20 @@
-﻿<?php
+<?php
 
 namespace ST_system;
 
 final class Rule {
 
-    
     private static $registry = [];
-
-    
     private static array $prefixStack = [];
 
-    
-    private $callback;
-    
-    private $before;
-    
-    private $after;
-    
-    private $handleError;
-    
-    private $order = 600;
-    
-    private $skip = false;
-    
-    private $params = [];
-    
-    private $frozen = false;
-    
+    private \Closure $callback;
+    private ?\Closure $before = null;
+    private ?\Closure $after = null;
+    private ?\Closure $handleError = null;
+    private int $order = 600;
+    private bool $skip = false;
+    private array $params = [];
+    private bool $frozen = false;
     private bool $seesSentinel = false;
 
     private function __construct(\Closure $callback) {
@@ -34,7 +22,6 @@ final class Rule {
         $this->callback = $callback;
     }
 
-    
     public function __get(string $name) {
         if (in_array($name, ['callback', 'before', 'after', 'handleError', 'order', 'skip', 'params', 'frozen'])) {
             return $this->$name;
@@ -42,31 +29,32 @@ final class Rule {
         throw new \RuntimeException("Unknown property Rule::\${$name}");
     }
 
-    
     private function guardFrozen(): void {
         if ($this->frozen) {
             throw new \RuntimeException('Cannot modify a frozen Rule (aliased rules are immutable)');
         }
     }
-
     
-    public function before($fn): self {
+    public function before(\Closure $fn): self {
         $this->guardFrozen();
-        $this->before = ($fn instanceof \Closure) ? $fn : null;
+        $this->before = $fn;
+        return $this;
+    }
+    
+    public function after(\Closure $fn): self {
+        $this->guardFrozen();
+        $this->after = $fn;
         return $this;
     }
 
-    
-    public function after($fn): self {
+    public function handleError(\Closure $fn): self {
         $this->guardFrozen();
-        $this->after = ($fn instanceof \Closure) ? $fn : null;
+        $this->handleError = $fn;
         return $this;
     }
 
-    
-    public function handleError($fn): self {
-        $this->guardFrozen();
-        $this->handleError = ($fn instanceof \Closure) ? $fn : null;
+    public function throwable(): self {
+        $this->handleError(fn($v, $errors) => throw new \Exception(implode(PHP_EOL, $errors)));
         return $this;
     }
 
@@ -88,13 +76,11 @@ final class Rule {
         return $this;
     }
 
-    
     private function copy(): self {
         $clone = clone $this;
         $clone->frozen = false;
         return $clone;
     }
-
     
     public static function scope(string $prefix, \Closure $fn) {
         self::init();
@@ -111,7 +97,6 @@ final class Rule {
         return $n > 0 ? self::$prefixStack[$n - 1] : null;
     }
 
-    
     private static function resolveAlias(string $name): ?Rule {
         if (strpos($name, '\\') !== false) {
             $name = ltrim($name, '\\');
@@ -123,7 +108,6 @@ final class Rule {
         }
         return self::$registry[$name] ?? null;
     }
-
     
     public static function get(string $alias): ?Rule {
         self::init();
@@ -148,7 +132,6 @@ final class Rule {
         $this->frozen = true;
         return $this;
     }
-
     
     private function execute(&$data): array {
         if (!$this->seesSentinel && self::isSentinel($data)) {
@@ -160,7 +143,6 @@ final class Rule {
         return $this->executeRaw($data);
     }
 
-    
     private function executeRaw(&$data): array {
         if ($this->before !== null) {
             ($this->before)($data, $this->params);
@@ -202,17 +184,14 @@ final class Rule {
         return [$passed, $errors];
     }
 
-    
     public function apply(&$data): array {
         return $this->execute($data)[1];
     }
 
-    
     public function check($data): array {
         return $this->execute($data)[1];
     }
 
-    
     private static function parseString(string $spec): array {
         $segments = array_map('trim', explode('|', trim($spec)));
         $rules    = [];
@@ -244,7 +223,6 @@ final class Rule {
         return $rules;
     }
 
-    
     private static function compileFieldRules($spec): array {
         $rules = [];
 
@@ -270,7 +248,6 @@ final class Rule {
         return $rules;
     }
 
-    
     public static function create($spec): Rule {
         self::init();
 
@@ -328,7 +305,6 @@ final class Rule {
         throw new \InvalidArgumentException('Rule::create() expects string, Closure, or array');
     }
 
-    
     public static function object(array $schema): Rule {
         self::init();
 
@@ -392,7 +368,6 @@ final class Rule {
         })->seesSentinel();
     }
 
-    
     public static function forEach($spec): Rule {
         self::init();
 
@@ -405,7 +380,7 @@ final class Rule {
             $rules = self::parseString($spec);
             usort($rules, fn(Rule $a, Rule $b) => $a->order <=> $b->order);
         } elseif (is_array($spec)) {
-            $rules = Rule::object($spec);
+            $rules = self::compileFieldRules($spec);
         } else {
             throw new \InvalidArgumentException('Rule::forEach() expects string, Closure, array or Rule');
         }
@@ -435,10 +410,11 @@ final class Rule {
             foreach ($toRemove as $i) unset($data[$i]);
             
             return $errors;
-        })->seesSentinel();
+        })
+        ->order(500)
+        ->seesSentinel();
     }
 
-    
     private static function insertIntoTree(array &$node, array $parts, $spec): void {
         $key = array_shift($parts);
 
@@ -454,7 +430,6 @@ final class Rule {
         }
     }
 
-    
     private static function treeNodeToRule(array $node): Rule {
         
         if (array_key_exists('__spec__', $node)) {
@@ -498,7 +473,6 @@ final class Rule {
         return self::object($schema);
     }
 
-    
     public static function requiredIf($cond): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -513,7 +487,6 @@ final class Rule {
         ->handleError(fn($v) => 'This field is required');
     }
 
-    
     public static function prohibitedIf($cond): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -528,7 +501,6 @@ final class Rule {
         ->handleError(fn($v) => 'This field is not allowed');
     }
 
-    
     public static function excludeIf($cond): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -543,7 +515,6 @@ final class Rule {
         ->seesSentinel();
     }
 
-    
     public static function when($cond, $spec): Rule {
         self::init();
         $fn = ($cond instanceof \Closure) ? $cond : function() use ($cond) { return (bool)$cond; };
@@ -553,13 +524,14 @@ final class Rule {
             if (!$fn()) return true;
             $errors = $thenRule->apply($v);
             return empty($errors) ? true : $errors;
-        });
+        })->order(-2);
     }
 
     public static function in(array $values): Rule {
         self::init();
 
         return self::create(fn(&$v) => in_array($v, $values, false))
+        ->order(700)
         ->handleError(fn($v) => 'Not a valid option');
     }
 
@@ -567,25 +539,43 @@ final class Rule {
         self::init();
 
         return self::create(fn(&$v) => !in_array($v, $values, false))
+        ->order(700)
         ->handleError(fn($v) => 'Value is not allowed');
     }
 
-    
-    public static function default($value): Rule {
+    public static function anyOf(...$specs): Rule {
         self::init();
 
-        return self::create(function(&$v) use ($value): bool {
-            if (self::isSentinel($v) || $v === null || $v === '')
-                $v = $value;
-
-            return true;
-        })->order(-1)->seesSentinel();
+        return self::create(function(&$v) use ($specs): bool {
+            foreach ($specs as $spec) {
+                $copy = $v;
+                $rule = ($spec instanceof self) ? $spec : self::create($spec);
+                if (empty($rule->apply($copy))) {
+                    $v = $copy;
+                    return true;
+                }
+            }
+            return false;
+        })
+        ->order(500)
+        ->handleError(fn($v) => 'Value does not match any allowed type');
     }
 
-    
+    public static function default($value, bool $valid = false): Rule {
+        self::init();
+
+        return self::create(function(&$v) use ($value, $valid): bool {
+            $substituted = self::isSentinel($v) || $v === null || $v === '';
+            if ($substituted) $v = $value;
+            return !($substituted || ($valid && $v == $value));
+        })->order(-3)->seesSentinel()->skip();
+    }
+
     public static function regex(string $pattern): Rule {
         self::init();
+        
         return self::create(fn(&$v) => is_string($v) && @preg_match($pattern, $v) === 1)
+        ->order(700)
         ->handleError(fn($v) => 'Invalid format');
     }
 
@@ -593,7 +583,6 @@ final class Rule {
         return $value === self::sentinel();
     }
 
-    
     private static function sentinel(): object {
         static $sentinel = null;
 
@@ -602,8 +591,7 @@ final class Rule {
         return $sentinel;
     }
 
-    
-    public static function init(): void {
+    private static function init(): void {
         static $done = false;
 
         if ($done) return;
@@ -620,13 +608,14 @@ final class Rule {
 
         
         (self::create(function(&$v, array $p): bool {
-            if (self::isSentinel($v) || $v === null || $v === '') {
-                $v = $p[0] ?? null;
-            }
-            return true;
+            $substituted = self::isSentinel($v) || $v === null || $v === '';
+            if ($substituted) $v = $p[0] ?? null;
+            $valid = isset($p[1]) && $p[1] === 'true';
+            return !($substituted || ($valid && $v == ($p[0] ?? null)));
         }))
-        ->order(-1)
+        ->order(-3)
         ->seesSentinel()
+        ->skip()
         ->alias('default');
 
         
@@ -699,6 +688,22 @@ final class Rule {
         ->handleError(fn($v) => 'Must be a boolean')
         ->alias('bool');
 
+
+        (self::create(function(&$v): bool {
+            return is_callable($v);
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be callable')
+        ->alias('callable');
+
+
+        (self::create(function(&$v): bool {
+            return $v instanceof \Closure;
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Must be closure')
+        ->alias('closure');
+
         
         (self::create(function(&$v): bool {
             return is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) !== false;
@@ -724,6 +729,33 @@ final class Rule {
         ->alias('array');
 
         
+        (self::create(function(&$v, array $p): array {
+            if (is_array($v) && !empty($v))
+                return self::forEach($p)->apply($v);
+            
+            return [];
+        }))
+        ->order(500)
+        ->alias('foreach');
+
+
+        (self::create(function(&$v, array $p): bool {
+            foreach ($p as $spec) {
+                $copy = $v;
+                if (empty(self::create($spec)->apply($copy))) {
+                    $v = $copy;
+                    return true;
+                }
+            }
+            return false;
+        }))
+        ->order(500)
+        ->handleError(fn($v) => 'Value does not match any allowed type')
+        ->alias('or')
+        ->alias('anyOf')
+        ->alias('any_of');
+
+
         (self::create(function(&$v, array $p): bool {
             $l = $p[0] ?? null;
             if ($l === null) return true;
@@ -865,45 +897,58 @@ final class Rule {
 
         
         (self::create(function(&$v, array $p = []): bool {
+            $chars = !empty($p) ? implode('', $p) : null;
+            $fn = fn($x) => is_string($x) ? ($chars !== null ? trim($x, $chars) : trim($x)) : $x;
+
             if (is_string($v))
-                $v = !empty($p) ? trim($v, implode('', $p)) : trim($v);
+                $v = $fn($v);
+            elseif (is_array($v))
+                $v = array_filter(array_map($fn, $v), fn($x) => $x !== '');
             return true;
         }))
-        ->order(-1)
+        ->order(-2)
         ->alias('trim');
 
-        
         (self::create(function(&$v, array $p = []): bool {
             if (is_string($v))
                 $v = !empty($p) ? ltrim($v, implode('', $p)) : ltrim($v);
             return true;
         }))
-        ->order(-1)
+        ->order(-2)
         ->alias('ltrim');
 
-        
+
         (self::create(function(&$v, array $p = []): bool {
             if (is_string($v))
                 $v = !empty($p) ? rtrim($v, implode('', $p)) : rtrim($v);
             return true;
         }))
-        ->order(-1)
+        ->order(-2)
         ->alias('rtrim');
 
-        
+
+        (self::create(function(&$v): bool {
+            if (is_string($v))
+                $v = htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            return true;
+        }))
+        ->order(-2)
+        ->alias('escape_html');
+
+
         (self::create(function(&$v): bool {
             if (is_string($v)) $v = mb_strtoupper($v);
             return true;
         }))
-        ->order(1000)
+        ->order(-2)
         ->alias('uppercase');
 
-        
+
         (self::create(function(&$v): bool {
             if (is_string($v)) $v = mb_strtolower($v);
             return true;
         }))
-        ->order(1000)
+        ->order(-2)
         ->alias('lowercase');
 
         

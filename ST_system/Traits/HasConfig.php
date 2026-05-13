@@ -15,7 +15,12 @@ trait HasConfig {
     final public static function config(string $key = '') {
         static $initialized = [];
         if (!isset($initialized[static::class])) {
+
+            if (!empty(Config::config(static::class)))
+                Config::fillImmutableConfig(static::class, '', Config::config(static::class));
+
             Config::fillImmutableConfig(static::class, '', static::getDefaultConfig());
+            
             $initialized[static::class] = true;
         }
         return Config::getImmutableConfig(static::class, $key);
@@ -46,7 +51,7 @@ trait HasConfig {
                 array_unshift($p, $prefix);
             }
         })
-        ->seesSentinel()->order(-1)->alias('\\defaultConfig');
+        ->seesSentinel()->order(-3)->alias('\\defaultConfig');
     }
 
     protected static function getDefaultConfig(): array {

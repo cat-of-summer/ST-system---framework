@@ -3,6 +3,7 @@
 namespace ST_system;
 
 use ST_system\Main;
+use Dotenv\Dotenv;
 
 final class Config {
 
@@ -29,7 +30,7 @@ final class Config {
         })();
 
         if ($dotenvDir !== null)
-            \Dotenv\Dotenv::createImmutable($dotenvDir)->safeLoad();
+            Dotenv::createImmutable($dotenvDir)->safeLoad();
 
         static::$configPath = $configPath;
         $initialized = true;
@@ -38,6 +39,7 @@ final class Config {
     public static function reload(): void {
         static::$cache[static::envKey()]    = [];
         static::$cache[static::configKey()] = [];
+        static::$cache[static::iniKey()]    = [];
     }
 
     public static function env(string $name, $default = ''): string {
@@ -49,6 +51,17 @@ final class Config {
         $result = $value !== null ? (string)$value : (string)$default;
 
         static::$cache[static::envKey()][$name] = $result;
+        return $result;
+    }
+
+    public static function ini(string $name, $default = ''): string {
+        if (array_key_exists($name, static::$cache[static::iniKey()] ?? []))
+            return static::$cache[static::iniKey()][$name];
+
+        $value = ini_get($name);
+        $result = $value !== false ? $value : (string)$default;
+
+        static::$cache[static::iniKey()][$name] = $result;
         return $result;
     }
 
@@ -165,6 +178,12 @@ final class Config {
     }
 
     private static function configKey(): string {
+        static $k = null;
+        if ($k === null) $k = "\0" . bin2hex(random_bytes(6));
+        return $k;
+    }
+
+    private static function iniKey(): string {
         static $k = null;
         if ($k === null) $k = "\0" . bin2hex(random_bytes(6));
         return $k;

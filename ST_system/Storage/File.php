@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace ST_system\Storage;
 
@@ -455,7 +455,8 @@ final class File {
 
     public static function purgeAllCache(): void {
         Cache::make('', [
-            'dir' => static::config('cache.dir')
+            'dir' => static::config('cache.dir'),
+            'driver' => 'filesystem',
         ])->purgeBase();
     }
 

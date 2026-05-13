@@ -1,159 +1,398 @@
-﻿<?php
+<?php
 
 namespace ST_system;
 
 use ST_system\Traits\HasConfig;
+use ST_system\Traits\HasEvents;
 use ST_system\HTTP\Request;
 use ST_system\HTTP\Response;
+use ST_system\Cache\Manager as Cache;
+use ST_system\Rule;
 
 final class Access {
 
     use HasConfig;
 
+    use HasEvents {
+        on as private _on;
+    }
+
     protected static function getDefaultConfig(): array {
         return [
-            'password_name' => 'pass',
-            'request_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
+            'credentials' => [
+                'name' => 'pass',
+                'value' => date('dm')
+            ],
+            'accessMethod' => 'GET',
+            'CORS' => [
+                'methods' => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+                'headers' => ['Content-Type', 'Authorization', 'X-Requested-With']
+            ],
+            'salt' => '',
+            'firewall' => [
+                'driver'  => 'filesystem',
+                'limits'  => [[5, 1, 10], [10, 2, 30], [60, 60], [600, 3600]],
+                'ttl'     => 3600,
+                'exclude' => [],
+            ],
         ];
     }
 
-    private static $block_password = [
-        'name' => null,
-        'value' => null
+    private static $block = [
+        'name'         => null,
+        'value'        => null,
+        'accessMethod' => null,
     ];
 
-    public static function requestAccess($PARAMS = []) {
-        $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config('password_name');
-        $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm');
-        
-        $onFail_func = (($PARAMS['onFail'] ?? null) instanceof \Closure)
-            ? $PARAMS['onFail']
-            : function () { header("Location: /"); exit; };
+    private Cache $cache;
 
-        $onSuccess_func = (($PARAMS['onSuccess'] ?? null) instanceof \Closure)
-            ? $PARAMS['onSuccess']
-            : fn() => true;
-
-        $val = Request::data($password_name);
-        return ($val === null || $val != $password_value)
-            ? $onFail_func()
-            : $onSuccess_func();
+    private function __construct() {
+        $this->cache = Cache::make(static::config('salt') ?: 'st_access', [
+            'driver' => static::config('firewall.driver'),
+            'ttl'    => static::config('firewall.ttl'),
+        ]);
     }
 
-    public static function httpAccess(array $PARAMS = []) {
-        $login = isset($PARAMS['login']) ? htmlspecialchars($PARAMS['login']) : self::config('password_name');
-        $password = isset($PARAMS['password']) ? htmlspecialchars($PARAMS['password']) : date('dm');
+    private static function getInstance(): self {
+        static $instance = null;
+
+        if ($instance === null)
+            $instance = new static();
+
+        return $instance;
+    }
+
+    public static function on(string $event, callable $listener): void {
+        self::getInstance()->_on($event, $listener);
+    }
+
+    private static function extractCredential(string $name, string $method): ?string {
+        switch ($method) {
+            case 'GET':     return Request::get($name);
+            case 'POST':
+            case 'PUT':
+            case 'DELETE':
+            case 'PATCH':   return Request::post($name);
+            case 'HEADERS': return Request::headers($name);
+            case 'COOKIE':  return Request::cookie($name);
+            case 'SESSION': return $_SESSION[$name] ?? null;
+        }
+
+        throw new \InvalidArgumentException("Access method not allowed: '$method'");
+    }
+
+    public static function requestAccess(array $config = []) {
+        Rule::scope(static::class, function() use (&$config) {
+            Rule::object([
+                'name'         => 'string|escape_html|defaultConfig:credentials.name',
+                'value'        => 'string|escape_html|defaultConfig:credentials.value',
+                'accessMethod' => 'nullable|string|defaultConfig:accessMethod',
+                'onFail'       => ['callable', Rule::default(fn() => self::throw(401))],
+                'onSuccess'    => 'nullable|callable'
+            ])->throwable()->apply($config);
+        });
+
+        $val = self::extractCredential($config['name'], $config['accessMethod']);
+
+        return (empty($val) || $val != $config['value'])
+            ? $config['onFail']
+            : $config['onSuccess'];
+    }
+
+    public static function httpAccess(array $config = []) {
+        Rule::scope(static::class, function() use (&$config) {
+            Rule::object([
+                'login' => 'string|escape_html|defaultConfig:credentials.name',
+                'password' => 'string|escape_html|defaultConfig:credentials.value'
+            ])->throwable()->apply($config);
+        });
 
         if (
             !isset($_SERVER['PHP_AUTH_USER']) ||
             !isset($_SERVER['PHP_AUTH_PW']) ||
-            $_SERVER['PHP_AUTH_USER'] !== $login ||
-            $_SERVER['PHP_AUTH_PW'] !== $password
+            $_SERVER['PHP_AUTH_USER'] !== $config['login'] ||
+            $_SERVER['PHP_AUTH_PW'] !== $config['password']
         ) {
             Response::status(401)->header('WWW-Authenticate', 'Basic realm="Restricted Area"')->send();
         }
     }
 
-    public static function call(callable $f, array $PARAMS = []) {
-        $password_name = isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config('password_name');
-        $password_value = isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm');
+    public static function call(callable $f, array $config = []) {
+        Rule::scope(static::class, function() use (&$config) {
+            Rule::object([
+                'name'         => 'string|escape_html|defaultConfig:credentials.name',
+                'value'        => 'string|escape_html|defaultConfig:credentials.value',
+                'accessMethod' => 'nullable|string|defaultConfig:accessMethod',
+            ])->throwable()->apply($config);
+        });
 
-        $val = Request::data($password_name);
-        if ($val !== null && $val == $password_value)
-            return call_user_func($f);
+        $val = self::extractCredential($config['name'], $config['accessMethod']);
+
+        if ($val !== null && $val == $config['value'])
+            return $f();
     }
 
-    public static function startBlock(array $PARAMS = []) {
-        self::$block_password = [
-            'name' => isset($PARAMS['name']) ? htmlspecialchars($PARAMS['name']) : self::config('password_name'),
-            'value' => isset($PARAMS['value']) ? htmlspecialchars($PARAMS['value']) : date('dm')
+    public static function startBlock(array $config = []) {
+        Rule::scope(static::class, function() use (&$config) {
+            Rule::object([
+                'name'         => 'string|escape_html|defaultConfig:credentials.name',
+                'value'        => 'string|escape_html|defaultConfig:credentials.value',
+                'accessMethod' => 'nullable|string|defaultConfig:accessMethod',
+            ])->throwable()->apply($config);
+        });
+
+        self::$block = [
+            'name'         => $config['name'],
+            'value'        => $config['value'],
+            'accessMethod' => $config['accessMethod'],
         ];
 
         ob_start();
     }
 
     public static function endBlock() {
-        if (!self::$block_password['name'] || !self::$block_password['value']) return;
+        if (!self::$block['name'] || !self::$block['value'] || !self::$block['accessMethod']) return;
 
         $content = ob_get_clean();
 
-        $val = Request::data(self::$block_password['name']);
-        if ($val !== null && $val == self::$block_password['value'])
+        $val = self::extractCredential(self::$block['name'], self::$block['accessMethod']);
+
+        if ($val !== null && $val == self::$block['value'])
             echo $content;
     }
 
-    public static function throw_403() {
-        Response::text('', 403)->header('X-Content-Type-Options', 'nosniff')->send();
-    }
-
-    public static function throw_404() {
-        Response::text('', 404)->header('X-Content-Type-Options', 'nosniff')->send();
+    public static function throw(int $code = 404): void {
+        if (self::getInstance()->fire('throw', $code) === false)
+            Response::status($code)->header('X-Content-Type-Options', 'nosniff')->send();
     }
 
     public static function getRequestOrigin(): string {
         static $data = null;
-        if ($data !== null) return $data;
 
-        $origin = Request::headers('Origin');
-        if (!$origin) {
-            $referer = Request::headers('Referer');
-            $origin = $referer ? (parse_url($referer, PHP_URL_HOST) ?? '') : '';
+        if ($data === null) {
+            $origin = Request::headers('Origin');
+
+            if (!$origin) {
+                $referer = Request::headers('Referer');
+                $origin = $referer ? (parse_url($referer, PHP_URL_HOST) ?? '') : '';
+            }
+
+            $data = (string)$origin;
         }
 
-        return $data = (string)$origin;
+        return $data;
     }
 
     public static function getClientIp(): string {
         static $data = null;
-        if ($data !== null) return $data;
 
-        $forwarded = Request::headers('X-Forwarded-For');
-        if ($forwarded)
-            return $data = trim(explode(',', $forwarded)[0]);
+        if ($data === null) {
+            $forwarded = Request::headers('X-Forwarded-For');
 
-        return $data = (string)(Request::headers('Client-Ip') ?: $_SERVER['REMOTE_ADDR'] ?? '');
+            $data = $forwarded
+                ? trim(explode(',', $forwarded)[0])
+                : (string)(Request::headers('Client-Ip') ?: $_SERVER['REMOTE_ADDR'] ?? '');
+        }
+
+        return $data;
     }
 
-    public static function handleCORS($PARAMS = []) {
-        $allowed_origins = (isset($PARAMS['allowed_origins']) && is_array($PARAMS['allowed_origins']))
-            ? array_filter($PARAMS['allowed_origins'], fn($origin) => !empty($origin) && (filter_var($origin, FILTER_VALIDATE_URL) || $origin === '*'))
-            : ['*'];
+    private function salt(): string {
+        static $salt = null;
 
-        $forbidden_origins = (isset($PARAMS['forbidden_origins']) && is_array($PARAMS['forbidden_origins']))
-            ? array_filter($PARAMS['forbidden_origins'], fn($origin) => !empty($origin) && filter_var($origin, FILTER_VALIDATE_URL))
-            : [];
+        if ($salt === null)
+            $salt = self::config('salt');
 
-        $allowed_methods = (isset($PARAMS['methods']) && is_array($PARAMS['methods']))
-            ? array_intersect(array_map('strtoupper', $PARAMS['methods']), self::config('request_methods'))
-            : self::config('request_methods');
+        return (string)$salt;
+    }
 
-        $allowed_headers = (isset($PARAMS['headers']) && is_array($PARAMS['headers']))
-            ? array_map('htmlspecialchars', $PARAMS['headers'])
-            : ['Content-Type', 'Authorization', 'X-Requested-With'];
+    private function xorStream(string $data, string $salt): string {
+        $out = '';
+        $len = strlen($data);
+
+        for ($i = 0, $b = 0; $i < $len; $i += 32, $b++)
+            $out .= substr($data, $i, 32) ^ hash('sha256', $salt . pack('N', $b), true);
+
+        return $out;
+    }
+
+    private function seal(array $state): string {
+        $json = (string)json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $salt = $this->salt();
+
+        if (empty($salt)) return $json;
+
+        $ct = $this->xorStream($json, $salt);
+
+        return substr(hash_hmac('sha256', $ct, $salt, true), 0, 8) . $ct;
+    }
+
+    private function unseal(?string $blob): array {
+        if ($blob === null) return [];
+
+        $salt = $this->salt();
+
+        if (empty($salt)) {
+            $data = json_decode($blob, true);
+            return is_array($data) ? $data : [];
+        }
+
+        if (strlen($blob) < 8) return [];
+
+        $tag = substr($blob, 0, 8);
+        $ct  = substr($blob, 8);
+
+        if (!hash_equals($tag, substr(hash_hmac('sha256', $ct, $salt, true), 0, 8))) return [];
+
+        $data = json_decode($this->xorStream($ct, $salt), true);
+
+        return is_array($data) ? $data : [];
+    }
+
+    public static function handleIp(): void {
+        $self = self::getInstance();
+
+        $ip = self::getClientIp();
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) return;
+
+        static $handled = null;
+        if (isset($handled)) return;
+        $handled = $ip;
+
+        if (in_array($ip, (array)self::config('firewall.exclude'), true)) return;
+
+        $now   = time();
+        $cache = $self->cache->make(['access:fw', substr(hash('sha256', $self->salt().'|'.$ip), 0, 32)]);
+        $state = $self->unseal($cache->get());
+
+        if (($state['ban'] ?? 0) > $now) {
+            self::throw(429);
+            return;
+        }
+
+        unset($state['ban']);
+
+        $violated = false;
+        $limitTtl = 0;
+        $ttl      = 1;
+
+        foreach ((array)self::config('firewall.limits') as $i => $limit) {
+            if (!is_array($limit)) continue;
+
+            $max    = (int)($limit[0] ?? 0);
+            $window = max(1, (int)($limit[1] ?? 1));
+            if ($max <= 0) continue;
+
+            $slot = intdiv($now, $window);
+
+            $w = $state['w'][$i] ?? null;
+            if (!is_array($w) || ($w[0] ?? null) !== $slot) $w = [$slot, 0];
+            $w[1]++;
+            $state['w'][$i] = $w;
+
+            if ($w[1] > $max) {
+                $violated = true;
+                $limitTtl = max($limitTtl, isset($limit[2]) ? max(1, (int)$limit[2]) : max(1, (int)self::config('firewall.ttl')));
+            }
+            $ttl = max($ttl, $window);
+        }
+
+        if ($violated) {
+            $state['ban'] = $now + $limitTtl;
+            $ttl          = max($ttl, $limitTtl);
+        }
+
+        if ($state)
+            $cache->set($self->seal($state), $ttl);
+
+        if ($violated) {
+            $self->fire('ban', $ip);
+            self::throw(429);
+        }
+    }
+
+    public static function banIp(string $ip, ?int $ttl = null): void {
+        $self = self::getInstance();
+
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false)
+            throw new \InvalidArgumentException("Access::banIp(): invalid IP '{$ip}'");
+
+        $ttl = $ttl ?: (int)self::config('firewall.ttl');
+
+        $cache = $self->cache->make(['access:fw', substr(hash('sha256', $self->salt().'|'.$ip), 0, 32)]);
+        $state = $self->unseal($cache->get());
+        $state['ban'] = time() + $ttl;
+
+        $entryTtl = $ttl;
+        foreach ((array)self::config('firewall.limits') as $l)
+            $entryTtl = max($entryTtl, (int)($l[1] ?? 0));
+
+        $cache->set($self->seal($state), $entryTtl);
+        $self->fire('ban', $ip);
+    }
+
+    public static function unbanIp(string $ip): void {
+        $self = self::getInstance();
+
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false)
+            throw new \InvalidArgumentException("Access::unbanIp(): invalid IP '{$ip}'");
+
+        $cache = $self->cache->make(['access:fw', substr(hash('sha256', $self->salt().'|'.$ip), 0, 32)]);
+        $state = $self->unseal($cache->get());
+        if (!$state) return;
+
+        unset($state['ban']);
+
+        if (empty($state['w'])) {
+            $cache->purge();
+        } else {
+            $entryTtl = 1;
+            foreach ((array)self::config('firewall.limits') as $l)
+                $entryTtl = max($entryTtl, (int)($l[1] ?? 0));
+
+            $cache->set($self->seal($state), $entryTtl);
+        }
+
+        $self->fire('unban', $ip);
+    }
+
+    public static function unbanAll(): void {
+        $self = self::getInstance();
+        $self->cache->purgeBase();
+        $self->fire('unbanAll');
+    }
+
+    public static function handleCORS(array $config = []) {
+        Rule::scope(static::class, function() use (&$config) {
+            Rule::object([
+                'allowed_origins'    => ['array', Rule::default(['*'], true), Rule::forEach('url')],
+                'forbidden_origins'  => ['sometimes|array|foreach:url'],
+                'methods'            => ['array|defaultConfig:CORS.methods', Rule::forEach(['required|string|strtoupper', Rule::in(self::config('CORS.methods'))])],
+                'headers'            => ['array|defaultConfig:CORS.headers,foreach:required|string|escape_html'],
+            ])->throwable()->apply($config);
+        });
 
         $request_origin = self::getRequestOrigin();
 
-        if (!empty($request_origin) && in_array($request_origin, $forbidden_origins))
-            self::throw_403();
+        if (!empty($request_origin) && in_array($request_origin, $config['forbidden_origins']))
+            self::throw(403);
 
-        $origin_header = in_array('*', $allowed_origins)
+        $origin_header = in_array('*', $config['allowed_origins'])
             ? '*'
-            : ((!empty($request_origin) && in_array($request_origin, $allowed_origins))
+            : ((!empty($request_origin) && in_array($request_origin, $config['allowed_origins']))
                 ? $request_origin
                 : null);
 
         if ($origin_header === null)
-            self::throw_403();
+            self::throw(403);
 
         header("Access-Control-Allow-Credentials: true");
         header("Access-Control-Allow-Origin: $origin_header");
-        header("Access-Control-Allow-Headers: " . implode(", ", $allowed_headers));
+        header("Access-Control-Allow-Headers: " . implode(", ", $config['headers']));
 
         if (Request::method() === 'OPTIONS') {
-            header("Access-Control-Allow-Methods: " . implode(", ", $allowed_methods));
+            header("Access-Control-Allow-Methods: " . implode(", ", $config['methods']));
             Response::status(200)->send();
         }
     }
-
-    
 }

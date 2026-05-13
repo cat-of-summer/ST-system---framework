@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace ST_system\Cache;
 
@@ -16,6 +16,7 @@ final class Manager {
             'filesystem' => \ST_system\Cache\Drivers\FileSystemCacheDriver::class,
             'redis'      => \ST_system\Cache\Drivers\RedisCacheDriver::class,
             'database'   => \ST_system\Cache\Drivers\DatabaseCacheDriver::class,
+            'session'    => \ST_system\Cache\Drivers\SessionCacheDriver::class,
         ];
 
         return [

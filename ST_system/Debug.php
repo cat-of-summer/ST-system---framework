@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace ST_system;
 
@@ -76,7 +76,7 @@ final class Debug {
         for ($w = 0; $w < $warmup; $w++)
             $job();
         
-        $timer = substr(str_shuffle('0123456789abcdefghijklmnopqrstuvwxyz'), 0, 8);
+        $timer = Main::uuid();
         $durations = [];
         for ($i = 0; $i < $iterations; $i++) {
             self::start("{$timer}#{$i}");
