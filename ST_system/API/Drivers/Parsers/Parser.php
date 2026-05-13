@@ -19,10 +19,9 @@ final class Parser extends IntegrationDriver {
     }
 
     protected function __init(): void {
-        $this->on('__construct', function(string $endpoint, array $schema, array $config = []) {
+        $this->on('__construct', function(string $endpoint, array $schema) {
             $this->endpoint = $endpoint;
             $this->schema   = $schema;
-            if (!empty($config)) static::config($config);
         });
 
         $this->on('curl_init', function($curl) {
