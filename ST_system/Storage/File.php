@@ -128,7 +128,7 @@ final class File {
                 break;
             case 'getBasename':
                 if (empty($args)) {
-                    $key = Main::serialize(['getBasename', []]);
+                    $key = Main::hash(['getBasename', []]);
                     if (!array_key_exists($key, $this->info_data))
                         $this->info_data[$key] = $this->info->getBasename('.'.$this->getExtension());
                     return $this->info_data[$key];
@@ -136,14 +136,14 @@ final class File {
         }
 
         if (is_callable([$this->info, $name])) {
-            $key = Main::serialize([$name, $args]);
+            $key = Main::hash([$name, $args]);
             if (!array_key_exists($key, $this->info_data))
                 $this->info_data[$key] = $this->info->{$name}(...$args);
             return $this->info_data[$key];
         }
 
         if (isset($this->mime) && is_callable([$this->mime, $name])) {
-            $key = Main::serialize([$name, $args]);
+            $key = Main::hash([$name, $args]);
             if (!array_key_exists($key, $this->mime_data))
                 $this->mime_data[$key] = $this->mime->{$name}(...$args);
             return $this->mime_data[$key];
