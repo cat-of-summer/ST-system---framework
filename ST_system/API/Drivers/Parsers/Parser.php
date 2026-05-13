@@ -95,7 +95,10 @@ final class Parser extends IntegrationDriver {
             $extract = $definition['@extract'] ?? null;
 
             if ($extract === null) {
-                $result[$key] = array_map(fn(\DOMNode $n) => $n->nodeValue, $nodes);
+                $result[$key] = array_map(
+                    fn(\DOMNode $n) => trim(str_replace(["\u{00A0}", "\n"], '', $n->nodeValue)),
+                    $nodes
+                );
             } elseif (is_callable($extract)) {
                 $result[$key] = $extract($nodes);
             } elseif (is_array($extract)) {
