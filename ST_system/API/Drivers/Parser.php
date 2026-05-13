@@ -90,14 +90,14 @@ final class Parser extends IntegrationDriver {
         $result = [];
 
         foreach ($schema as $key => $definition) {
-            if (is_string($key) && str_starts_with($key, '@')) continue;
+            if (is_string($key) && strncmp($key, '@', 1) === 0) continue;
 
             if (is_string($definition))
                 $definition = ['@xpath' => $definition];
 
             $selector = $definition['@xpath'];
 
-            if ($relative && str_starts_with($selector, '//'))
+            if ($relative && strncmp($selector, '//', 2) === 0)
                 $selector = '.' . $selector;
 
             $nodeList = $xpath->query($selector, $context);
