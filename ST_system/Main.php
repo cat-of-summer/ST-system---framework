@@ -57,10 +57,11 @@ final class Main {
 
     public static function serialize($value): string {
         $visited = [];
-        return static::_serialize($value, $visited);
+        $refs    = ['next' => 0, 'map' => []];
+        return static::_serialize($value, $visited, $refs);
     }
 
-    private static function _serialize($value, array &$visited = []): string {
+    private static function _serialize($value, array &$visited, array &$refs): string {
         switch (true) {
             case is_string($value):
                 return 's:'.$value;
@@ -84,9 +85,9 @@ final class Main {
                         $is_list = false;
                         break;
                     }
-                
+
                 if ($is_list) {
-                    $parts = array_map(function($v) use (&$visited) { return static::_serialize($v, $visited); }, $value);
+                    $parts = array_map(function($v) use (&$visited, &$refs) { return static::_serialize($v, $visited, $refs); }, $value);
                     sort($parts, SORT_STRING);
                     return 'l:['.implode(',', $parts).']';
                 } else {
@@ -97,26 +98,27 @@ final class Main {
                         if ($ka === $kb) return 0;
                         return ($ka < $kb) ? -1 : 1;
                     });
-                    return 'a:{'.implode(',', array_map(function($k) use (&$visited, $value) { return (is_int($k) ? 'ki:' : 'ks:').$k.'='.static::_serialize($value[$k], $visited); }, $keys )).'}';
+                    return 'a:{'.implode(',', array_map(function($k) use (&$visited, &$refs, $value) { return (is_int($k) ? 'ki:' : 'ks:').$k.'='.static::_serialize($value[$k], $visited, $refs); }, $keys )).'}';
                 }
+            break;
+            case $value instanceof \Closure:
+                return 'c';
             break;
             case is_object($value):
                 $id = spl_object_hash($value);
 
                 if (isset($visited[$id]))
-                    throw new \RuntimeException('Detected cyclic reference in object graph — not supported.');
-                
-                $visited[$id] = true;
+                    return 'r:'.$refs['map'][$id];
 
-                $result = 'o:'.get_class($value).':'.static::_serialize($value instanceof \JsonSerializable
+                $refs['map'][$id] = $refs['next']++;
+                $visited[$id]     = true;
+
+                return 'o:'.get_class($value).':'.static::_serialize($value instanceof \JsonSerializable
                         ? $value->jsonSerialize()
                         : (array)$value,
-                    $visited
+                    $visited,
+                    $refs
                 );
-
-                unset($visited[$id]);
-
-                return $result;
             break;
             default:
                 throw new \RuntimeException('Unsupported type in serialize');

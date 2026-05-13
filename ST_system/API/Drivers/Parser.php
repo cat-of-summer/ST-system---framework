@@ -104,19 +104,27 @@ final class Parser extends IntegrationDriver {
             $nodes    = $nodeList ? iterator_to_array($nodeList) : [];
 
             $extract = $definition['@extract'] ?? null;
+            $asArray = $definition['@array']   ?? true;
 
             if ($extract === null) {
-                $result[$key] = array_map(
+                $values = array_map(
                     fn(\DOMNode $n) => trim(str_replace(["\u{00A0}", "\n"], '', $n->nodeValue)),
                     $nodes
                 );
+                $result[$key] = $asArray ? $values : ($values[0] ?? null);
             } elseif (is_callable($extract)) {
-                $result[$key] = $extract($nodes);
+                $result[$key] = $asArray ? $extract($nodes) : $extract($nodes[0] ?? null);
             } elseif (is_array($extract)) {
-                $items = [];
-                foreach ($nodes as $node)
-                    $items[] = $this->applySchema($extract, $node, $xpath, true);
-                $result[$key] = $items;
+                if ($asArray) {
+                    $items = [];
+                    foreach ($nodes as $node)
+                        $items[] = $this->applySchema($extract, $node, $xpath, true);
+                    $result[$key] = $items;
+                } else {
+                    $result[$key] = isset($nodes[0])
+                        ? $this->applySchema($extract, $nodes[0], $xpath, true)
+                        : null;
+                }
             }
         }
 
