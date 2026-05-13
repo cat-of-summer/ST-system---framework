@@ -214,7 +214,7 @@ final class Main {
 
             case 'c':
                 $pos++;
-                return static fn() => null;
+                return fn() => null;
 
             case 'b':
                 $pos += 2;
