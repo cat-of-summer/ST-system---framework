@@ -66,8 +66,7 @@ final class Bitrix24 extends IntegrationDriver {
         Rule::create(function(&$v) use ($crm_item_rule): bool {
             if ($v === null) return true;
             if (!is_array($v)) return false;
-            $errors = Rule::forEach($crm_item_rule)->apply($v);
-            if (!empty($errors)) throw new \Exception(reset($errors));
+            Rule::forEach($crm_item_rule)->throwable()->apply($v);
             return true;
         })
         ->handleError(fn($v) => 'Некорректный multifield')
@@ -75,13 +74,12 @@ final class Bitrix24 extends IntegrationDriver {
 
         
         $this->on('__construct', function(array $PARAMS = []) {
-            $errors = Rule::object([
+            Rule::object([
                 'endpoint' => Rule::create(fn(&$v) => filter_var($v, FILTER_VALIDATE_URL) !== false)
                     ->handleError(fn($v) => 'Задана некорректная точка API')
                     ->after(fn(&$v) => $v = rtrim($v, '/'))
                     ->skip(true),
-            ])->apply($PARAMS);
-            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            ])->throwable()->apply($PARAMS);
             $this->SETTINGS = $PARAMS;
         });
 
@@ -139,8 +137,7 @@ final class Bitrix24 extends IntegrationDriver {
                             'PHONE' => 'nullable|multifield',
                             'EMAIL' => 'nullable|multifield',
                         ], $this->extraSchemas['crm.contact.add']['FIELDS'] ?? []);
-                        $errors = Rule::object($schema)->apply($v);
-                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        Rule::object($schema)->throwable()->apply($v);
                         return true;
                     })->handleError(fn($v) => 'Некорректный FIELDS'),
                     'PARAMS' => Rule::create(function(&$v): bool {
@@ -149,8 +146,7 @@ final class Bitrix24 extends IntegrationDriver {
                         $schema = array_merge([
                             'REGISTER_SONET_EVENT' => 'nullable|bool',
                         ], $this->extraSchemas['crm.contact.add']['PARAMS'] ?? []);
-                        $errors = Rule::object($schema)->apply($v);
-                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        Rule::object($schema)->throwable()->apply($v);
                         return true;
                     })->handleError(fn($v) => 'Некорректный PARAMS'),
                 ],
@@ -200,8 +196,7 @@ final class Bitrix24 extends IntegrationDriver {
                             'UTM_TERM'              => 'nullable|string',
                             'TRACE'                 => 'nullable|string',
                         ], $this->extraSchemas['crm.deal.add']['FIELDS'] ?? []);
-                        $errors = Rule::object($schema)->apply($v);
-                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        Rule::object($schema)->throwable()->apply($v);
                         return true;
                     })->handleError(fn($v) => 'Некорректный FIELDS'),
                     'PARAMS' => Rule::create(function(&$v): bool {
@@ -210,8 +205,7 @@ final class Bitrix24 extends IntegrationDriver {
                         $schema = array_merge([
                             'REGISTER_SONET_EVENT' => 'nullable|bool',
                         ], $this->extraSchemas['crm.deal.add']['PARAMS'] ?? []);
-                        $errors = Rule::object($schema)->apply($v);
-                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        Rule::object($schema)->throwable()->apply($v);
                         return true;
                     })->handleError(fn($v) => 'Некорректный PARAMS'),
                 ],

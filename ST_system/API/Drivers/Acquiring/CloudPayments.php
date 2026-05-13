@@ -14,11 +14,10 @@ final class CloudPayments extends IntegrationDriver {
     protected function __init(): void {
 
         $this->on('__construct', function(array $PARAMS) {
-            $errors = Rule::object([
+            Rule::object([
                 'public_id'  => 'required|string',
                 'api_secret' => 'required|string',
-            ])->apply($PARAMS);
-            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            ])->throwable()->apply($PARAMS);
             $this->SETTINGS = $PARAMS;
         });
 

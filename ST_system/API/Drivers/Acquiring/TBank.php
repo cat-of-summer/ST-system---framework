@@ -38,11 +38,10 @@ final class TBank extends IntegrationDriver {
     protected function __init(): void
     {
         $this->on('__construct', function(array $PARAMS) {
-            $errors = Rule::object([
+            Rule::object([
                 'terminal_key' => 'required|string',
                 'password'     => 'required|string',
-            ])->apply($PARAMS);
-            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            ])->throwable()->apply($PARAMS);
             $this->SETTINGS = $PARAMS;
         });
 

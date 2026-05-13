@@ -147,13 +147,7 @@ final class Schema
         });
 
         $result = $data;
-        $errors = Rule::scope($ctx, fn() => Rule::object($ruleSchema)->apply($result));
-
-        if (!empty($errors)) {
-            throw new \RuntimeException(
-                "Schema '{$ctx}' validation failed:\n" . implode("\n", $errors)
-            );
-        }
+        Rule::scope($ctx, fn() => Rule::object($ruleSchema)->throwable()->apply($result));
 
         foreach ($computed as $key => $fn) {
             $result[$key] = $fn($result);

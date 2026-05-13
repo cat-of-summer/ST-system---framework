@@ -70,8 +70,7 @@ final class TelegramBot extends IntegrationDriver {
 
     private static function process_inline_keyboard(array $rows): array {
         return array_map(fn($row) => array_map(function ($btn) {
-            $errors = Rule::object(['text' => 'required|string', 'url' => 'nullable|url', 'callback_data' => 'nullable|string'])->apply($btn);
-            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            Rule::object(['text' => 'required|string', 'url' => 'nullable|url', 'callback_data' => 'nullable|string'])->throwable()->apply($btn);
             if (!empty($btn['url'])) unset($btn['callback_data']);
             return $btn;
         }, $row), $rows);
@@ -79,8 +78,7 @@ final class TelegramBot extends IntegrationDriver {
 
     private static function process_keyboard(array $rows): array {
         return array_map(fn($row) => array_map(function ($btn) {
-            $errors = Rule::object(['text' => 'required|string'])->apply($btn);
-            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            Rule::object(['text' => 'required|string'])->throwable()->apply($btn);
             return $btn;
         }, $row ?: []), $rows ?: []);
     }
@@ -93,8 +91,7 @@ final class TelegramBot extends IntegrationDriver {
             'one_time_keyboard' => 'nullable|bool',
             'is_persistent'     => 'nullable|bool',
         ];
-        $errors = Rule::object($schema)->apply($v);
-        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+        Rule::object($schema)->throwable()->apply($v);
         if (!empty($v['inline_keyboard']))
             unset($v['keyboard'], $v['resize_keyboard'], $v['one_time_keyboard'], $v['is_persistent']);
         return json_encode($v);
@@ -169,8 +166,7 @@ final class TelegramBot extends IntegrationDriver {
                 ],
                 'on_prepare' => function(&$params) {
                     $params['media'] = json_encode(array_map(function($item) {
-                        $errors = Rule::get('media')->apply($item);
-                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        Rule::get('media')->throwable()->apply($item);
                         if (($item['parse_mode'] ?? '') === 'HTML' && isset($item['caption']))
                             $item['caption'] = self::normalizeHtml($item['caption']);
                         return $item;

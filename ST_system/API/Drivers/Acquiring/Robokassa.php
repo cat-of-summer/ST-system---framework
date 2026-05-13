@@ -193,15 +193,14 @@ final class Robokassa extends IntegrationDriver
     protected function __init(): void
     {
         $this->on('__construct', function(array $PARAMS) {
-            $errors = Rule::object([
+            Rule::object([
                 'merchant_login' => 'required|string',
                 'password1'      => 'required|string',
                 'password2'      => 'required|string',
                 'hash_algo'      => Rule::create(fn(&$v) => $v === null || in_array($v, ['md5','sha1','sha256','sha384','sha512'], true))
                     ->handleError(fn($v) => 'Недопустимый алгоритм хеширования'),
                 'test_mode'      => 'nullable|bool',
-            ])->apply($PARAMS);
-            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            ])->throwable()->apply($PARAMS);
             $PARAMS['hash_algo'] ??= 'md5';
             $PARAMS['test_mode']   = (bool)($PARAMS['test_mode'] ?? false);
             $this->SETTINGS = $PARAMS;

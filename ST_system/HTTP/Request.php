@@ -31,6 +31,13 @@ class Request {
 
     private $data = [];
 
+    protected bool $throwable = false;
+
+    public function throwable(bool $bool = true): self {
+        $this->throwable = $bool;
+        return $this;
+    }
+
     protected function __init(): void {}
     protected function __schema(): array { return []; }
 
@@ -65,7 +72,9 @@ class Request {
 
         $errors = [];
         Rule::scope(static::class, function() use ($schema, &$errors) {
-            $errors = Rule::object($schema)->apply($this->data['data']);
+            $rule = Rule::object($schema);
+            if ($this->throwable) $rule->throwable();
+            $errors = $rule->apply($this->data['data']);
         });
 
         foreach (['get', 'post', 'query', 'files'] as $key) {
@@ -76,6 +85,19 @@ class Request {
                     unset($this->data[$key][$k]);
             }
         }
+
+        return $errors;
+    }
+
+    private function check(array $schema): array {
+        $this->data();
+
+        $errors = [];
+        Rule::scope(static::class, function() use ($schema, &$errors) {
+            $rule = Rule::object($schema);
+            if ($this->throwable) $rule->throwable();
+            $errors = $rule->check($this->data['data']);
+        });
 
         return $errors;
     }

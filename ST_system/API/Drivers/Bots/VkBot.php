@@ -29,11 +29,10 @@ final class VkBot extends IntegrationDriver {
     protected function __init(): void {
 
         $this->on('__construct', function(array $params) {
-            $errors = Rule::object([
+            Rule::object([
                 'client_id'     => Rule::create(fn(&$v) => is_int($v))->handleError(fn($v) => 'Передан некорректный client_id')->skip(true),
                 'client_secret' => Rule::create(fn(&$v) => is_string($v))->handleError(fn($v) => 'Передан некорректный client_secret')->skip(true),
-            ])->apply($params);
-            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            ])->throwable()->apply($params);
 
             $this->client_id     = $params['client_id'];
             $this->client_secret = $params['client_secret'];
@@ -62,13 +61,12 @@ final class VkBot extends IntegrationDriver {
 
             [$request_url] = $this->build_url('authorize', (string)static::config('oauth_point'));
 
-            $errors = Rule::object([
+            Rule::object([
                 'redirect_uri'  => Rule::create(fn(&$v) => $v === null || (is_string($v) && $v !== ''))->handleError(fn($v) => 'Некорректный redirect_uri'),
                 'scope'         => Rule::create(fn(&$v) => $v === null || is_array($v))->handleError(fn($v) => 'scope должен быть массивом'),
                 'display'       => Rule::create(fn(&$v) => $v === null || in_array($v, ['page', 'popup', 'mobile'], true))->handleError(fn($v) => 'Некорректный display'),
                 'response_type' => Rule::create(fn(&$v) => $v === null || in_array($v, ['code', 'token'], true))->handleError(fn($v) => 'Некорректный response_type'),
-            ])->apply($params);
-            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            ])->throwable()->apply($params);
             $params['scope']         = $params['scope']         ?? [];
             $params['display']       = $params['display']       ?? 'page';
             $params['response_type'] = $params['response_type'] ?? 'token';
@@ -98,10 +96,9 @@ final class VkBot extends IntegrationDriver {
                     case 'code':
                         [$request_url] = $this->build_url('access_token', (string)static::config('oauth_point'));
 
-                        $errors = Rule::object([
+                        Rule::object([
                             'code' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'Некорректный код авторизации!')->skip(true),
-                        ])->apply($params);
-                        if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                        ])->throwable()->apply($params);
 
                         $curl = $this->curl_init($request_url, 'POST', [
                             'redirect_uri'  => $this->redirect_uri,
@@ -124,12 +121,11 @@ final class VkBot extends IntegrationDriver {
                         break;
                 }
 
-                $errors = Rule::object([
+                Rule::object([
                     'access_token' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'Некорректный параметр access_token')->skip(true),
                     'user_id'      => Rule::create(fn(&$v) => is_int($v) && $v > 0)->handleError(fn($v) => 'Некорректный параметр user_id')->skip(true),
                     'expires_in'   => Rule::create(fn(&$v) => is_int($v))->handleError(fn($v) => 'Некорректный параметр expires_in')->skip(true),
-                ])->apply($result);
-                if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+                ])->throwable()->apply($result);
 
                 $this->save_token($result['access_token'], [
                     'expires_in' => $result['expires_in'],

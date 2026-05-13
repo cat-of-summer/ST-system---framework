@@ -41,12 +41,10 @@ final class Mistral extends OpenAICompatibleDriver {
 
     protected function __init(): void {
         $this->on('__construct', function(array $config) {
-            $errors = Rule::object([
+            Rule::object([
                 'token' => Rule::create(['required', 'string']),
                 'alias' => 'nullable|string',
-            ])
-            ->handleError(fn($v, $errors) => throw new \Exception(implode(', ', $errors)))
-            ->apply($config);
+            ])->throwable()->apply($config);
 
             $this->token = $config['token'];
 

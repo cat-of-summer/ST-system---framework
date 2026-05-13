@@ -16,7 +16,7 @@ final class Sdek extends IntegrationDriver {
         
         $r_location = Rule::create(function(&$v) {
             if (!is_array($v)) return false;
-            $errors = Rule::object([
+            Rule::object([
                 'code'             => 'nullable|int',
                 'postal_code'      => 'nullable|string',
                 'country_code'     => 'nullable|string',
@@ -25,21 +25,19 @@ final class Sdek extends IntegrationDriver {
                 'contragent_type'  => 'default:INDIVIDUAL|in:LEGAL_ENTITY,INDIVIDUAL',
                 'longitude'        => 'nullable|string',
                 'latitude'         => 'nullable|string',
-            ])->apply($v);
-            if (!empty($errors)) throw new \Exception($errors[0]);
+            ])->throwable()->apply($v);
             return true;
         })->handleError(fn($v) => '������������ CalculatorLocationDto')->skip(true);
 
         $r_packages = Rule::create(function(&$v) {
             if (!is_array($v)) return false;
             foreach ($v as &$item) {
-                $errors = Rule::object([
+                Rule::object([
                     'weight' => 'required|int',
                     'length' => 'nullable|int',
                     'width'  => 'nullable|int',
                     'height' => 'nullable|int',
-                ])->apply($item);
-                if (!empty($errors)) throw new \Exception($errors[0]);
+                ])->throwable()->apply($item);
             }
             unset($item);
             return true;

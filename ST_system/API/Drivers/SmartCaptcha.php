@@ -40,7 +40,7 @@ final class SmartCaptcha extends IntegrationDriver {
 
     protected function __init(): void {
         $this->on('__construct', function(array $config = []) {
-            $errors = Rule::scope(static::class, fn() => Rule::object([
+            Rule::scope(static::class, fn() => Rule::object([
                 'alias'          => 'sometimes|string',
                 'client_key'     => ['required|string', Rule::regex(self::KEY_REGEX)->handleError(fn() => 'invalid format')],
                 'secret'         => ['required|string', Rule::regex(self::KEY_REGEX)->handleError(fn() => 'invalid format')],
@@ -53,10 +53,7 @@ final class SmartCaptcha extends IntegrationDriver {
                 'shieldPosition' => 'sometimes|string',
                 'class'          => 'sometimes|string',
                 'style'          => 'sometimes|string',
-            ])->apply($config));
-
-            if (!empty($errors))
-                throw new \InvalidArgumentException('SmartCaptcha config: ' . implode('; ', $errors));
+            ])->throwable()->apply($config));
 
             $alias = $config['alias'] ?? 'smartCaptcha';
 

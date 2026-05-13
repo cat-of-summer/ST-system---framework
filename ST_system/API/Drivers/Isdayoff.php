@@ -29,14 +29,13 @@ final class Isdayoff extends IntegrationDriver {
             });
 
         $this->on('__construct', function(array $PARAMS = []) {
-            $errors = Rule::object([
+            Rule::object([
                 'pre'       => 'nullable|bool',
                 'covid'     => 'nullable|bool',
                 'sd'        => 'nullable|bool',
                 'delimeter' => Rule::create(fn(&$v) => $v === null || (is_string($v) && $v !== '' && strlen($v) <= 7))
                     ->handleError(fn($v) => 'delimeter ������ ���� ������� ������ �� 7 ��������'),
-            ])->apply($PARAMS);
-            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            ])->throwable()->apply($PARAMS);
             $PARAMS['pre']       = (bool)($PARAMS['pre']       ?? false);
             $PARAMS['covid']     = (bool)($PARAMS['covid']     ?? false);
             $PARAMS['sd']        = (bool)($PARAMS['sd']        ?? false);

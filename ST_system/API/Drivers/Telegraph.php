@@ -72,13 +72,12 @@ final class Telegraph extends IntegrationDriver {
         });
 
         $this->on('__construct', function (array $PARAMS = []) {
-            $errors = Rule::object([
+            Rule::object([
                 'short_name'  => 'required|string',
                 'author_name' => 'nullable|string',
                 'author_url'  => 'nullable|url',
                 'base_url'    => 'nullable|url',
-            ])->apply($PARAMS);
-            if (!empty($errors)) throw new \InvalidArgumentException($errors[0]);
+            ])->throwable()->apply($PARAMS);
 
             $this->base_url = $PARAMS['base_url'] ?? $this->detectBaseUrl();
 
