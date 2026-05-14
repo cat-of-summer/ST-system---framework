@@ -12,6 +12,23 @@ final class DoctorsReviewsParser extends DefaultParser {
         ]);
     }
 
+    protected function __init(): void {
+        parent::__init();
+
+        $this->on('before_fetch', function($input) {
+            if (is_array($input) && isset($input['vrach_id']) && is_array($input['vrach_id']))
+                throw new \InvalidArgumentException("DoctorsReviewsParser: 'vrach_id' должен быть скалярным значением");
+        });
+
+        $this->on('after_fetch_one', function(&$result) {
+            $result = $result['data'];
+        });
+
+        $this->on('after_fetch', function(&$results) {
+            $results = $results[0] ?? [];
+        });
+    }
+
     protected function getSchema(): array {
         return [
             'name' => [

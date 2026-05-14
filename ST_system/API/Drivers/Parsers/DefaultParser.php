@@ -13,6 +13,12 @@ class DefaultParser extends IntegrationDriver {
 
     private static array $last_fetch_per_domain = [];
 
+    protected static function getReservedEvents(): array {
+        return array_merge(parent::getReservedEvents(), [
+            'before_fetch', 'before_fetch_one', 'after_fetch_one', 'after_fetch',
+        ]);
+    }
+
     protected function getEntrypoint(): string { return ''; }
     protected function getSchema(): array      { return []; }
     protected function getTemplate(): string   { return ''; }
@@ -78,6 +84,55 @@ class DefaultParser extends IntegrationDriver {
         $schema     = $this->getSchema()   ?: $this->schema;
         $template   = $this->getTemplate() ?: $this->template;
 
+        $this->fire('before_fetch', $input);
+
+        $calls = $this->normalizeCalls($input);
+
+        $results = [];
+        foreach ($calls as $callInput) {
+            $expanded_calls = (is_array($callInput) && !empty($callInput) && !array_is_list($callInput))
+                ? $this->expandParams($callInput)
+                : [$callInput];
+
+            foreach ($expanded_calls as $expanded) {
+                $this->fire('before_fetch_one', $expanded);
+                $one = $this->fetchOne($expanded, $schema, $template, $entrypoint);
+                $this->fire('after_fetch_one', $one);
+                $results[] = $one;
+            }
+        }
+
+        $this->fire('after_fetch', $results);
+
+        return $results;
+    }
+
+    private function normalizeCalls(string|array|null $input): array {
+        if (!is_array($input)) return [$input];
+
+        if ($input !== [] && array_is_list($input)) {
+            foreach ($input as $item)
+                if (!is_array($item)) return [$input];
+            return $input;
+        }
+
+        return [$input];
+    }
+
+    private function expandParams(array $params): array {
+        $sets = [[]];
+        foreach ($params as $key => $value) {
+            $candidates = is_array($value) ? array_values($value) : [$value];
+            $next = [];
+            foreach ($sets as $set)
+                foreach ($candidates as $c)
+                    $next[] = $set + [$key => $c];
+            $sets = $next;
+        }
+        return $sets;
+    }
+
+    private function fetchOne(string|array|null $input, array $schema, string $template, string $entrypoint): array {
         $url  = $this->resolveUrl($input, $template, $entrypoint);
         $data = is_array($input)
             ? array_merge($input, ['url' => $url])
@@ -145,7 +200,10 @@ class DefaultParser extends IntegrationDriver {
         $dom->loadHTML($raw['response']);
         libxml_clear_errors();
 
-        $result = $this->applySchema($schema, $dom, new \DOMXPath($dom), $data);
+        $result = [
+            'input' => $data,
+            'data'  => $this->applySchema($schema, $dom, new \DOMXPath($dom), $data),
+        ];
 
         if ($cache !== null) $cache->set($result);
 
