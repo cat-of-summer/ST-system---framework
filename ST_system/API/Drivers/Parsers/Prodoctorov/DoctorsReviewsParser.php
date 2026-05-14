@@ -15,7 +15,15 @@ final class DoctorsReviewsParser extends DefaultParser {
             'avatar' => [
                 '@xpath'   => '//img[@itemprop="image" and contains(@class,"b-doctor-intro__avatar")]/@src',
                 '@array'   => false,
-                '@extract' => fn($n) => $n?->nodeValue,
+                '@extract' => function($n, $data) {
+                    if (!$n) return null;
+                    $src = $n->nodeValue;
+                    if ($src && strpos($src, 'http') !== 0) {
+                        $p   = parse_url($data['url']);
+                        $src = $p['scheme'] . '://' . $p['host'] . $src;
+                    }
+                    return $src;
+                },
             ],
             'price' => [
                 '@xpath'   => '//div[contains(@class,"b-doctor-intro__price")]',
@@ -55,16 +63,31 @@ final class DoctorsReviewsParser extends DefaultParser {
                         '@array' => false,
                     ],
                     'story' => [
-                        '@xpath' => './/div[contains(@class,"b-review-card__comment-title") and normalize-space()="История пациента"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
-                        '@array' => false,
+                        '@xpath'   => './/div[contains(@class,"b-review-card__comment-title") and normalize-space()="История пациента"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
+                        '@array'   => false,
+                        '@extract' => fn($n) => $n ? trim(preg_replace(
+                            ['/\s*\[(?:…|\.\.\.)\]\s*/u', '/[ \t]+/'],
+                            [' ', ' '],
+                            str_replace(["\u{00A0}", "\n"], ' ', $n->nodeValue)
+                        )) : null,
                     ],
                     'liked' => [
-                        '@xpath' => './/div[contains(@class,"b-review-card__comment-title") and normalize-space()="Понравилось"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
-                        '@array' => false,
+                        '@xpath'   => './/div[contains(@class,"b-review-card__comment-title") and normalize-space()="Понравилось"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
+                        '@array'   => false,
+                        '@extract' => fn($n) => $n ? trim(preg_replace(
+                            ['/\s*\[(?:…|\.\.\.)\]\s*/u', '/[ \t]+/'],
+                            [' ', ' '],
+                            str_replace(["\u{00A0}", "\n"], ' ', $n->nodeValue)
+                        )) : null,
                     ],
                     'disliked' => [
-                        '@xpath' => './/div[contains(@class,"b-review-card__comment-title") and normalize-space()="Не понравилось"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
-                        '@array' => false,
+                        '@xpath'   => './/div[contains(@class,"b-review-card__comment-title") and normalize-space()="Не понравилось"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
+                        '@array'   => false,
+                        '@extract' => fn($n) => $n ? trim(preg_replace(
+                            ['/\s*\[(?:…|\.\.\.)\]\s*/u', '/[ \t]+/'],
+                            [' ', ' '],
+                            str_replace(["\u{00A0}", "\n"], ' ', $n->nodeValue)
+                        )) : null,
                     ],
                     'reply' => [
                         '@xpath'   => './/div[contains(@class,"b-review-card__reply") and not(contains(@class,"b-review-card__reply-"))]',
