@@ -142,14 +142,10 @@ final class File {
             return $this->info_data[$key];
         }
 
-        if (isset($this->mime) && is_callable([$this->mime, $name])) {
-            $key = Main::hash([$name, $args]);
-            if (!array_key_exists($key, $this->mime_data))
-                $this->mime_data[$key] = $this->mime->{$name}(...$args);
-            return $this->mime_data[$key];
-        }
-
-        throw new \Exception("Method {$name} not found");
+        $key = Main::hash([$name, $args]);
+        if (!array_key_exists($key, $this->mime_data))
+            $this->mime_data[$key] = $this->mime->{$name}(...$args);
+        return $this->mime_data[$key];
     }
 
     public function getOriginal(bool $force = false) {

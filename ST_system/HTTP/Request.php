@@ -33,7 +33,7 @@ class Request {
 
     protected bool $throwable = false;
 
-    public function throwable(bool $bool = true): self {
+    private function throwable(bool $bool = true): self {
         $this->throwable = $bool;
         return $this;
     }

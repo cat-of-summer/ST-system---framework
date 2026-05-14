@@ -678,7 +678,7 @@ final class Rule {
         
         (self::create(function(&$v): bool {
             if (is_bool($v)) return true;
-            if (in_array($v, ['0', '1', 0, 1, 'true', 'false', 'checked'], true)) {
+            if (in_array($v, ['0', '1', 0, 1, 'true', 'false', 'checked', 'on', 'off'], true)) {
                 $v = is_string($v) ? filter_var($v, FILTER_VALIDATE_BOOLEAN) : (bool)$v;
                 return true;
             }
