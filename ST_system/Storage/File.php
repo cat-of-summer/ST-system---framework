@@ -265,10 +265,6 @@ final class File {
         return array_map(fn($file) => new static($file), array_filter($results));
     }
 
-    private static function getTtl(array $headers = []): int {
-        return Main::getHttpCacheTtl($headers, (int)static::config('cache.ttl'));
-    }
-
     public function getMeta(bool $force = false): array {
         if (!$this->isUri()) return [];
 
@@ -299,14 +295,8 @@ final class File {
         curl_close($curl);
 
         if (!$error) {
-            $headers = [];
-            foreach (preg_split('#\r\n#', trim(explode("\r\n\r\n", ($response ?? '')."\r\n\r\n", 2)[0])) as $line) {
-                if (strpos($line, ':') !== false) {
-                    [$k, $v] = explode(':', $line, 2);
-                    $headers[strtolower(trim($k))] = trim($v);
-                } else
-                    $headers['status-line'] = $line;
-            }
+            $ttl = Main::getHttpCacheTtl($response, (int)static::config('cache.ttl'));
+            $headers = is_array($response) ? $response : [];
 
             $meta = array_merge(
                 $meta,
@@ -314,15 +304,15 @@ final class File {
                 [
                     'http_code' => $info['http_code'] ?? null,
                     'effective_url' => $info['url'] ?? $url,
-                    'headers_cache_expires_in' => time() + static::getTtl($headers),
-                    'content_length' => ($info['download_content_length'] ?? 0) > 0 
+                    'headers_cache_expires_in' => time() + $ttl,
+                    'content_length' => ($info['download_content_length'] ?? 0) > 0
                         ? $info['download_content_length']
                         : $headers['content_length'] ?? 0
                 ]
             );
 
             if (($meta['http_code'] ?? null) != 200 && is_file($this->cache->file))
-                $meta['expires_in'] = time() + static::getTtl($meta);
+                $meta['expires_in'] = time() + Main::getHttpCacheTtl($meta, (int)static::config('cache.ttl'));
 
             $this->cache->setMeta($meta, 0, false);
         }
@@ -395,7 +385,7 @@ final class File {
 
                 rename($this->cache->file.'.temp', $this->cache->file);
 
-                $ttl = static::getTtl($headers);
+                $ttl = Main::getHttpCacheTtl($headers, (int)static::config('cache.ttl'));
                 $cache_expires_in = time() + $ttl;
 
                 $meta = array_merge(

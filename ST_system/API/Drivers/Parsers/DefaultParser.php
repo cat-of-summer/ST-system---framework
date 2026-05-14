@@ -115,14 +115,7 @@ class DefaultParser extends IntegrationDriver {
                 curl_close($head);
 
                 if (!$head_errno) {
-                    $head_headers = [];
-                    foreach (preg_split('#\r\n#', trim(explode("\r\n\r\n", ((string)$head_response)."\r\n\r\n", 2)[0])) as $line)
-                        if (strpos($line, ':') !== false) {
-                            [$hk, $hv] = explode(':', $line, 2);
-                            $head_headers[strtolower(trim($hk))] = trim($hv);
-                        }
-
-                    $head_ttl = Main::getHttpCacheTtl($head_headers);
+                    $head_ttl = Main::getHttpCacheTtl($head_response);
                     if ($head_ttl > 0) {
                         $cache->setMeta(['expires_in' => time() + $head_ttl], 0, true);
                         return $cache->get();

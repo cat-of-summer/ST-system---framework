@@ -435,7 +435,21 @@ final class Main {
         return $result;
     }
 
-    public static function getHttpCacheTtl(array $headers, int $default = 0): int {
+    public static function getHttpCacheTtl(&$headers, int $default = 0): int {
+        if (is_string($headers)) {
+            $parsed = [];
+            foreach (preg_split('#\r\n#', trim(explode("\r\n\r\n", $headers."\r\n\r\n", 2)[0])) as $line) {
+                if (strpos($line, ':') !== false) {
+                    [$k, $v] = explode(':', $line, 2);
+                    $parsed[strtolower(trim($k))] = trim($v);
+                } elseif ($line !== '')
+                    $parsed['status-line'] = $line;
+            }
+            $headers = $parsed;
+        }
+
+        if (!is_array($headers)) return $default;
+
         if (!empty($headers['cache-control'])) {
             if (preg_match('/\bmax-age\s*=\s*(\d+)/i', $headers['cache-control'], $m))
                 return (int)$m[1];
