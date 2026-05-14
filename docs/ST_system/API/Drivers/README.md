@@ -13,7 +13,6 @@
 ## Файлы
 
 - [Isdayoff.php](Isdayoff.php.md)
-- [Parser.php](Parser.php.md)
 - [Sdek.php](Sdek.php.md)
 - [SmartCaptcha.php](SmartCaptcha.php.md)
 - [SmsRu.php](SmsRu.php.md)
