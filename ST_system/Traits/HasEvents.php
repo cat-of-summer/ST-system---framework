@@ -14,7 +14,7 @@ trait HasEvents {
         $this->listeners[$event][] = $listener;
     }
 
-    private function fire(string $event, &...$params) {
+    protected function fire(string $event, &...$params) {
         if (empty($this->listeners[$event])) return false;
 
         foreach ($this->listeners[$event] as $listener)
