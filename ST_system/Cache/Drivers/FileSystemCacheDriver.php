@@ -38,8 +38,11 @@ class FileSystemCacheDriver extends CacheDriver {
         return $this->getFileAttribute().'.meta';
     }
 
-    private function initDir(string $dir): bool {
+    public function initDir(string $dir = ''): bool {
         static $initialized = [];
+
+        if ($dir === '') $dir = $this->attributes['dir'];
+
         if (isset($initialized[$dir])) return $initialized[$dir];
         if (!is_dir($dir)) @mkdir($dir, 0775, true);
         return $initialized[$dir] = is_dir($dir) && is_writable($dir);

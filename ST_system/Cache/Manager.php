@@ -144,23 +144,16 @@ final class Manager {
                 $data = $cb();
                 $this->driver->set($data, (int)$ttl, (string)$file);
                 return $data;
-
-            case 'set':
-            case 'get':
-            case 'getMeta':
-            case 'setMeta':
-            case 'isExpired':
-            case 'isValid':
-            case 'exists':
-                return $this->driver->{$name}(...$args);
-
+            
             case 'purge':
                 return ($args[0] ?? true) ? $this->driver->purge() : $this->driver->purgeExpired();
 
             case 'purgeBase':
                 return ($args[0] ?? true) ? $this->driver->purgeBase() : $this->driver->purgeExpiredBase();
+
+            default:
+                return $this->driver->{$name}(...$args);
         }
-        throw new \BadMethodCallException("Method {$name} not found");
     }
 
     public function __get(string $name) {
