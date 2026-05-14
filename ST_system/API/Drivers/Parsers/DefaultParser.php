@@ -44,8 +44,8 @@ class DefaultParser extends IntegrationDriver {
     protected function __init(): void {
         $this->on('__construct', function(array $params = []) {
             Rule::object([
-                'schema'   => 'array|nullable|default:[]',
-                'template' => 'string|nullable|default:',
+                'schema'   => ['array|nullable', Rule::default([])],
+                'template' => ['string|nullable', Rule::default('')],
             ])->throwable()->apply($params);
 
             $this->schema   = $params['schema'];
