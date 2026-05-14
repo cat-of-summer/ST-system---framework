@@ -6,6 +6,12 @@ use ST_system\API\Drivers\Parsers\DefaultParser;
 
 final class DoctorsReviewsParser extends DefaultParser {
 
+    protected static function getDefaultConfig(): array {
+        return array_merge(parent::getDefaultConfig(), [
+            'fetch_delay_ms' => 5000
+        ]);
+    }
+
     protected function getSchema(): array {
         return [
             'name' => [
