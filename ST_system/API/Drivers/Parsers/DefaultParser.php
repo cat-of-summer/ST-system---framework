@@ -1,11 +1,11 @@
 <?php
 
-namespace ST_system\API\Drivers;
+namespace ST_system\API\Drivers\Parsers;
 
 use ST_system\API\IntegrationDriver;
 use ST_system\Rule;
 
-class Parser extends IntegrationDriver {
+class DefaultParser extends IntegrationDriver {
 
     private array  $schema   = [];
     private string $template = '';
