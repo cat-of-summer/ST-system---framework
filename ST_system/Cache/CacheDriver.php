@@ -63,6 +63,8 @@ abstract class CacheDriver {
     abstract protected function blobExists(string $file): bool;
     abstract protected function purgeStorage(): void;
     abstract protected function purgeBaseStorage(): void;
+    abstract protected function purgeExpiredStorage(): void;
+    abstract protected function purgeExpiredBaseStorage(): void;
 
     final public function set($data, int $ttl = 0, string $file = ''): void {
         if ($file === '') $file = $this->attributes['file'];
@@ -146,17 +148,23 @@ abstract class CacheDriver {
     }
 
     final public function purge(): void {
-        $this->data_cache   = [];
-        $this->meta_cache   = [];
-        $this->exists_cache = [];
+        $this->data_cache = $this->meta_cache = $this->exists_cache = [];
         $this->purgeStorage();
     }
 
     final public function purgeBase(): void {
-        $this->data_cache   = [];
-        $this->meta_cache   = [];
-        $this->exists_cache = [];
+        $this->data_cache = $this->meta_cache = $this->exists_cache = [];
         $this->purgeBaseStorage();
+    }
+
+    final public function purgeExpired(): void {
+        $this->data_cache = $this->meta_cache = $this->exists_cache = [];
+        $this->purgeExpiredStorage();
+    }
+
+    final public function purgeExpiredBase(): void {
+        $this->data_cache = $this->meta_cache = $this->exists_cache = [];
+        $this->purgeExpiredBaseStorage();
     }
 
     final protected function encode($data): array {

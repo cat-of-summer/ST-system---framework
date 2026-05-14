@@ -120,4 +120,34 @@ class DatabaseCacheDriver extends CacheDriver {
             if (is_array($keys) && $keys) $this->connection->delete($keys);
         } while ($cursor !== 0);
     }
+
+    protected function purgeExpiredStorage(): void {
+        $meta_field = $this->attributes['file'].'.meta';
+        $raw     = $this->connection->read($this->attributes['bucket'], $meta_field);
+        $decoded = is_string($raw) ? @json_decode($raw, true) : null;
+        $expires = is_array($decoded) ? ($decoded['expires_in'] ?? 0) : 0;
+
+        if ($expires !== -1 && $expires < time())
+            $this->connection->delete($this->attributes['bucket']);
+    }
+
+    protected function purgeExpiredBaseStorage(): void {
+        $meta_field = $this->attributes['file'].'.meta';
+        $cursor = 0;
+        do {
+            $keys = $this->connection->scan($cursor, $this->attributes['prefix'].'*', 500);
+            if (!is_array($keys) || !$keys) continue;
+
+            $now = time();
+            $to_delete = [];
+            foreach ($keys as $bucket) {
+                $raw     = $this->connection->read($bucket, $meta_field);
+                $decoded = is_string($raw) ? @json_decode($raw, true) : null;
+                $expires = is_array($decoded) ? ($decoded['expires_in'] ?? 0) : 0;
+                if ($expires !== -1 && $expires < $now) $to_delete[] = $bucket;
+            }
+
+            if ($to_delete) $this->connection->delete($to_delete);
+        } while ($cursor !== 0);
+    }
 }

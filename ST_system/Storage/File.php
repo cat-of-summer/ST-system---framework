@@ -266,23 +266,7 @@ final class File {
     }
 
     private static function getTtl(array $headers = []): int {
-        $ttl = static::config('cache.ttl');
-
-        if (!empty($headers['cache-control'])) {
-            if (preg_match('/\bmax-age\s*=\s*(\d+)/i', $headers['cache-control'], $m))
-                $ttl = (int)$m[1];
-            elseif (preg_match('/\bs-maxage\s*=\s*(\d+)/i', $headers['cache-control'], $m))
-                $ttl = (int)$m[1];
-            elseif (preg_match('/\b(no-cache|no-store)\b/i', $headers['cache-control']))
-                $ttl = 0;
-        } elseif (!empty($headers['expires'])) {
-            $expires = strtotime($headers['expires']);
-
-            if ($expires !== false)
-                $ttl = max($expires - time(), 0);
-        }
-
-        return (int)$ttl;
+        return Main::getHttpCacheTtl($headers, (int)static::config('cache.ttl'));
     }
 
     public function getMeta(bool $force = false): array {
@@ -460,7 +444,7 @@ final class File {
         ])->purgeBase();
     }
 
-    
+
     public function purgeCache(): self {
         $this->cache->purge();
 

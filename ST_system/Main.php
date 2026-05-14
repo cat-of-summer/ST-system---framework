@@ -435,6 +435,24 @@ final class Main {
         return $result;
     }
 
+    public static function getHttpCacheTtl(array $headers, int $default = 0): int {
+        if (!empty($headers['cache-control'])) {
+            if (preg_match('/\bmax-age\s*=\s*(\d+)/i', $headers['cache-control'], $m))
+                return (int)$m[1];
+            if (preg_match('/\bs-maxage\s*=\s*(\d+)/i', $headers['cache-control'], $m))
+                return (int)$m[1];
+            if (preg_match('/\b(no-cache|no-store)\b/i', $headers['cache-control']))
+                return 0;
+        }
+
+        if (!empty($headers['expires'])) {
+            $expires = strtotime($headers['expires']);
+            if ($expires !== false) return max($expires - time(), 0);
+        }
+
+        return $default;
+    }
+
     public static function preparePath(string $path, int $depth = 0): string {
         if (strpos($path, '~') === 0)
             $path = (Config::env('DOCUMENT_ROOT') ?: Config::env('COMPOSER_ROOT')).'/'.trim($path, '/~');

@@ -138,6 +138,47 @@ class FileSystemCacheDriver extends CacheDriver {
         $this->purgeDirectory($this->attributes['base_dir']);
     }
 
+    protected function purgeExpiredStorage(): void {
+        if (!is_dir($this->attributes['dir'])) return;
+        $this->dropExpiredIn($this->attributes['dir']);
+        @rmdir($this->attributes['dir']);
+    }
+
+    protected function purgeExpiredBaseStorage(): void {
+        $base = $this->attributes['base_dir'];
+        if (!is_dir($base)) return;
+
+        $entries = @scandir($base);
+        if (!is_array($entries)) return;
+
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..') continue;
+            $sub = $base.'/'.$entry;
+            if (!is_dir($sub)) continue;
+            $this->dropExpiredIn($sub);
+            @rmdir($sub);
+        }
+    }
+
+    private function dropExpiredIn(string $dir): void {
+        $metas = @glob(rtrim($dir, '/').'/*.meta');
+        if (!is_array($metas)) return;
+
+        $now = time();
+        foreach ($metas as $meta_path) {
+            $content = @file_get_contents($meta_path);
+            if ($content === false) continue;
+            $decoded = @json_decode($content, true);
+            if (!is_array($decoded)) continue;
+
+            $expires = $decoded['expires_in'] ?? 0;
+            if ($expires === -1 || $expires >= $now) continue;
+
+            @unlink(substr($meta_path, 0, -strlen('.meta')));
+            @unlink($meta_path);
+        }
+    }
+
     private function purgeDirectory(string $dir): void {
         $it    = new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS);
         $files = new \RecursiveIteratorIterator($it, \RecursiveIteratorIterator::CHILD_FIRST);

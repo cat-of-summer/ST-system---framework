@@ -3,12 +3,15 @@
 namespace ST_system\API\Drivers\Parsers;
 
 use ST_system\API\IntegrationDriver;
+use ST_system\Main;
 use ST_system\Rule;
 
 class DefaultParser extends IntegrationDriver {
 
     private array  $schema   = [];
     private string $template = '';
+
+    private static array $last_fetch_per_domain = [];
 
     protected function getEntrypoint(): string { return ''; }
     protected function getSchema(): array      { return []; }
@@ -33,7 +36,8 @@ class DefaultParser extends IntegrationDriver {
                 'sec-ch-ua-mobile'          => '?0',
                 'sec-ch-ua-platform'        => '"Windows"',
             ],
-            'follow_redirects'  => true,
+            'follow_redirects' => true,
+            'fetch_delay_ms'   => 1000,
         ];
     }
 
@@ -85,6 +89,57 @@ class DefaultParser extends IntegrationDriver {
 
             if ($cache->isValid())
                 return $cache->get();
+
+            if ($cache->exists()) {
+                $header_list = [];
+                foreach ((array)static::config('headers') as $k => $v) {
+                    if (is_int($k) && is_string($v) && strpos($v, ':') !== false)
+                        [$k, $v] = array_map('trim', explode(':', $v, 2));
+                    $header_list[] = "{$k}: {$v}";
+                }
+
+                $head = curl_init();
+                curl_setopt_array($head, [
+                    CURLOPT_URL            => $url,
+                    CURLOPT_NOBODY         => true,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_HEADER         => true,
+                    CURLOPT_FOLLOWLOCATION => static::config('follow_redirects'),
+                    CURLOPT_USERAGENT      => static::config('headers.user-agent'),
+                    CURLOPT_HTTPHEADER     => $header_list,
+                    CURLOPT_ENCODING       => '',
+                    CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_2_0,
+                ]);
+                $head_response = curl_exec($head);
+                $head_errno    = curl_errno($head);
+                curl_close($head);
+
+                if (!$head_errno) {
+                    $head_headers = [];
+                    foreach (preg_split('#\r\n#', trim(explode("\r\n\r\n", ((string)$head_response)."\r\n\r\n", 2)[0])) as $line)
+                        if (strpos($line, ':') !== false) {
+                            [$hk, $hv] = explode(':', $line, 2);
+                            $head_headers[strtolower(trim($hk))] = trim($hv);
+                        }
+
+                    $head_ttl = Main::getHttpCacheTtl($head_headers);
+                    if ($head_ttl > 0) {
+                        $cache->setMeta(['expires_in' => time() + $head_ttl], 0, true);
+                        return $cache->get();
+                    }
+                }
+            }
+        }
+
+        $delay_ms = (int)static::config('fetch_delay_ms');
+        if ($delay_ms > 0 && ($host = parse_url($url, PHP_URL_HOST))) {
+            $last = self::$last_fetch_per_domain[$host] ?? 0.0;
+            if ($last > 0.0) {
+                $elapsed_ms = (microtime(true) - $last) * 1000.0;
+                if ($elapsed_ms < $delay_ms)
+                    usleep((int)(($delay_ms - $elapsed_ms) * 1000));
+            }
+            self::$last_fetch_per_domain[$host] = microtime(true);
         }
 
         $raw = $this->execute_curl($this->curl_init($url));

@@ -152,9 +152,13 @@ final class Manager {
             case 'isExpired':
             case 'isValid':
             case 'exists':
-            case 'purge':
-            case 'purgeBase':
                 return $this->driver->{$name}(...$args);
+
+            case 'purge':
+                return ($args[0] ?? true) ? $this->driver->purge() : $this->driver->purgeExpired();
+
+            case 'purgeBase':
+                return ($args[0] ?? true) ? $this->driver->purgeBase() : $this->driver->purgeExpiredBase();
         }
         throw new \BadMethodCallException("Method {$name} not found");
     }

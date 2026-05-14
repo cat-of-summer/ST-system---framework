@@ -68,4 +68,29 @@ class SessionCacheDriver extends CacheDriver {
     protected function purgeBaseStorage(): void {
         unset($_SESSION[$this->attributes['prefix']]);
     }
+
+    protected function purgeExpiredStorage(): void {
+        $prefix    = $this->attributes['prefix'];
+        $meta_key  = $this->attributes['file'].'.meta';
+        $meta      = $_SESSION[$prefix][$this->id][$meta_key] ?? null;
+        $expires   = is_array($meta) ? ($meta['expires_in'] ?? 0) : 0;
+
+        if ($expires !== -1 && $expires < time())
+            unset($_SESSION[$prefix][$this->id]);
+    }
+
+    protected function purgeExpiredBaseStorage(): void {
+        $prefix = $this->attributes['prefix'];
+        if (!isset($_SESSION[$prefix]) || !is_array($_SESSION[$prefix])) return;
+
+        $meta_key = $this->attributes['file'].'.meta';
+        $now      = time();
+
+        foreach ($_SESSION[$prefix] as $bucket_id => $entries) {
+            $meta    = is_array($entries) ? ($entries[$meta_key] ?? null) : null;
+            $expires = is_array($meta) ? ($meta['expires_in'] ?? 0) : 0;
+            if ($expires !== -1 && $expires < $now)
+                unset($_SESSION[$prefix][$bucket_id]);
+        }
+    }
 }
