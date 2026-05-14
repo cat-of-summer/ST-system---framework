@@ -7,7 +7,8 @@ use ST_system\Rule;
 
 final class Parser extends IntegrationDriver {
 
-    private array  $schema   = [];
+    private array   $schema   = [];
+    private string $template = '';
 
     protected static function getDefaultConfig(): array {
         return [
@@ -35,10 +36,12 @@ final class Parser extends IntegrationDriver {
     protected function __init(): void {
         $this->on('__construct', function(array $params) {
             Rule::object([
-                'schema' => 'array|required',
+                'schema'   => 'array|required',
+                'template' => 'string|nullable|default:',
             ])->throwable()->apply($params);
-            
-            $this->schema = $params['schema'];
+
+            $this->schema   = $params['schema'];
+            $this->template = $params['template'];
         });
 
         $this->on('before_curl_init', function(&$r, $m, $p, &$config) {
@@ -62,8 +65,12 @@ final class Parser extends IntegrationDriver {
         $this->purgeBase();
     }
 
-    public function fetch(string $url): array {
-        Rule::create('url|required')->throwable()->apply($url);
+    public function fetch($input): array {
+        $url = $this->resolveUrl($input);
+
+        $data = is_array($input)
+            ? array_merge($input, ['url' => $url])
+            : ['url' => $url];
 
         $cache = null;
         if ($this->cache()) {
@@ -83,14 +90,38 @@ final class Parser extends IntegrationDriver {
         $dom->loadHTML($raw['response']);
         libxml_clear_errors();
 
-        $result = $this->applySchema($this->schema, $dom, new \DOMXPath($dom), false);
+        $result = $this->applySchema($this->schema, $dom, new \DOMXPath($dom), $data);
 
         if ($cache !== null) $cache->set($result);
 
         return $result;
     }
 
-    private function applySchema(array $schema, \DOMNode $context, \DOMXPath $xpath, bool $relative): array {
+    private function resolveUrl(string|array $input): string {
+        if ($this->template === '') {
+            if (!is_string($input))
+                throw new \InvalidArgumentException("Parser: template не задан, fetch() принимает только строку");
+            Rule::create('url|required')->throwable()->apply($input);
+            return $input;
+        }
+
+        if (is_array($input)) {
+            $url = $this->template;
+            foreach ($input as $key => $val)
+                $url = str_replace('{' . $key . '}', $val, $url);
+            if (preg_match('/\{[^}]+\}/', $url))
+                throw new \InvalidArgumentException("Parser: в URL остались неразрешённые плейсхолдеры: {$url}");
+            Rule::create('url|required')->throwable()->apply($url);
+            return $url;
+        }
+
+        $pattern = '#^' . preg_replace('/\\\\\{[^}]+\\\\\}/', '[^/]+', preg_quote($this->template, '#')) . '$#';
+        if (!preg_match($pattern, $input))
+            throw new \InvalidArgumentException("Parser: URL не соответствует шаблону '{$this->template}'");
+        return $input;
+    }
+
+    private function applySchema(array $schema, \DOMNode $context, \DOMXPath $xpath, array $data): array {
         $result = [];
 
         foreach ($schema as $key => $definition) {
@@ -101,10 +132,13 @@ final class Parser extends IntegrationDriver {
 
             $selector = $definition['@xpath'];
 
-            if ($relative && strncmp($selector, '//', 2) === 0)
-                $selector = '.' . $selector;
+            $global = isset($selector[0]) && $selector[0] === '~';
+            if ($global)
+                $selector = substr($selector, 1);
+            elseif (!($context instanceof \DOMDocument))
+                $selector = '.' . ltrim($selector, '.');
 
-            $nodeList = $xpath->query($selector, $context);
+            $nodeList = $xpath->query($selector, $global ? null : $context);
             $nodes    = $nodeList ? iterator_to_array($nodeList) : [];
 
             $extract = $definition['@extract'] ?? null;
@@ -117,16 +151,18 @@ final class Parser extends IntegrationDriver {
                 );
                 $result[$key] = $asArray ? $values : ($values[0] ?? null);
             } elseif (is_callable($extract)) {
-                $result[$key] = $asArray ? $extract($nodes) : $extract($nodes[0] ?? null);
+                $result[$key] = $asArray
+                    ? $extract($nodes, $data)
+                    : $extract($nodes[0] ?? null, $data);
             } elseif (is_array($extract)) {
                 if ($asArray) {
                     $items = [];
                     foreach ($nodes as $node)
-                        $items[] = $this->applySchema($extract, $node, $xpath, true);
+                        $items[] = $this->applySchema($extract, $node, $xpath, $data);
                     $result[$key] = $items;
                 } else {
                     $result[$key] = isset($nodes[0])
-                        ? $this->applySchema($extract, $nodes[0], $xpath, true)
+                        ? $this->applySchema($extract, $nodes[0], $xpath, $data)
                         : null;
                 }
             }
