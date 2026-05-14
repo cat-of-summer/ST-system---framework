@@ -11,11 +11,13 @@ class DefaultParser extends IntegrationDriver {
     private array  $schema   = [];
     private string $template = '';
 
+    private array $paramOverrides = [];
+
     private static array $last_fetch_per_domain = [];
 
     protected static function getReservedEvents(): array {
         return array_merge(parent::getReservedEvents(), [
-            'before_fetch', 'before_fetch_one', 'after_fetch_one', 'after_fetch',
+            'before_fetch', 'before_fetch_one', 'after_fetch_one', 'after_fetch', 'after_redirect',
         ]);
     }
 
@@ -76,6 +78,7 @@ class DefaultParser extends IntegrationDriver {
     }
 
     final public function purge(): void {
+        $this->paramOverrides = [];
         $this->purgeBase();
     }
 
@@ -195,6 +198,23 @@ class DefaultParser extends IntegrationDriver {
         if ($raw['error'])
             throw new \RuntimeException("Parser: curl error for '{$url}': {$raw['error']}");
 
+        $effective = $raw['effective_url'] ?? $url;
+        if ($effective !== $url && is_array($input) && $template !== '' && $entrypoint === '') {
+            $overrides = [];
+            $this->fire('after_redirect', $input, $url, $effective, $overrides);
+
+            foreach ($overrides as $key => $map)
+                foreach ((array)$map as $orig => $canon)
+                    $this->paramOverrides[$key][(string)$orig] = $canon;
+
+            $newUrl = $this->resolveUrl($input, $template, $entrypoint);
+            if ($newUrl !== $url) {
+                $url = $newUrl;
+                $data['url'] = $url;
+                if ($this->cache()) $cache = $this->cache()->make($url);
+            }
+        }
+
         $dom = new \DOMDocument();
         libxml_use_internal_errors(true);
         $dom->loadHTML($raw['response']);
@@ -217,8 +237,10 @@ class DefaultParser extends IntegrationDriver {
         if ($template !== '') {
             if (is_array($input)) {
                 $url = $template;
-                foreach ($input as $key => $val)
-                    $url = str_replace('{' . $key . '}', $val, $url);
+                foreach ($input as $key => $val) {
+                    $resolved = $this->paramOverrides[$key][(string)$val] ?? $val;
+                    $url = str_replace('{' . $key . '}', $resolved, $url);
+                }
                 if (preg_match('/\{[^}]+\}/', $url))
                     throw new \InvalidArgumentException("Parser: в URL остались неразрешённые плейсхолдеры: {$url}");
                 Rule::create('url|required')->throwable()->apply($url);

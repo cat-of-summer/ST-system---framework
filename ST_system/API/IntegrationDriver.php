@@ -199,9 +199,10 @@ abstract class IntegrationDriver {
 
     final protected function execute_curl($curl): array {
         $response_data = [
-            'response'  => curl_exec($curl),
-            'error'     => curl_error($curl),
-            'http_code' => curl_getinfo($curl, CURLINFO_HTTP_CODE),
+            'response'      => curl_exec($curl),
+            'error'         => curl_error($curl),
+            'http_code'     => curl_getinfo($curl, CURLINFO_HTTP_CODE),
+            'effective_url' => curl_getinfo($curl, CURLINFO_EFFECTIVE_URL),
         ];
         curl_close($curl);
         return $response_data;
