@@ -1,1 +1,0 @@
-# ClinicPricesParser.php
