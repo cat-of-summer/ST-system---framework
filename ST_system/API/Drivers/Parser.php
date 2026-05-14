@@ -5,10 +5,14 @@ namespace ST_system\API\Drivers;
 use ST_system\API\IntegrationDriver;
 use ST_system\Rule;
 
-final class Parser extends IntegrationDriver {
+class Parser extends IntegrationDriver {
 
-    private array   $schema   = [];
+    private array  $schema   = [];
     private string $template = '';
+
+    protected function getEntrypoint(): string { return ''; }
+    protected function getSchema(): array      { return []; }
+    protected function getTemplate(): string   { return ''; }
 
     protected static function getDefaultConfig(): array {
         return [
@@ -34,9 +38,9 @@ final class Parser extends IntegrationDriver {
     }
 
     protected function __init(): void {
-        $this->on('__construct', function(array $params) {
+        $this->on('__construct', function(array $params = []) {
             Rule::object([
-                'schema'   => 'array|required',
+                'schema'   => 'array|nullable|default:[]',
                 'template' => 'string|nullable|default:',
             ])->throwable()->apply($params);
 
@@ -61,13 +65,16 @@ final class Parser extends IntegrationDriver {
         });
     }
 
-    public function purge(): void {
+    final public function purge(): void {
         $this->purgeBase();
     }
 
-    public function fetch($input): array {
-        $url = $this->resolveUrl($input);
+    final public function fetch(string|array|null $input = null): array {
+        $entrypoint = $this->getEntrypoint();
+        $schema     = $this->getSchema()   ?: $this->schema;
+        $template   = $this->getTemplate() ?: $this->template;
 
+        $url  = $this->resolveUrl($input, $template, $entrypoint);
         $data = is_array($input)
             ? array_merge($input, ['url' => $url])
             : ['url' => $url];
@@ -90,35 +97,44 @@ final class Parser extends IntegrationDriver {
         $dom->loadHTML($raw['response']);
         libxml_clear_errors();
 
-        $result = $this->applySchema($this->schema, $dom, new \DOMXPath($dom), $data);
+        $result = $this->applySchema($schema, $dom, new \DOMXPath($dom), $data);
 
         if ($cache !== null) $cache->set($result);
 
         return $result;
     }
 
-    private function resolveUrl(string|array $input): string {
-        if ($this->template === '') {
-            if (!is_string($input))
-                throw new \InvalidArgumentException("Parser: template не задан, fetch() принимает только строку");
+    private function resolveUrl(string|array|null $input, string $template, string $entrypoint): string {
+        if ($entrypoint !== '')
+            return $entrypoint;
+
+        if ($template !== '') {
+            if (is_array($input)) {
+                $url = $template;
+                foreach ($input as $key => $val)
+                    $url = str_replace('{' . $key . '}', $val, $url);
+                if (preg_match('/\{[^}]+\}/', $url))
+                    throw new \InvalidArgumentException("Parser: в URL остались неразрешённые плейсхолдеры: {$url}");
+                Rule::create('url|required')->throwable()->apply($url);
+                return $url;
+            }
+
+            if (is_string($input)) {
+                $pattern = '#^' . preg_replace('/\\\\\{[^}]+\\\\\}/', '[^/]+', preg_quote($template, '#')) . '$#';
+                if (!preg_match($pattern, $input))
+                    throw new \InvalidArgumentException("Parser: URL не соответствует шаблону '{$template}'");
+                return $input;
+            }
+
+            throw new \InvalidArgumentException("Parser: template задан, fetch() принимает строку или массив параметров");
+        }
+
+        if (is_string($input)) {
             Rule::create('url|required')->throwable()->apply($input);
             return $input;
         }
 
-        if (is_array($input)) {
-            $url = $this->template;
-            foreach ($input as $key => $val)
-                $url = str_replace('{' . $key . '}', $val, $url);
-            if (preg_match('/\{[^}]+\}/', $url))
-                throw new \InvalidArgumentException("Parser: в URL остались неразрешённые плейсхолдеры: {$url}");
-            Rule::create('url|required')->throwable()->apply($url);
-            return $url;
-        }
-
-        $pattern = '#^' . preg_replace('/\\\\\{[^}]+\\\\\}/', '[^/]+', preg_quote($this->template, '#')) . '$#';
-        if (!preg_match($pattern, $input))
-            throw new \InvalidArgumentException("Parser: URL не соответствует шаблону '{$this->template}'");
-        return $input;
+        throw new \InvalidArgumentException("Parser: не задан entrypoint и template, fetch() принимает строку URL");
     }
 
     private function applySchema(array $schema, \DOMNode $context, \DOMXPath $xpath, array $data): array {
