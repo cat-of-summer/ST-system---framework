@@ -3,11 +3,33 @@
 namespace ST_system\Storage\Mimes;
 
 use ST_system\Storage\Mimes\Mime;
+use ST_system\Main;
+use ST_system\Storage\File;
+use ST_system\Cache\Manager as Cache;
+use ST_system\Traits\HasConfig;
 
 class HtmlMime extends Mime {
 
+    use HasConfig;
+
+    protected static function getDefaultConfig(): array {
+        return [
+            'cache_dir' => '~/cache/',
+        ];
+    }
+
     private ?\DOMDocument $dom = null;
     private ?\DOMXPath    $xpath = null;
+    private Cache $cache;
+
+    protected function __init(): void {
+        $this->cache = Cache::make($this->file->getPathname(), [
+            'driver' => 'filesystem',
+            'dir'    => static::config('cache_dir') ?: File::config('cache.dir'),
+            'file'   => $this->file->getFilename(),
+            'ttl'    => -1,
+        ]);
+    }
 
     public function get($data) {
         return $this->loadDom((string)$data);
@@ -21,8 +43,27 @@ class HtmlMime extends Mime {
         return $this->xpath ??= new \DOMXPath($this->getDom());
     }
 
-    public function extract(array $schema, array $context = []): array {
-        return $this->applySchema($schema, $this->getDom(), $this->getXPath(), $context);
+    public function extract(array $schema, array $data = []): array {
+        $instance = $this->file;
+        $source   = $instance->getOriginal(true) ?? $instance;
+
+        $cache = $this->cache->make($source->getPathname(), [
+            'file' => 'extract_' . md5(Main::hash([$schema, $data])) . '.json'
+        ]);
+
+        if (
+            is_file($cache->file)
+            && ($cache->getMeta()['modified_at'] ?? 0) >= ($cache->getMeta($instance->getFilename())['modified_at'] ?? 0)
+        ) {
+            $cached = $cache->get();
+            if ($cached !== null) return $cached;
+        }
+
+        $result = $this->applySchema($schema, $this->getDom(), $this->getXPath(), $data);
+
+        $cache->set($result);
+
+        return $result;
     }
 
     private function loadDom(string $html): \DOMDocument {

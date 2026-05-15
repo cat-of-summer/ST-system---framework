@@ -70,13 +70,28 @@ class DefaultParser extends IntegrationDriver {
 
         $this->fire('before_fetch', $input);
 
-        $calls = $this->normalizeCalls($input);
+        $calls = [$input];
+        if (is_array($input) && $input !== [] && array_is_list($input)) {
+            $calls = $input;
+            foreach ($input as $item)
+                if (!is_array($item)) { $calls = [$input]; break; }
+        }
 
         $results = [];
         foreach ($calls as $callInput) {
-            $expanded_calls = (is_array($callInput) && !empty($callInput) && !array_is_list($callInput))
-                ? $this->expandParams($callInput)
-                : [$callInput];
+            if (is_array($callInput) && !empty($callInput) && !array_is_list($callInput)) {
+                $expanded_calls = [[]];
+                foreach ($callInput as $key => $value) {
+                    $candidates = is_array($value) ? array_values($value) : [$value];
+                    $next = [];
+                    foreach ($expanded_calls as $set)
+                        foreach ($candidates as $c)
+                            $next[] = $set + [$key => $c];
+                    $expanded_calls = $next;
+                }
+            } else {
+                $expanded_calls = [$callInput];
+            }
 
             foreach ($expanded_calls as $expanded) {
                 $this->fire('before_fetch_one', $expanded);
@@ -91,39 +106,6 @@ class DefaultParser extends IntegrationDriver {
         return $results;
     }
 
-    private function normalizeCalls(string|array|null $input): array {
-        if (!is_array($input)) return [$input];
-
-        if ($input !== [] && array_is_list($input)) {
-            foreach ($input as $item)
-                if (!is_array($item)) return [$input];
-            return $input;
-        }
-
-        return [$input];
-    }
-
-    private function expandParams(array $params): array {
-        $sets = [[]];
-        foreach ($params as $key => $value) {
-            $candidates = is_array($value) ? array_values($value) : [$value];
-            $next = [];
-            foreach ($sets as $set)
-                foreach ($candidates as $c)
-                    $next[] = $set + [$key => $c];
-            $sets = $next;
-        }
-        return $sets;
-    }
-
-    private function fileOptions(): array {
-        return [
-            'headers'         => (array)static::config('headers'),
-            'followRedirects' => (bool)static::config('follow_redirects'),
-            'delay'           => (int)static::config('delay'),
-        ];
-    }
-
     private function fetchOne(string|array|null $input, array $schema, string $template, string $entrypoint): array {
         $url  = $this->resolveUrl($input, $template, $entrypoint);
         $data = is_array($input)
@@ -131,7 +113,11 @@ class DefaultParser extends IntegrationDriver {
             : ['url' => $url];
 
         try {
-            $file = File::make($url, $this->fileOptions())->fetch();
+            $file = File::make($url, [
+                'headers'         => (array)static::config('headers'),
+                'followRedirects' => (bool)static::config('follow_redirects'),
+                'delay'           => (int)static::config('delay'),
+            ])->fetch();
         } catch (\Throwable $e) {
             throw new \RuntimeException("Parser: curl error for '{$url}': {$e->getMessage()}", 0, $e);
         }
