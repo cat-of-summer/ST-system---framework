@@ -14,7 +14,7 @@ class HtmlMime extends Mime {
 
     protected static function getDefaultConfig(): array {
         return [
-            'cache_dir' => '~/cache/',
+            'cache_dir' => '',
         ];
     }
 
