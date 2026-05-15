@@ -640,38 +640,42 @@ final class Rule {
         ->handleError(fn($v) => 'This field must be present')
         ->alias('present');
 
-        
-        (self::create(function(&$v): bool {
-            return is_string($v);
-        }))
-        ->order(500)
-        ->handleError(fn($v) => 'Must be a string')
-        ->alias('string');
 
-        
         (self::create(function(&$v): bool {
-            if (is_int($v)) return true;
-            if (is_string($v) && ctype_digit(ltrim($v, '-'))) {
-                $v = (int)$v;
-                return true;
-            }
+            if (is_string($v)) return true;
+            if ($v === null || self::isSentinel($v)) { $v = ''; return true; }
             return false;
         }))
         ->order(500)
+        ->seesSentinel()
+        ->handleError(fn($v) => 'Must be a string')
+        ->alias('string');
+
+
+        (self::create(function(&$v): bool {
+            if (is_int($v)) return true;
+            if ($v === null || self::isSentinel($v)) { $v = 0; return true; }
+            if (is_string($v) && is_numeric($v)) { $v = (int)$v; return true; }
+            if (is_float($v) && is_finite($v)) { $v = (int)$v; return true; }
+            if (is_bool($v)) { $v = (int)$v; return true; }
+            return false;
+        }))
+        ->order(500)
+        ->seesSentinel()
         ->handleError(fn($v) => 'Must be an integer')
         ->alias('int')
         ->alias('integer');
 
-        
+
         (self::create(function(&$v): bool {
             if (is_float($v)) return true;
-            if (is_numeric($v)) {
-                $v = (float)$v;
-                return true;
-            }
+            if ($v === null || self::isSentinel($v)) { $v = 0.0; return true; }
+            if (is_int($v) || is_bool($v)) { $v = (float)$v; return true; }
+            if (is_numeric($v)) { $v = (float)$v; return true; }
             return false;
         }))
         ->order(500)
+        ->seesSentinel()
         ->handleError(fn($v) => 'Must be a number')
         ->alias('float');
 
@@ -722,11 +726,14 @@ final class Rule {
         ->handleError(fn($v) => 'Invalid URL')
         ->alias('url');
 
-        
+
         (self::create(function(&$v): bool {
-            return is_array($v);
+            if (is_array($v)) return true;
+            if ($v === null || self::isSentinel($v)) { $v = []; return true; }
+            return false;
         }))
         ->order(500)
+        ->seesSentinel()
         ->handleError(fn($v) => 'Must be an array')
         ->alias('array');
 
