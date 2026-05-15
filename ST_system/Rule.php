@@ -289,9 +289,13 @@ final class Rule {
                 return $subRules[0];
             }
 
-            return self::create(function(&$data) use ($subRules): array {
+            return self::create(function(&$data, array $params = []) use ($subRules): array {
                 $errors = [];
                 foreach ($subRules as $rule) {
+                    if (!empty($params) && empty($rule->params)) {
+                        $rule = $rule->copy();
+                        $rule->params = $params;
+                    }
                     [$passed, $ruleErrors] = $rule->execute($data);
                     if (!empty($ruleErrors)) {
                         array_push($errors, ...$ruleErrors);
@@ -573,9 +577,13 @@ final class Rule {
 
     public static function regex(string $pattern): Rule {
         self::init();
-        
-        return self::create(fn(&$v) => is_string($v) && @preg_match($pattern, $v) === 1)
+
+        return self::create([
+            'string',
+            self::create(fn(&$v) => @preg_match($pattern, $v) === 1),
+        ])
         ->order(700)
+        ->seesSentinel()
         ->handleError(fn($v) => 'Invalid format');
     }
 
@@ -710,20 +718,24 @@ final class Rule {
         ->handleError(fn($v) => 'Must be closure')
         ->alias('closure');
 
-        
-        (self::create(function(&$v): bool {
-            return is_string($v) && filter_var($v, FILTER_VALIDATE_EMAIL) !== false;
-        }))
+
+        self::create([
+            'string',
+            self::create(fn(&$v) => filter_var($v, FILTER_VALIDATE_EMAIL) !== false)
+                ->handleError(fn($v) => 'Invalid email address'),
+        ])
         ->order(500)
-        ->handleError(fn($v) => 'Invalid email address')
+        ->seesSentinel()
         ->alias('email');
 
-        
-        (self::create(function(&$v): bool {
-            return is_string($v) && filter_var($v, FILTER_VALIDATE_URL) !== false;
-        }))
+
+        self::create([
+            'string',
+            self::create(fn(&$v) => filter_var($v, FILTER_VALIDATE_URL) !== false)
+                ->handleError(fn($v) => 'Invalid URL'),
+        ])
         ->order(500)
-        ->handleError(fn($v) => 'Invalid URL')
+        ->seesSentinel()
         ->alias('url');
 
 
@@ -790,7 +802,13 @@ final class Rule {
         ->handleError(fn($v) => 'Value is too small')
         ->alias('min');
 
-        
+
+        self::create(['array', 'min', 'max'])
+            ->order(700)
+            ->seesSentinel()
+            ->alias('count');
+
+
         (self::create(function(&$v, array $p): bool {
             return in_array($v, $p, false);
         }))
@@ -807,23 +825,24 @@ final class Rule {
         ->alias('notIn')
         ->alias('not_in');
 
-        
-        (self::create(function(&$v, array $p): bool {
-            $pattern = $p[0] ?? '';
-            if (!is_string($v)) return false;
-            return @preg_match($pattern, $v) === 1;
-        }))
+
+        self::create([
+            'string',
+            self::create(fn(&$v, array $p) => @preg_match($p[0] ?? '', $v) === 1)
+                ->handleError(fn($v) => 'Invalid format'),
+        ])
         ->order(700)
-        ->handleError(fn($v) => 'Invalid format')
+        ->seesSentinel()
         ->alias('regex');
 
-        
-        (self::create(function(&$v, array $p): bool {
-            $n = (int)($p[0] ?? 0);
-            return is_string($v) && ctype_digit($v) && strlen($v) === $n;
-        }))
+
+        self::create([
+            'string',
+            self::create(fn(&$v, array $p) => ctype_digit($v) && strlen($v) === (int)($p[0] ?? 0))
+                ->handleError(fn($v) => 'Must be digits only'),
+        ])
         ->order(700)
-        ->handleError(fn($v) => 'Must be digits only')
+        ->seesSentinel()
         ->alias('digits');
 
         
@@ -838,65 +857,83 @@ final class Rule {
         ->handleError(fn($v) => 'Value is out of range')
         ->alias('between');
 
-        
-        (self::create(function(&$v): bool {
-            return is_string($v) && strtotime($v) !== false;
-        }))
+
+        self::create([
+            'string',
+            self::create(fn(&$v) => strtotime($v) !== false)
+                ->handleError(fn($v) => 'Invalid date'),
+        ])
         ->order(500)
-        ->handleError(fn($v) => 'Invalid date')
+        ->seesSentinel()
         ->alias('date');
 
-        
-        (self::create(function(&$v, array $p): bool {
-            $fmt = $p[0] ?? '';
-            if (!is_string($v)) return false;
-            $d = \DateTime::createFromFormat($fmt, $v);
-            return $d !== false && $d->format($fmt) === $v;
-        }))
+
+        self::create([
+            'string',
+            self::create(function(&$v, array $p) {
+                $fmt = $p[0] ?? '';
+                $d = \DateTime::createFromFormat($fmt, $v);
+                return $d !== false && $d->format($fmt) === $v;
+            })->handleError(fn($v) => 'Invalid date format'),
+        ])
         ->order(500)
-        ->handleError(fn($v) => 'Invalid date format')
+        ->seesSentinel()
         ->alias('date_format');
 
-        
-        (self::create(function(&$v): bool {
-            if (!is_string($v)) return false;
-            @json_decode($v);
-            return json_last_error() === JSON_ERROR_NONE;
-        }))
+
+        self::create([
+            'string',
+            self::create(function(&$v) {
+                @json_decode($v);
+                return json_last_error() === JSON_ERROR_NONE;
+            })->handleError(fn($v) => 'Invalid JSON'),
+        ])
         ->order(500)
-        ->handleError(fn($v) => 'Invalid JSON')
+        ->seesSentinel()
         ->alias('json');
 
-        
-        (self::create(function(&$v, array $p): bool {
-            if (!is_string($v)) return false;
-            foreach ($p as $prefix) {
-                if (strncmp($v, $prefix, strlen($prefix)) === 0) return true;
-            }
-            return false;
-        }))
+
+        self::create([
+            'string',
+            self::create(function(&$v, array $p) {
+                foreach ($p as $prefix) {
+                    if (strncmp($v, $prefix, strlen($prefix)) === 0) return true;
+                }
+                return false;
+            })->handleError(fn($v) => 'Invalid prefix'),
+        ])
         ->order(700)
-        ->handleError(fn($v) => 'Invalid prefix')
+        ->seesSentinel()
         ->alias('starts_with');
 
-        
-        (self::create(function(&$v, array $p): bool {
-            if (!is_string($v)) return false;
-            foreach ($p as $suffix) {
-                $len = strlen($suffix);
-                if ($len === 0 || substr($v, -$len) === $suffix) return true;
-            }
-            return false;
-        }))
+
+        self::create([
+            'string',
+            self::create(function(&$v, array $p) {
+                foreach ($p as $suffix) {
+                    $len = strlen($suffix);
+                    if ($len === 0 || substr($v, -$len) === $suffix) return true;
+                }
+                return false;
+            })->handleError(fn($v) => 'Invalid suffix'),
+        ])
         ->order(700)
-        ->handleError(fn($v) => 'Invalid suffix')
+        ->seesSentinel()
         ->alias('ends_with');
 
-        
+
         (self::create(function(&$v, array $p): bool {
-            if (!is_string($v)) return false;
-            foreach ($p as $sub) {
-                if (strpos($v, $sub) !== false) return true;
+            if (is_string($v)) {
+                foreach ($p as $sub) {
+                    if ($sub !== '' && strpos($v, $sub) !== false) return true;
+                }
+                return false;
+            }
+            if (is_array($v)) {
+                foreach ($p as $sub) {
+                    if (in_array($sub, $v, false)) return true;
+                }
+                return false;
             }
             return false;
         }))
@@ -945,19 +982,21 @@ final class Rule {
         ->alias('escape_html');
 
 
-        (self::create(function(&$v): bool {
-            if (is_string($v)) $v = mb_strtoupper($v);
-            return true;
-        }))
+        self::create([
+            'string',
+            self::create(function(&$v) { $v = mb_strtoupper($v); return true; }),
+        ])
         ->order(-2)
+        ->seesSentinel()
         ->alias('uppercase');
 
 
-        (self::create(function(&$v): bool {
-            if (is_string($v)) $v = mb_strtolower($v);
-            return true;
-        }))
+        self::create([
+            'string',
+            self::create(function(&$v) { $v = mb_strtolower($v); return true; }),
+        ])
         ->order(-2)
+        ->seesSentinel()
         ->alias('lowercase');
 
         
