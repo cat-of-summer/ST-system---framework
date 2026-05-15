@@ -9,6 +9,7 @@
 
 - [CssMime.php](CssMime.php.md)
 - [FontMime.php](FontMime.php.md)
+- [HtmlMime.php](HtmlMime.php.md)
 - [ImageMime.php](ImageMime.php.md)
 - [JavaScriptMime.php](JavaScriptMime.php.md)
 - [JsonMime.php](JsonMime.php.md)
