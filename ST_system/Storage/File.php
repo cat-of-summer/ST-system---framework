@@ -302,8 +302,10 @@ final class File {
         curl_close($curl);
 
         if (!$error) {
-            $ttl = Main::getHttpCacheTtl($response, (int)static::config('cache.ttl'));
-            $headers = is_array($response) ? $response : [];
+            $headers = is_string($response)
+                ? static::parseHttpHeaders($response)
+                : (is_array($response) ? $response : []);
+            $ttl = $this->resolveCacheTtl($headers);
 
             $meta = array_merge(
                 $meta,
@@ -319,7 +321,7 @@ final class File {
             );
 
             if (($meta['http_code'] ?? null) != 200 && is_file($this->cache->file))
-                $meta['expires_in'] = time() + Main::getHttpCacheTtl($meta, (int)static::config('cache.ttl'));
+                $meta['expires_in'] = time() + $this->resolveCacheTtl($meta);
 
             $this->cache->setMeta($meta, 0, false);
         }
@@ -337,15 +339,13 @@ final class File {
         $url = $this->getPathname();
 
         if (!$force) {
+            if (is_file($this->cache->file) && !$this->cache->isExpired())
+                return new static($this->cache->file, $this);
+
             $meta = $this->getMeta();
 
-            if (
-                is_file($this->cache->file) &&
-                (
-                    !$this->cache->isExpired() ||
-                    ($meta['http_code'] ?? null) != 200
-                )
-            ) return new static($this->cache->file, $this);
+            if (is_file($this->cache->file) && ($meta['http_code'] ?? null) != 200)
+                return new static($this->cache->file, $this);
         }
 
         $attempt = 0;
@@ -395,7 +395,7 @@ final class File {
 
                 rename($this->cache->file.'.temp', $this->cache->file);
 
-                $ttl = Main::getHttpCacheTtl($headers, (int)static::config('cache.ttl'));
+                $ttl = $this->resolveCacheTtl($headers);
                 $cache_expires_in = time() + $ttl;
 
                 $meta = array_merge(
@@ -476,6 +476,37 @@ final class File {
             $list[] = "{$k}: {$v}";
         }
         return $list;
+    }
+
+    private static function parseHttpHeaders(string $raw): array {
+        $parsed = [];
+        foreach (preg_split('#\r\n#', trim(explode("\r\n\r\n", $raw."\r\n\r\n", 2)[0])) as $line) {
+            if (strpos($line, ':') !== false) {
+                [$k, $v] = explode(':', $line, 2);
+                $parsed[strtolower(trim($k))] = trim($v);
+            } elseif ($line !== '') {
+                $parsed['status-line'] = $line;
+            }
+        }
+        return $parsed;
+    }
+
+    private function resolveCacheTtl(array $headers): int {
+        $min = (int)static::config('cache.ttl');
+
+        if (!empty($headers['cache-control'])) {
+            if (preg_match('/\bmax-age\s*=\s*(\d+)/i', $headers['cache-control'], $m))
+                return max((int)$m[1], $min);
+            if (preg_match('/\bs-maxage\s*=\s*(\d+)/i', $headers['cache-control'], $m))
+                return max((int)$m[1], $min);
+        }
+
+        if (!empty($headers['expires'])) {
+            $expires = strtotime($headers['expires']);
+            if ($expires !== false) return max($expires - time(), $min);
+        }
+
+        return $min;
     }
 
     private function applyHostDelay(string $url): void {
