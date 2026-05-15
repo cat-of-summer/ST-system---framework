@@ -3,6 +3,7 @@
 namespace ST_system\Storage;
 
 use ST_system\Traits\HasConfig;
+use ST_system\Traits\HasAttributes;
 use ST_system\Main;
 use ST_system\Cache\Manager as Cache;
 use ST_system\Storage\Mimes;
@@ -10,6 +11,7 @@ use ST_system\Storage\Mimes;
 final class File {
 
     use HasConfig;
+    use HasAttributes;
 
     protected static function getDefaultConfig(): array {
         return [
@@ -27,10 +29,13 @@ final class File {
                     'ttf' => 'font/ttf',
                     'eot' => 'font/eot',
                     'otf' => 'font/otf',
-                    'svg' => 'image/svg+xml'
+                    'svg' => 'image/svg+xml',
+                    'html' => 'text/html',
+                    'htm' => 'text/html'
                 ],
                 'services' => [
                     'image/svg+xml' => Mimes\SvgMime::class,
+                    'text/html' => Mimes\HtmlMime::class,
                     'text/plain' => Mimes\TextPlainMime::class,
                     'text/css' => Mimes\CssMime::class,
                     'application/javascript' => Mimes\JavaScriptMime::class,
@@ -44,6 +49,11 @@ final class File {
                 'timeout' => 300,
                 'max_attempts' => 15,
             ],
+            'request' => [
+                'headers' => [],
+                'follow_redirects' => true,
+                'delay' => 0,
+            ],
             'find' => [
                 'max_files' => 50,
                 'sym_links' => false,
@@ -53,7 +63,7 @@ final class File {
         ];
     }
 
-    public static function make(string $path) { return new static($path); }
+    public static function make(string $path, array $options = []) { return new static($path, null, $options); }
 
     private bool $isUri;
     private \SplFileInfo $info;
@@ -63,8 +73,11 @@ final class File {
     private Cache $cache;
     private $original = null;
 
-    private function __construct(string $path, $original = null) {
+    private static array $last_fetch_per_host = [];
+
+    private function __construct(string $path, $original = null, array $options = []) {
         $this->original = $original;
+        $this->attributes = $options;
         $this->isUri = (bool)filter_var($path, FILTER_VALIDATE_URL);
         $this->info = new \SplFileInfo($this->isUri ? $path : Main::preparePath($path, 2));
 
@@ -102,7 +115,7 @@ final class File {
     public static function __callStatic(string $name, array $args) {
         switch ($name) {
             case 'fetch':
-                return static::make($args[0])->fetch($args[1] ?? false);
+                return static::make($args[0], $args[2] ?? [])->fetch($args[1] ?? false);
             case 'find':
                 return static::find(...$args);
             case 'exists':
@@ -118,7 +131,7 @@ final class File {
             case 'exists':
                 return $this->{$name}(...$args);
             case 'make':
-                return new static($args[0], $this);
+                return new static($args[0], $this, $args[1] ?? []);
             case 'find':
                 return $this->isUri()
                     ? []
@@ -274,14 +287,15 @@ final class File {
         curl_setopt_array($curl, [
             CURLOPT_URL => $url,
             CURLOPT_NOBODY => true,
-            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_FOLLOWLOCATION => $this->followRedirects,
             CURLOPT_MAXREDIRS => 10,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HEADER => true,
             CURLOPT_CONNECTTIMEOUT => static::config('fetch.connect_timeout'),
             CURLOPT_TIMEOUT => min(30, static::config('fetch.timeout')),
             CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 0
+            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_HTTPHEADER => $this->headerList,
         ]);
 
         $response = curl_exec($curl);
@@ -340,13 +354,15 @@ final class File {
         $attempt = 0;
         while ($attempt < static::config('fetch.max_attempts')) {
             try {
+                $this->applyHostDelay($url);
+
                 $fopen = fopen($this->cache->file.'.temp', 'w');
                 if (!$fopen) throw new \Exception();
 
                 $curl = curl_init();
                 curl_setopt_array($curl, [
                     CURLOPT_URL => $url,
-                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_FOLLOWLOCATION => $this->followRedirects,
                     CURLOPT_MAXREDIRS => 10,
                     CURLOPT_RETURNTRANSFER => false,
                     CURLOPT_HEADER => false,
@@ -355,6 +371,7 @@ final class File {
                     CURLOPT_FILE => $fopen,
                     CURLOPT_SSL_VERIFYPEER => true,
                     CURLOPT_SSL_VERIFYHOST => 2,
+                    CURLOPT_HTTPHEADER => $this->headerList,
                 ]);
 
                 $headers = [];
@@ -387,8 +404,11 @@ final class File {
                 $meta = array_merge(
                     $headers,
                     [
-                        'effective_url' => $headers['effective_url'] ?? $url,
-                        'content_length' => $headers['content_length'] ?? filesize($this->cache->file),
+                        'http_code' => $info['http_code'] ?? null,
+                        'effective_url' => $info['url'] ?? $url,
+                        'content_length' => ($info['download_content_length'] ?? 0) > 0
+                            ? $info['download_content_length']
+                            : ($headers['content-length'] ?? filesize($this->cache->file)),
                         'original_url' => $url,
                         'fetched_at' => time(),
                         'cache_ttl' => $ttl,
@@ -423,13 +443,52 @@ final class File {
         return $this->isUri;
     }
 
+    protected function getHeadersAttribute(): array {
+        return (array)($this->attributes['headers'] ?? static::config('request.headers') ?? []);
+    }
+
+    protected function getDelayAttribute(): int {
+        return (int)($this->attributes['delay'] ?? static::config('request.delay') ?? 0);
+    }
+
+    protected function getFollowRedirectsAttribute(): bool {
+        return (bool)($this->attributes['followRedirects'] ?? static::config('request.follow_redirects') ?? true);
+    }
+
+    protected function getHeaderListAttribute(): array {
+        $list = [];
+        foreach ($this->headers as $k => $v) {
+            if (is_int($k) && is_string($v) && strpos($v, ':') !== false) {
+                $list[] = $v;
+                continue;
+            }
+            $list[] = "{$k}: {$v}";
+        }
+        return $list;
+    }
+
+    private function applyHostDelay(string $url): void {
+        $delay_ms = $this->delay;
+        if ($delay_ms <= 0) return;
+
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!$host) return;
+
+        $last = self::$last_fetch_per_host[$host] ?? 0.0;
+        if ($last > 0.0) {
+            $elapsed_ms = (microtime(true) - $last) * 1000.0;
+            if ($elapsed_ms < $delay_ms)
+                usleep((int)(($delay_ms - $elapsed_ms) * 1000));
+        }
+        self::$last_fetch_per_host[$host] = microtime(true);
+    }
+
     public static function purgeAllCache(): void {
         Cache::make('', [
             'dir' => static::config('cache.dir'),
             'driver' => 'filesystem',
         ])->purgeBase();
     }
-
 
     public function purgeCache(): self {
         $this->cache->purge();
@@ -448,7 +507,12 @@ final class File {
             return static::config('mimes.extensions')[$extension];
 
         if ($this->isUri())
-            return $this->getMeta()['content-type'] ?: '';
+            return explode(';', $this->getMeta()['content-type'] ?? '', 2)[0] ?: '';
+
+        if (($original = $this->getOriginal()) && $original->isUri()) {
+            $ct = $original->getMeta()['content-type'] ?? '';
+            if ($ct !== '') return explode(';', $ct, 2)[0];
+        }
 
         $mime_type = '';
 
