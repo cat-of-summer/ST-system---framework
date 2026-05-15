@@ -87,7 +87,7 @@ final class Loader {
     public function __construct(string $path) {
         $this->file = File::make($path);
 
-        if ($this->file->isUri)
+        if ($this->file->is_uri)
             throw new \Exception("Path must be a local file, URI given: {$path}");
     }
 

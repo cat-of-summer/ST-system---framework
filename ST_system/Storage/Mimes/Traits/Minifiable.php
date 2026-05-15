@@ -20,7 +20,7 @@ trait Minifiable {
     }
 
     final public function minify(array $config = []): File {
-        $instance = $this->file->isUri
+        $instance = $this->file->is_uri
             ? $this->file->fetch()
             : $this->file;
 

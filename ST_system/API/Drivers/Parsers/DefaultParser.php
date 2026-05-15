@@ -113,11 +113,7 @@ class DefaultParser extends IntegrationDriver {
             : ['url' => $url];
 
         try {
-            $file = File::make($url, [
-                'headers'         => (array)static::config('headers'),
-                'followRedirects' => (bool)static::config('follow_redirects'),
-                'delay'           => (int)static::config('delay'),
-            ])->fetch();
+            $file = File::make($url, static::config())->fetch();
         } catch (\Throwable $e) {
             throw new \RuntimeException("Parser: curl error for '{$url}': {$e->getMessage()}", 0, $e);
         }

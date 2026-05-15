@@ -75,12 +75,12 @@ final class File {
     private function __construct(string $path, $original = null, array $options = []) {
         $this->original = $original;
         $this->attributes = $options;
-        $this->attributes['isUri'] = (bool)filter_var($path, FILTER_VALIDATE_URL);
-        $this->info = new \SplFileInfo($this->attributes['isUri'] ? $path : Main::preparePath($path, 2));
+        $this->attributes['is_uri'] = (bool)filter_var($path, FILTER_VALIDATE_URL);
+        $this->info = new \SplFileInfo($this->attributes['is_uri'] ? $path : Main::preparePath($path, 2));
 
         $cache_filename = $this->getFilename();
 
-        if ($this->isUri) {
+        if ($this->is_uri) {
             $q     = strpos($cache_filename, '?');
             $base  = $q !== false ? substr($cache_filename, 0, $q) : $cache_filename;
             $query = $q !== false ? substr($cache_filename, $q + 1) : '';
@@ -130,11 +130,11 @@ final class File {
             case 'make':
                 return new static($args[0], $this, $args[1] ?? []);
             case 'find':
-                return $this->isUri
+                return $this->is_uri
                     ? []
                     : static::find(array_map(fn($i) => $this->fetch()->getDirectory().'/'.ltrim($i, '/'), is_array($args[0]) ? $args[0] : [$args[0]]), $args[1] ?? []);
             case 'getType':
-                if ($this->isUri) return 'uri';
+                if ($this->is_uri) return 'uri';
                 break;
             case 'getBasename':
                 if (empty($args)) {
@@ -272,11 +272,11 @@ final class File {
     }
 
     public function getMeta(bool $force = false): array {
-        if (!$this->isUri) return [];
+        if (!$this->is_uri) return [];
 
         $url = $this->getPathname();
         $meta = $this->cache->getMeta();
-        
+
         if (!$this->cache->isExpired('headers_cache_expires_in') && !$force)
             return $meta;
 
@@ -284,15 +284,15 @@ final class File {
         curl_setopt_array($curl, [
             CURLOPT_URL => $url,
             CURLOPT_NOBODY => true,
-            CURLOPT_FOLLOWLOCATION => $this->followRedirects,
+            CURLOPT_FOLLOWLOCATION => $this->follow_redirects,
             CURLOPT_MAXREDIRS => 10,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HEADER => true,
-            CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
+            CURLOPT_CONNECTTIMEOUT => $this->connect_timeout,
             CURLOPT_TIMEOUT => min(30, $this->timeout),
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => 0,
-            CURLOPT_HTTPHEADER => $this->headerList,
+            CURLOPT_HTTPHEADER => $this->header_list,
         ]);
 
         $response = curl_exec($curl);
@@ -334,7 +334,7 @@ final class File {
         $this->info_data = [];
         $this->mime_data = [];
 
-        if (!$this->isUri) return $this;
+        if (!$this->is_uri) return $this;
 
         $url = $this->getPathname();
 
@@ -349,7 +349,7 @@ final class File {
         }
 
         $attempt = 0;
-        while ($attempt < $this->maxAttempts) {
+        while ($attempt < $this->max_attempts) {
             try {
                 $this->applyHostDelay($url);
 
@@ -359,16 +359,16 @@ final class File {
                 $curl = curl_init();
                 curl_setopt_array($curl, [
                     CURLOPT_URL => $url,
-                    CURLOPT_FOLLOWLOCATION => $this->followRedirects,
+                    CURLOPT_FOLLOWLOCATION => $this->follow_redirects,
                     CURLOPT_MAXREDIRS => 10,
                     CURLOPT_RETURNTRANSFER => false,
                     CURLOPT_HEADER => false,
-                    CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
+                    CURLOPT_CONNECTTIMEOUT => $this->connect_timeout,
                     CURLOPT_TIMEOUT => $this->timeout,
                     CURLOPT_FILE => $fopen,
                     CURLOPT_SSL_VERIFYPEER => true,
                     CURLOPT_SSL_VERIFYHOST => 2,
-                    CURLOPT_HTTPHEADER => $this->headerList,
+                    CURLOPT_HTTPHEADER => $this->header_list,
                 ]);
 
                 $headers = [];
@@ -427,7 +427,7 @@ final class File {
 
     
     public function getSize(string $unit = 'b') {
-        $bytes = $this->isUri
+        $bytes = $this->is_uri
             ? (int)$this->getMeta()['content-length']
             : $this->info->getSize();
 
@@ -437,7 +437,7 @@ final class File {
     }
 
     protected function getIsUriAttribute(): bool {
-        return (bool)($this->attributes['isUri'] ?? false);
+        return (bool)($this->attributes['is_uri'] ?? false);
     }
 
     protected function setIsUriAttribute($v): void {}
@@ -451,11 +451,11 @@ final class File {
     }
 
     protected function getFollowRedirectsAttribute(): bool {
-        return (bool)($this->attributes['followRedirects'] ?? static::config('request.follow_redirects'));
+        return (bool)($this->attributes['follow_redirects'] ?? static::config('request.follow_redirects'));
     }
 
     protected function getConnectTimeoutAttribute(): int {
-        return (int)($this->attributes['connectTimeout'] ?? static::config('request.connect_timeout'));
+        return (int)($this->attributes['connect_timeout'] ?? static::config('request.connect_timeout'));
     }
 
     protected function getTimeoutAttribute(): int {
@@ -463,7 +463,7 @@ final class File {
     }
 
     protected function getMaxAttemptsAttribute(): int {
-        return (int)($this->attributes['maxAttempts'] ?? static::config('request.max_attempts'));
+        return (int)($this->attributes['max_attempts'] ?? static::config('request.max_attempts'));
     }
 
     protected function getHeaderListAttribute(): array {
@@ -548,10 +548,10 @@ final class File {
         if (isset(static::config('mimes.extensions')[$extension]))
             return static::config('mimes.extensions')[$extension];
 
-        if ($this->isUri)
+        if ($this->is_uri)
             return explode(';', $this->getMeta()['content-type'] ?? '', 2)[0] ?: '';
 
-        if (($original = $this->getOriginal()) && $original->isUri) {
+        if (($original = $this->getOriginal()) && $original->is_uri) {
             $ct = $original->getMeta()['content-type'] ?? '';
             if ($ct !== '') return explode(';', $ct, 2)[0];
         }
@@ -579,14 +579,14 @@ final class File {
     }
 
     public function getRelativePath(string $root = ''): string {
-        if ($this->isUri)
+        if ($this->is_uri)
             return $this->getPathname();
 
         return str_replace(Main::preparePath('~'.$root, 1), '', $this->getPathname());
     }
 
     private function exists(): bool {
-        return $this->isUri
+        return $this->is_uri
             ? false
             : file_exists($this->getPathname());
     }
@@ -603,7 +603,7 @@ final class File {
     }
 
     public function getRaw() {
-        $instance = $this->isUri
+        $instance = $this->is_uri
             ? $this->fetch()
             : $this;
 
@@ -617,7 +617,7 @@ final class File {
     }
 
     public function putContents($raw, int $flags = 0) {
-        $instance = $this->isUri
+        $instance = $this->is_uri
             ? $this->fetch()
             : $this;
 

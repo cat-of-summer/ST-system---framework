@@ -185,7 +185,7 @@ class ImageMime extends Mime {
     }
 
     public function toResponsive(array $config = [], array $attrs = []): string {
-        $instance = $this->file->isUri
+        $instance = $this->file->is_uri
             ? $this->file->fetch()
             : $this->file;
         
@@ -244,7 +244,7 @@ class ImageMime extends Mime {
     }
 
     public function getImageSize(): array {
-        $instance = $this->file->isUri
+        $instance = $this->file->is_uri
             ? $this->file->fetch()
             : $this->file;
 
@@ -289,7 +289,7 @@ class ImageMime extends Mime {
     }
 
     public function convert(array $config = []): File {
-        $instance = $this->file->isUri
+        $instance = $this->file->is_uri
             ? $this->file->fetch()
             : $this->file;
 

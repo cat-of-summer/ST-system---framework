@@ -16,9 +16,36 @@ final class Main {
         return (string)$ts;
     }
 
-    public static function pluralForm($n, $forms): string { 
+    public static function pluralForm($n, $forms): string {
         $n = (int)$n;
         return $forms[($n % 10 == 1 && $n % 100 != 11) ? 0 : (($n % 10 >= 2 && $n % 10 <= 4 && ($n % 100 < 10 || $n % 100 >= 20)) ? 1 : 2)];
+    }
+
+    private static function splitWords(string $name): array {
+        return preg_split('/[\s\-_]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/', $name) ?: [];
+    }
+
+    public static function studlyCase(string $name): string {
+        static $cache = [];
+        return $cache[$name] ??= implode('', array_map(
+            fn($w) => ucfirst(strtolower($w)),
+            static::splitWords($name)
+        ));
+    }
+
+    public static function camelCase(string $name): string {
+        static $cache = [];
+        return $cache[$name] ??= lcfirst(static::studlyCase($name));
+    }
+
+    public static function snakeCase(string $name): string {
+        static $cache = [];
+        return $cache[$name] ??= strtolower(implode('_', static::splitWords($name)));
+    }
+
+    public static function kebabCase(string $name): string {
+        static $cache = [];
+        return $cache[$name] ??= strtolower(implode('-', static::splitWords($name)));
     }
     
     public static function merge(...$arrays) {
