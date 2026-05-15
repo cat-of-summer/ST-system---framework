@@ -8,7 +8,7 @@ final class DoctorsReviewsParser extends DefaultParser {
 
     protected static function getDefaultConfig(): array {
         return array_merge(parent::getDefaultConfig(), [
-            'fetch_delay_ms' => 5000
+            'delay' => 5000
         ]);
     }
 
@@ -68,25 +68,25 @@ final class DoctorsReviewsParser extends DefaultParser {
                 '@xpath'   => '//div[@itemprop="review" and @itemscope]',
                 '@extract' => [
                     'author' => [
-                        '@xpath' => './/div[@data-qa="patient_profile__node_author_link"]',
+                        '@xpath' => '//div[@data-qa="patient_profile__node_author_link"]',
                         '@array' => false,
                     ],
                     'date' => [
-                        '@xpath'   => './/*[@itemprop="datePublished"]/@content',
+                        '@xpath'   => '//*[@itemprop="datePublished"]/@content',
                         '@array'   => false,
                         '@extract' => fn($n) => $n?->nodeValue,
                     ],
                     'rating' => [
-                        '@xpath'   => './/div[contains(@class,"review-card-tooltips__stars")]/span[contains(@class,"text-subtitle-2")]',
+                        '@xpath'   => '//div[contains(@class,"review-card-tooltips__stars")]/span[contains(@class,"text-subtitle-2")]',
                         '@array'   => false,
                         '@extract' => fn($n) => $n ? (float) trim($n->nodeValue) : null,
                     ],
                     'direction' => [
-                        '@xpath' => './/div[contains(@class,"b-review-card__comments")]//span[contains(@class,"ui-icon-doctor")]/following-sibling::span[1]',
+                        '@xpath' => '//div[contains(@class,"b-review-card__comments")]//span[contains(@class,"ui-icon-doctor")]/following-sibling::span[1]',
                         '@array' => false,
                     ],
                     'story' => [
-                        '@xpath'   => './/div[contains(@class,"b-review-card__comment-title") and normalize-space()="История пациента"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
+                        '@xpath'   => '//div[contains(@class,"b-review-card__comment-title") and normalize-space()="История пациента"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
                         '@array'   => false,
                         '@extract' => fn($n) => $n ? trim(preg_replace(
                             ['/\s*\[(?:…|\.\.\.)\]\s*/u', '/[ \t]+/'],
@@ -95,7 +95,7 @@ final class DoctorsReviewsParser extends DefaultParser {
                         )) : null,
                     ],
                     'liked' => [
-                        '@xpath'   => './/div[contains(@class,"b-review-card__comment-title") and normalize-space()="Понравилось"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
+                        '@xpath'   => '//div[contains(@class,"b-review-card__comment-title") and normalize-space()="Понравилось"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
                         '@array'   => false,
                         '@extract' => fn($n) => $n ? trim(preg_replace(
                             ['/\s*\[(?:…|\.\.\.)\]\s*/u', '/[ \t]+/'],
@@ -104,7 +104,7 @@ final class DoctorsReviewsParser extends DefaultParser {
                         )) : null,
                     ],
                     'disliked' => [
-                        '@xpath'   => './/div[contains(@class,"b-review-card__comment-title") and normalize-space()="Не понравилось"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
+                        '@xpath'   => '//div[contains(@class,"b-review-card__comment-title") and normalize-space()="Не понравилось"]/following-sibling::div[contains(@class,"b-review-card__comment")][1]',
                         '@array'   => false,
                         '@extract' => fn($n) => $n ? trim(preg_replace(
                             ['/\s*\[(?:…|\.\.\.)\]\s*/u', '/[ \t]+/'],
@@ -113,25 +113,25 @@ final class DoctorsReviewsParser extends DefaultParser {
                         )) : null,
                     ],
                     'reply' => [
-                        '@xpath'   => './/div[contains(@class,"b-review-card__reply") and not(contains(@class,"b-review-card__reply-"))]',
+                        '@xpath'   => '//div[contains(@class,"b-review-card__reply") and not(contains(@class,"b-review-card__reply-"))]',
                         '@array'   => false,
                         '@extract' => [
                             'date' => [
-                                '@xpath' => './/div[contains(@class,"b-review-card__datetime_reply")]',
+                                '@xpath' => '//div[contains(@class,"b-review-card__datetime_reply")]',
                                 '@array' => false,
                             ],
                             'text' => [
-                                '@xpath' => './/div[contains(@class,"b-review-card__reply-body-part")]',
+                                '@xpath' => '//div[contains(@class,"b-review-card__reply-body-part")]',
                                 '@array' => false,
                             ],
                         ],
                     ],
                     'clinicName' => [
-                        '@xpath' => './/div[contains(@class,"b-review-card__reply-container")]//div[contains(@class,"text-subtitle-2")]',
+                        '@xpath' => '//div[contains(@class,"b-review-card__reply-container")]//div[contains(@class,"text-subtitle-2")]',
                         '@array' => false,
                     ],
                     'clinicAddress' => [
-                        '@xpath' => './/div[contains(@class,"b-review-card__address")]',
+                        '@xpath' => '//div[contains(@class,"b-review-card__address")]',
                         '@array' => false,
                     ],
                 ],

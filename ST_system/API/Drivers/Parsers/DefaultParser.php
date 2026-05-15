@@ -45,7 +45,7 @@ class DefaultParser extends IntegrationDriver {
                 'sec-ch-ua-platform'        => '"Windows"',
             ],
             'follow_redirects' => true,
-            'fetch_delay_ms'   => 1000,
+            'delay'   => 1000,
         ];
     }
 
@@ -182,7 +182,7 @@ class DefaultParser extends IntegrationDriver {
             }
         }
 
-        $delay_ms = (int)static::config('fetch_delay_ms');
+        $delay_ms = (int)static::config('delay');
         if ($delay_ms > 0 && ($host = parse_url($url, PHP_URL_HOST))) {
             $last = self::$last_fetch_per_domain[$host] ?? 0.0;
             if ($last > 0.0) {
