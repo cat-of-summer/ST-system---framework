@@ -280,12 +280,15 @@ final class Assets {
         }
 
         Rule::object([
-            'name' => ['string', Rule::default($_SERVER['HTTP_HOST'])],
-            'short_name' => ['string', Rule::default($_SERVER['HTTP_HOST'])],
+            'name' => ['string', Rule::default($_SERVER['HTTP_HOST'] ?? '')],
+            'short_name' => 'string',
             'theme_color' => 'hex_color|default:#fff',
             'background_color' => 'hex_color|default:#fff',
             'display'          => 'string|default:standalone',
-        ])->apply($params);
+        ])->after(function (&$data) {
+            if (empty($data['short_name']))
+                $data['short_name'] = $data['name'];
+        })->apply($params);
 
         $params['icons'] = [
             ['src' => $files['web-app-manifest-192x192.png']->getRelativePath(), 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'maskable'],
