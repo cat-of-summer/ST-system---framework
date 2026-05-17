@@ -3,13 +3,13 @@
 namespace ST_system\Storage\Mimes;
 
 use ST_system\Storage\Mimes\Mime;
-use ST_system\Storage\File;
-use ST_system\Traits\HasConfig;
-use ST_system\Cache\Manager as Cache;
+use ST_system\Storage\Mimes\Traits\Minifiable;
+use ST_system\Storage\Mimes\Traits\Combinable;
 
 class FontMime extends Mime {
 
-    use HasConfig;
+    use Minifiable;
+    use Combinable;
 
     protected static function getDefaultConfig(): array {
         return [
@@ -39,17 +39,7 @@ class FontMime extends Mime {
         ];
     }
 
-    private Cache $cache;
     private ?array $metadata = null;
-
-    protected function __init(): void {
-        $this->cache = Cache::make($this->file->getPathname(), [
-            'driver' => 'filesystem',
-            'dir' => static::config('cache_dir') ?: File::config('cache.dir'),
-            'file' => $this->file->getFilename(),
-            'ttl' => -1
-        ]);
-    }
 
     protected function parseFilename(): array {
         $file = $this->file->getBasename();
@@ -190,6 +180,21 @@ class FontMime extends Mime {
         $cache->set($meta);
         $cache->setMeta(['src_mtime' => $src_mtime]);
         return $meta;
+    }
+
+    public static function __minify(string $content, array $config): string {
+        return CssMime::__minify($content, $config);
+    }
+
+    protected function __combine(array $files, array $config): string {
+        $css = '';
+        foreach ($files as $f)
+            $css .= preg_replace('#</?style[^>]*>#i', '', $f->toHTML());
+        return $css;
+    }
+
+    protected function __combineExtension(): string {
+        return 'css';
     }
 
     private function decodeNameString(string $raw, int $platformID, int $encodingID): string {

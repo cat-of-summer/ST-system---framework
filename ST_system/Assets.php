@@ -13,6 +13,9 @@ final class Assets {
         return [
             'default_buffer' => 'head',
             'bufferization'  => true,
+            'css'   => ['combine' => true, 'minify' => true],
+            'js'    => ['combine' => true, 'minify' => true],
+            'fonts' => ['combine' => true, 'minify' => true],
         ];
     }
 
@@ -79,7 +82,12 @@ final class Assets {
 
     private static function ensureBuffer(string $name): void {
         if (!isset(self::$buffers[$name]))
-            self::$buffers[$name] = ['content' => '', 'started' => false, 'seen' => []];
+            self::$buffers[$name] = [
+                'content' => '',
+                'started' => false,
+                'seen'    => [],
+                'assets'  => ['css' => [], 'js' => [], 'fonts' => []],
+            ];
     }
 
     private static function unpackBuffer(string $name): string {
@@ -137,8 +145,10 @@ final class Assets {
         }
 
         if (!in_array($buffer, self::$stack, true)) {
-            if (isset(self::$buffers[$buffer]))
+            if (isset(self::$buffers[$buffer])) {
                 echo self::unpackBuffer($buffer);
+                self::renderAssets($buffer);
+            }
             return;
         }
 
@@ -150,6 +160,50 @@ final class Assets {
         self::$buffers[$buffer]['started'] = false;
 
         echo self::unpackBuffer($buffer);
+        self::renderAssets($buffer);
+    }
+
+    private static function renderAssets(string $buffer): void {
+        foreach (['css', 'js', 'fonts'] as $type) {
+            $items = self::$buffers[$buffer]['assets'][$type] ?? [];
+            if (!$items) continue;
+
+            $groups = [];
+            foreach ($items as $item)
+                $groups[md5(serialize($item['attrs']))][] = $item;
+
+            foreach ($groups as $group) {
+                $files = array_column($group, 'file');
+                $attrs = $group[0]['attrs'];
+
+                $can_combine = count($files) > 1
+                    && static::config("{$type}.combine")
+                    && !($type === 'js' && ($attrs['type'] ?? '') === 'module');
+
+                if ($can_combine) {
+                    $out = $files[0]->combine($files, $attrs);
+                    if (static::config("{$type}.minify")) $out = $out->minify();
+                    echo $out->toHTML($attrs)."\n";
+                } else {
+                    foreach ($files as $f) echo $f->toHTML($attrs)."\n";
+                }
+            }
+        }
+
+        self::$buffers[$buffer]['assets'] = ['css' => [], 'js' => [], 'fonts' => []];
+    }
+
+    private static function push(string $type, $src, array $attrs, string $buffer): void {
+        $buffer = $buffer !== '' ? $buffer : self::currentBuffer();
+        self::ensureBuffer($buffer);
+
+        foreach (self::resolve($src) as $file) {
+            $key = md5($file->getPathname().'|'.serialize($attrs));
+            if (isset(self::$buffers[$buffer]['seen'][$key])) continue;
+
+            self::$buffers[$buffer]['seen'][$key] = true;
+            self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs];
+        }
     }
 
     private static function finalize(string $html): string {
@@ -170,24 +224,15 @@ final class Assets {
     }
 
     private static function addCss($href, array $attrs = [], string $buffer = ''): void {
-        $buffer = $buffer !== '' ? $buffer : self::currentBuffer();
-
-        foreach (self::resolve($href) as $file)
-            self::storeAsset($file->toHTML($attrs)."\n", $buffer);
+        self::push('css', $href, $attrs, $buffer);
     }
 
     private static function addJs($src, array $attrs = [], string $buffer = ''): void {
-        $buffer = $buffer !== '' ? $buffer : self::currentBuffer();
-
-        foreach (self::resolve($src) as $file)
-            self::storeAsset($file->toHTML($attrs)."\n", $buffer);
+        self::push('js', $src, $attrs, $buffer);
     }
 
     private static function addFont($src, array $attrs = [], string $buffer = ''): void {
-        $buffer = $buffer !== '' ? $buffer : self::currentBuffer();
-
-        foreach (self::resolve($src) as $file)
-            self::storeAsset($file->toHTML($attrs), $buffer);
+        self::push('fonts', $src, $attrs, $buffer);
     }
 
     private static function svg(string $path, array $attrs = [], bool $return_path = false): string {
@@ -208,18 +253,29 @@ final class Assets {
 
     private static function addResource($path, array $attrs = [], string $buffer = ''): void {
         $buffer = $buffer !== '' ? $buffer : self::currentBuffer();
+        self::ensureBuffer($buffer);
 
         foreach (self::resolve($path) as $file) {
             $mime = $file->getMime();
+            $type = strpos($mime, 'font/') === 0   ? 'fonts'
+                  : ($mime === 'text/css'           ? 'css'
+                  : ($mime === 'application/javascript' ? 'js'
+                  : null));
 
-            if (strpos($mime, 'font/') === 0)
-                self::storeAsset($file->toHTML($attrs), $buffer);
-            elseif ($mime === 'text/css' || $mime === 'application/javascript')
-                self::storeAsset($file->toHTML($attrs)."\n", $buffer);
-            elseif ($mime === 'image/svg+xml')
+            if ($type !== null) {
+                $key = md5($file->getPathname().'|'.serialize($attrs));
+                if (isset(self::$buffers[$buffer]['seen'][$key])) continue;
+                self::$buffers[$buffer]['seen'][$key] = true;
+                self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs];
+                continue;
+            }
+
+            if ($mime === 'image/svg+xml') {
                 self::storeAsset($file->extract($attrs), $buffer);
-            else
-                throw new \InvalidArgumentException("Unsupported asset mime: {$mime} ({$file->getPathname()})");
+                continue;
+            }
+
+            throw new \InvalidArgumentException("Unsupported asset mime: {$mime} ({$file->getPathname()})");
         }
     }
 }

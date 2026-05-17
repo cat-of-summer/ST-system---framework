@@ -4,16 +4,25 @@ namespace ST_system\Storage\Mimes;
 
 use ST_system\Storage\Mimes\Mime;
 use ST_system\Storage\Mimes\Traits\Minifiable;
+use ST_system\Storage\Mimes\Traits\Combinable;
 
 class JavaScriptMime extends Mime {
     use Minifiable;
-    
+    use Combinable;
+
     public function toHTML(array $config = []): string {
         $type = $config['type'] ?? 'text/javascript';
         $async = $config['async'] ? 'async' : '';
         $defer = $config['defer'] ? 'defer' : '';
-        
+
         return "<script src='{$this->file->getRelativePath()}' type='{$type}' $async $defer></script>";
+    }
+
+    protected function __combine(array $files, array $config): string {
+        return implode("\n", array_map(
+            fn($f) => "(function(){\n".$f->getRaw()."\n})();",
+            $files
+        ));
     }
     
     protected $input;
@@ -49,12 +58,12 @@ class JavaScriptMime extends Mime {
             $content = ltrim($instance->minifyToString($content, $config));
             $content = $instance->unlock($content);
             unset($instance);
-            
+
             return $content;
         } catch (\Exception $e) {
             if (isset($instance)) {
-                
-                
+
+
                 $instance->clean();
                 unset($instance);
             }
