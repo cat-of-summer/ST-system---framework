@@ -40,12 +40,12 @@ final class Loader {
             case 'include_once':
                 $input = array_shift($args);
 
-                array_map(fn($path) => static::connect($path, $name),
-                    array_keys(File::find($input, [
-                        ...(array_shift($args) ?? []),
-                        'extension' => 'php'
-                    ]))
-                );
+                foreach (File::find($input, [
+                    ...(array_shift($args) ?? []),
+                    'extension' => 'php'
+                ]) as $file)
+                    static::connect($file->getPathname(), $name);
+
                 return;
             case 'registerClass':
                 $path = array_shift($args);
@@ -69,12 +69,11 @@ final class Loader {
                 if ($input == '' && $this->file->isFile())
                     $input = $this->file->getFilename();
 
-                array_map(fn($path) => static::connect($path, $name),
-                    array_keys($this->file->find($input, [
-                        ...(array_shift($args) ?? []),
-                        'extension' => 'php'
-                    ]))
-                );
+                foreach ($this->file->find($input, [
+                    ...(array_shift($args) ?? []),
+                    'extension' => 'php'
+                ]) as $file)
+                    static::connect($file->getPathname(), $name);
 
                 return;
             default:
