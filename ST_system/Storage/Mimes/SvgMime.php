@@ -6,7 +6,7 @@ use ST_system\Storage\Mimes\Mime;
 
 class SvgMime extends Mime {
 
-    public function toSprite(string $id, array $config = []): string {
+    public function bySprite(string $id, array $config = []): string {
         $attr_str = '';
 
         foreach ($config as $k => $v)

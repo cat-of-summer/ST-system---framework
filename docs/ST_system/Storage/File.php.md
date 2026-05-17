@@ -68,4 +68,4 @@ MIME-тип. Сначала из таблицы расширений, потом
 Имя класса MIME-сервиса (`CssMime`, `SvgMime`, `Default` и т.п.).
 
 ### Делегированные методы (через `__call`)
-Все методы `SplFileInfo`: `getPathname()`, `getFilename()`, `getExtension()`, `getBasename()`, `getDirectory()` и т.д. А также методы MIME-сервиса: `toHTML()`, `minify()`, `toSprite()`, `convert()` и т.п..php
+Все методы `SplFileInfo`: `getPathname()`, `getFilename()`, `getExtension()`, `getBasename()`, `getDirectory()` и т.д. А также методы MIME-сервиса: `toHTML()`, `minify()`, `bySprite()`, `convert()` и т.п..php

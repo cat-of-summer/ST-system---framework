@@ -166,8 +166,6 @@ class ImageMime extends Mime {
             $extensions
         ));
 
-        if (!in_array('svg', $result, true)) $result[] = 'svg';
-
         return $result;
     }
 

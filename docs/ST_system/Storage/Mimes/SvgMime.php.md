@@ -12,13 +12,13 @@ $svg = File::make('~/assets/icons.svg');
 // Основное использование: `Assets::svg()` или `Assets::sprite()`
 
 // Прямой вызов:
-echo $svg->toSprite('arrow', ['class' => 'icon']); // <svg class='icon'><use xlink:href='icons.svg#arrow'></use></svg>
+echo $svg->bySprite('arrow', ['class' => 'icon']); // <svg class='icon'><use xlink:href='icons.svg#arrow'></use></svg>
 echo $svg->extractSprite('arrow', ['width' => '24', 'height' => '24']); // встроенный SVG
 ```
 
 ## 2. Публичные методы
 
-### `toSprite(string $id, array $config = []): string`
+### `bySprite(string $id, array $config = []): string`
 `<svg><use xlink:href="...#id"></use></svg>`. `$config` — дополнительные SVG-атрибуты.
 
 ### `extractSprite(string $id, array $config = []): string`

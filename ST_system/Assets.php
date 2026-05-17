@@ -337,7 +337,7 @@ final class Assets {
 
         if (pathinfo($path, PATHINFO_EXTENSION) === '') $path .= '.svg';
 
-        return File::make($path)->toSprite($icon_id, $attrs);
+        return File::make($path)->bySprite($icon_id, $attrs);
     }
 
     private static function addResource($path, array $attrs = [], string $buffer = ''): void {
