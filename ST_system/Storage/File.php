@@ -75,8 +75,14 @@ final class File {
     private function __construct(string $path, $original = null, array $options = []) {
         $this->original = $original;
         $this->attributes = $options;
-        $this->attributes['is_uri'] = (bool)filter_var($path, FILTER_VALIDATE_URL);
-        $this->info = new \SplFileInfo($this->attributes['is_uri'] ? $path : Main::preparePath($path, 2));
+        $is_uri = (bool)filter_var($path, FILTER_VALIDATE_URL);
+        $this->attributes['is_uri'] = $is_uri;
+
+        $base = $original instanceof self && !$original->is_uri
+            ? $original->getDirectory()
+            : 2;
+
+        $this->info = new \SplFileInfo($is_uri ? $path : Main::preparePath($path, $base));
 
         $cache_filename = $this->getFilename();
 
@@ -146,9 +152,16 @@ final class File {
             case 'make':
                 return new static($args[0], $this, $args[1] ?? []);
             case 'find':
-                return $this->is_uri
-                    ? []
-                    : static::find(array_map(fn($i) => $this->fetch()->getDirectory().'/'.ltrim($i, '/'), is_array($args[0]) ? $args[0] : [$args[0]]), $args[1] ?? []);
+                if ($this->is_uri) return static::find($args[0], $args[1] ?? []);
+                $dir = $this->fetch()->getDirectory();
+                $items = array_map(function ($i) use ($dir) {
+                    if ($i instanceof File) return $i;
+                    if (!is_string($i) || $i === '') return $i;
+                    if (filter_var($i, FILTER_VALIDATE_URL)) return $i;
+                    if (strpos($i, '/') === 0 || strpos($i, '~') === 0) return $i;
+                    return $dir.'/'.ltrim($i, '/');
+                }, is_array($args[0]) ? $args[0] : [$args[0]]);
+                return static::find($items, $args[1] ?? []);
             case 'getType':
                 if ($this->is_uri) return 'uri';
                 break;
@@ -211,11 +224,33 @@ final class File {
 
         if (!is_array($input)) $input = [$input];
 
-        $results = [];
-        array_walk($input, function ($i) use (&$results, $config, &$input_cache) {
-            $i = $input_cache[$i] ??= Main::preparePath($i, 5);
+        $fallback = $config['fallback'] ?? null;
+        $files    = [];
+        $seen     = [];
 
-            if (!preg_match('/[\\(\\[\\{\\|\\?\\+\\*]/', $i)) {
+        array_walk($input, function ($item) use (&$files, &$seen, $config, &$input_cache, $fallback) {
+            if ($item instanceof self) {
+                $p = $item->getPathname();
+                if (isset($seen[$p])) return;
+                $seen[$p] = true;
+                $files[] = $item;
+                return;
+            }
+
+            if (!is_string($item) || $item === '') return;
+
+            if (filter_var($item, FILTER_VALIDATE_URL)) {
+                if (isset($seen[$item])) return;
+                $seen[$item] = true;
+                $files[] = self::make($item);
+                return;
+            }
+
+            $i = $input_cache[$item] ??= Main::preparePath($item, 5);
+            $hasGlob = (bool)preg_match('/[\\(\\[\\{\\|\\?\\+\\*]/', $i);
+            $results = [];
+
+            if (!$hasGlob) {
                 if (file_exists($i)) {
                     if (is_dir($i)) {
                         $iterator = static::getFilesystemIterator($i, $config);
@@ -254,7 +289,7 @@ final class File {
                         $delimiter = $candidate;
                         break;
                     }
-                
+
                 $pattern = $delimiter.'^'.$pattern.'$'.$delimiter.'u';
 
                 $iterator = static::getFilesystemIterator($start_dir, $config);
@@ -268,7 +303,7 @@ final class File {
                                 $skip = true;
                                 break;
                             }
-                        
+
                         if ($skip)
                             continue;
                     }
@@ -282,9 +317,32 @@ final class File {
                     }
                 }
             }
+
+            if (!$results) {
+                if ($fallback === 'make' && !$hasGlob) {
+                    if (isset($seen[$i])) return;
+                    $seen[$i] = true;
+                    $files[] = self::make($i);
+                } elseif ($fallback === 'throw') {
+                    throw new \InvalidArgumentException("File not found: {$item}");
+                }
+                return;
+            }
+
+            foreach ($results as $r) {
+                if (isset($seen[$r])) continue;
+                $seen[$r] = true;
+                $files[] = new self($r);
+            }
         });
 
-        return array_map(fn($file) => new static($file), array_filter($results));
+        return $files;
+    }
+
+    public function getMtimeAttribute(): int {
+        if ($this->is_uri) return 0;
+        $p = $this->getPathname();
+        return is_file($p) ? (int)@filemtime($p) : 0;
     }
 
     public function getMeta(bool $force = false): array {

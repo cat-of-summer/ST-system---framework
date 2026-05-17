@@ -91,7 +91,7 @@ class FontMime extends Mime {
             'file' => $this->file->getBasename().'.fontmeta'
         ]);
 
-        $src_mtime = $this->file->is_uri ? 0 : (int)@filemtime((string)$this->file->getRealPath());
+        $src_mtime = $this->file->mtime;
 
         if ($cache->exists() && ($cache->getMeta()['src_mtime'] ?? -1) >= $src_mtime)
             return $cache->get() ?: [];

@@ -68,7 +68,7 @@ $a = Assets::create(string $path, string $buffer = ''): self
 $a = Assets::create(__DIR__, 'head');
 $a->addCss('css/style.css');    // => __DIR__ . '/css/style.css'
 $a->addJs('js/main.js');        // => __DIR__ . '/js/main.js'
-$a->sprite('arrow');
+$a->sprite('arrow', [], 'img/sprite.svg');
 ```
 
 Если `$buffer` задан при создании, он используется по умолчанию во всех методах инстанса (если буфер не указан явно при вызове).
@@ -199,18 +199,24 @@ $url = Assets::svg('/icons/logo.svg', [], true);
 
 Возвращает `<svg><use href="...#icon_id">` для символа из SVG-спрайта.
 
-В статическом вызове `$path` — первый аргумент и **обязателен**. В инстанс-вызове путь берётся из базового каталога инстанса; третьим аргументом можно переопределить.
+В статическом вызове `$path` — первый аргумент и **обязателен**.
+
+В инстанс-вызове путь определяется так:
+- если `$path` передан третьим аргументом — резолвится относительно базового каталога инстанса;
+- иначе если `Assets::create()` был создан **с путём к файлу** — используется этот файл как спрайт;
+- иначе будет ошибка (нет конвенции «спрайта по умолчанию»).
 
 ```php
 // Статический — path первым (как svg)
 echo Assets::sprite('/img/sprite.svg', 'arrow-right', ['class' => 'icon']);
 
-// Инстанс — icon_id первым, path не нужен (берётся базовый каталог)
-$a = Assets::create(__DIR__);
+// Инстанс — спрайт-файл сразу в Assets::create()
+$a = Assets::create(__DIR__.'/img/sprite.svg');
 echo $a->sprite('arrow-right', ['class' => 'icon']);
 
-// Инстанс — явный путь к другому спрайту
-echo $a->sprite('close', ['class' => 'icon'], 'img/other-sprite.svg');
+// Инстанс — базовый каталог + явный путь к спрайту
+$a = Assets::create(__DIR__);
+echo $a->sprite('close', ['class' => 'icon'], 'img/sprite.svg');
 ```
 
 ---
@@ -401,7 +407,7 @@ $a->addCss('style.css');
 <header class="header">
     <?= $a->svg('img/logo.svg', ['class' => 'logo']) ?>
     <nav>
-        <button><?= $a->sprite('menu', ['class' => 'icon']) ?></button>
+        <button><?= $a->sprite('menu', ['class' => 'icon'], 'img/sprite.svg') ?></button>
     </nav>
 </header>
 ```

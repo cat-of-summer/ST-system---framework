@@ -39,7 +39,7 @@ final class Loader {
             case 'require_once':
             case 'include_once':
                 $input = array_shift($args);
-    
+
                 array_map(fn($path) => static::connect($path, $name),
                     array_keys(File::find($input, [
                         ...(array_shift($args) ?? []),
@@ -107,7 +107,7 @@ final class Loader {
         $prefix     = trim($prefix, '\\');
         $full_class = $prefix !== '' ? $prefix . '\\' . $class_name : $class_name;
 
-        $file = File::make($this->file->getDirectory().'/'.$file_path.'.php');
+        $file = $this->file->make($file_path.'.php');
 
         if ($file->exists())
             $classes_map[$full_class] = $file->getPathname();
@@ -126,8 +126,8 @@ final class Loader {
         );
 
         $prefix    = trim($config['prefix'], '\\');
-        $directory = $this->file->getDirectory();
-        $mapKey    = $directory . ':' . $prefix;
+        $directory = $this->file;
+        $mapKey    = $directory->getPathname() . ':' . $prefix;
 
         if (!isset($directories_map[$mapKey])) {
             spl_autoload_register(function(string $class_name) use ($directory, $prefix) {
@@ -139,7 +139,7 @@ final class Loader {
                     $relative = $class_name;
                 }
 
-                $file = File::make($directory . '/' . str_replace('\\', '/', $relative) . '.php');
+                $file = $directory->make(str_replace('\\', '/', $relative) . '.php');
 
                 if ($file->exists())
                     require_once $file->getPathname();

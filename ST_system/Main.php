@@ -462,18 +462,21 @@ final class Main {
         return $result;
     }
 
-    public static function preparePath(string $path, int $depth = 0): string {
-        if (strpos($path, '~') === 0)
+    public static function preparePath(string $path, $base = 0): string {
+        if (strpos($path, '~') === 0) {
             $path = (Config::env('DOCUMENT_ROOT') ?: Config::env('COMPOSER_ROOT')).'/'.trim($path, '/~');
-        elseif (strpos($path, '/') !== 0)
-            $path = dirname(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS)[$depth]['file']).'/'.trim($path, '/');
-                
+        } elseif (strpos($path, '/') !== 0) {
+            if (is_int($base))
+                $base = dirname(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS)[$base]['file']);
+            $path = rtrim((string)$base, '/').'/'.trim($path, '/');
+        }
+
         $path = rtrim($path, '/');
 
         $stack = [];
         foreach (explode('/', $path) as $segment) {
             if ($segment === '' || $segment === '.') continue;
-    
+
             if ($segment === '..') {
                 array_pop($stack);
                 continue;

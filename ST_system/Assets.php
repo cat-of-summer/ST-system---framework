@@ -24,7 +24,9 @@ final class Assets {
     }
 
     private static function placeholder(string $name): string {
-        return '<!-- __ASSETS__:'.$name.'__ -->';
+        static $salt;
+        $salt ??= Main::uuid();
+        return '<!-- __ASSETS__:'.$salt.':'.$name.'__ -->';
     }
 
     private static array $buffers  = [];
@@ -62,8 +64,6 @@ final class Assets {
     }
 
     public function __call(string $name, array $args) {
-        $base = $this->file->isFile() ? $this->file->getDirectory() : $this->file->getPathname();
-
         switch ($name) {
             case 'mount':
             case 'render':
@@ -73,25 +73,35 @@ final class Assets {
                 return static::finalize(...$args);
 
             case 'svg':
-                $args[0] = ($args[0] ?? '') !== '' ? $base.'/'.ltrim($args[0], '/') : $base;
+                $args[0] = ($args[0] ?? '') !== ''
+                    ? $this->file->make($args[0])->getPathname()
+                    : $this->file->getPathname();
                 return static::svg(...$args);
 
             case 'sprite':
-                $path = ($args[2] ?? '') !== '' ? $base.'/'.ltrim($args[2], '/') : $base;
-                return static::sprite($path, $args[0] ?? '', $args[1] ?? []);
+                $args[0] = $args[0] ?? '';
+                $path = ($args[2] ?? '') !== ''
+                    ? $this->file->make($args[2])->getPathname()
+                    : $this->file->getPathname();
+                return static::sprite($path, $args[0], $args[1] ?? []);
 
             case 'addCss':
             case 'addJs':
             case 'addFont':
             case 'addResource':
-                $args[0] = ($args[0] ?? '') !== '' ? $base.'/'.ltrim($args[0], '/') : $base;
+                $args[0] = $this->file->find($args[0] ?? '', ['fallback' => 'make']);
                 if (empty($args[2])) $args[2] = $this->buffer;
                 return static::$name(...$args);
 
             case 'addString':
-            case 'setManifest':
                 if (empty($args[1])) $args[1] = $this->buffer;
-                return static::$name(...$args);
+                return static::addString(...$args);
+
+            case 'setManifest':
+                if (isset($args[0]['favicon']) && is_string($args[0]['favicon']) && $args[0]['favicon'] !== '')
+                    $args[0]['favicon'] = $this->file->make($args[0]['favicon'])->getPathname();
+                if (empty($args[1])) $args[1] = $this->buffer;
+                return static::setManifest(...$args);
         }
 
         throw new \BadMethodCallException("Method ".__CLASS__."::{$name}() not found");
@@ -104,10 +114,11 @@ final class Assets {
     private static function ensureBuffer(string $name): void {
         if (!isset(self::$buffers[$name]))
             self::$buffers[$name] = [
-                'content' => '',
-                'started' => false,
-                'seen'    => [],
-                'assets'  => ['css' => [], 'js' => [], 'fonts' => []],
+                'content'      => '',
+                'started'      => false,
+                'seen_assets'  => [],
+                'seen_strings' => [],
+                'assets'       => ['css' => [], 'js' => [], 'fonts' => []],
             ];
     }
 
@@ -122,23 +133,10 @@ final class Assets {
         self::ensureBuffer($buffer);
 
         $key = md5($html);
-        if (isset(self::$buffers[$buffer]['seen'][$key])) return;
+        if (isset(self::$buffers[$buffer]['seen_strings'][$key])) return;
 
-        self::$buffers[$buffer]['seen'][$key] = true;
+        self::$buffers[$buffer]['seen_strings'][$key] = true;
         self::$buffers[$buffer]['content'] .= $html;
-    }
-
-    private static function resolve($input): array {
-        $files = [];
-        foreach ((array)$input as $p) {
-            if (filter_var($p, FILTER_VALIDATE_URL)) {
-                $files[] = File::make($p);
-                continue;
-            }
-            $found = File::find($p);
-            $files = array_merge($files, $found ?: [File::make($p)]);
-        }
-        return $files;
     }
 
     private static function mount(string $name): void {
@@ -146,8 +144,10 @@ final class Assets {
         if (!$is_shutdown_initialized) {
             $is_shutdown_initialized = true;
             register_shutdown_function(static function () {
+                if (!static::config('bufferization')) { self::$stack = []; return; }
                 while ($name = array_pop(self::$stack)) {
                     $captured = ob_get_clean();
+                    if ($captured === false) continue;
                     $replacement = self::unpackBuffer($name) . self::buildAssetsHtml($name);
                     self::$buffers[$name]['started'] = false;
                     echo str_replace(self::placeholder($name), $replacement, $captured);
@@ -161,21 +161,21 @@ final class Assets {
             throw new \RuntimeException("Buffer '{$name}' already started.");
 
         self::$buffers[$name]['started'] = true;
-        self::$stack[] = $name;
 
         if (static::config('bufferization')) {
+            self::$stack[] = $name;
             echo self::unpackBuffer($name);
             ob_start();
             echo self::placeholder($name);
         } else {
-            echo '<!-- '.__CLASS__.'::mount("'.$name.'") -->';
+            echo self::placeholder($name);
         }
     }
 
     private static function render(string $buffer): void {
         if (!static::config('bufferization')) {
-            array_pop(self::$stack);
-            self::$buffers[$buffer]['started'] = false;
+            if (isset(self::$buffers[$buffer]))
+                self::$buffers[$buffer]['started'] = false;
             return;
         }
 
@@ -232,11 +232,11 @@ final class Assets {
         $buffer = $buffer !== '' ? $buffer : self::currentBuffer();
         self::ensureBuffer($buffer);
 
-        foreach (self::resolve($src) as $file) {
+        foreach (File::find($src, ['fallback' => 'make']) as $file) {
             $key = Main::hash([$file->getPathname(), $attrs]);
-            if (isset(self::$buffers[$buffer]['seen'][$key])) continue;
+            if (isset(self::$buffers[$buffer]['seen_assets'][$key])) continue;
 
-            self::$buffers[$buffer]['seen'][$key] = true;
+            self::$buffers[$buffer]['seen_assets'][$key] = true;
             self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs];
         }
     }
@@ -244,10 +244,11 @@ final class Assets {
     private static function finalize(string $html): string {
         foreach (self::$buffers as $name => &$buf) {
             $replacement = $buf['content'] . self::buildAssetsHtml($name);
-            $html = str_replace('<!-- '.__CLASS__.'::mount("'.$name.'") -->', $replacement, $html);
+            $html = str_replace(self::placeholder($name), $replacement, $html);
             $buf['started'] = false;
             $buf['content'] = '';
         }
+        unset($buf);
 
         return $html;
     }
@@ -270,7 +271,7 @@ final class Assets {
 
         $source = File::make($favicon)->fetch();
 
-        $cache = Cache::make([__CLASS__, 'manifest', $params, $source->getPathname()], [
+        $cache = Cache::make([__CLASS__, 'manifest', $params, $source->getPathname(), $source->mtime], [
             'driver' => 'filesystem',
             'dir'    => File::config('cache.dir'),
             'ttl'    => -1,
@@ -370,7 +371,7 @@ final class Assets {
         $buffer = $buffer !== '' ? $buffer : self::currentBuffer();
         self::ensureBuffer($buffer);
 
-        foreach (self::resolve($path) as $file) {
+        foreach (File::find($path, ['fallback' => 'make']) as $file) {
             $mime = $file->getMime();
             $type = strpos($mime, 'font/') === 0   ? 'fonts'
                   : ($mime === 'text/css'           ? 'css'
@@ -378,9 +379,9 @@ final class Assets {
                   : null));
 
             if ($type !== null) {
-                $key = $file->getPathname().'|'.Main::hash($attrs);
-                if (isset(self::$buffers[$buffer]['seen'][$key])) continue;
-                self::$buffers[$buffer]['seen'][$key] = true;
+                $key = Main::hash([$file->getPathname(), $attrs]);
+                if (isset(self::$buffers[$buffer]['seen_assets'][$key])) continue;
+                self::$buffers[$buffer]['seen_assets'][$key] = true;
                 self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs];
                 continue;
             }
