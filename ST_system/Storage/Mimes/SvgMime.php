@@ -2,9 +2,15 @@
 
 namespace ST_system\Storage\Mimes;
 
+use ST_system\Main;
 use ST_system\Storage\Mimes\Mime;
+use ST_system\Storage\Mimes\Traits\Minifiable;
+use ST_system\Storage\Mimes\Traits\Combinable;
 
 class SvgMime extends Mime {
+
+    use Minifiable;
+    use Combinable;
 
     public function bySprite(string $id, array $config = []): string {
         $attr_str = '';
@@ -177,5 +183,79 @@ class SvgMime extends Mime {
 
             return $content;
         }
+    }
+
+    protected function __combine(array $files, array $config): string {
+        static $data = [];
+
+        $ns = $config['ns'] ?? 'http://www.w3.org/2000/svg';
+
+        if (class_exists('DOMDocument')) {
+            $out  = new \DOMDocument('1.0', 'UTF-8');
+            $root = $out->createElementNS($ns, 'svg');
+            $root->setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+            $root->setAttribute('style', 'display:none');
+            $out->appendChild($root);
+
+            foreach ($files as $f) {
+                $dom = new \DOMDocument();
+                libxml_use_internal_errors(true);
+                $dom->loadXML($f->getRaw(), LIBXML_NOWARNING | LIBXML_NOERROR);
+                libxml_clear_errors();
+
+                $svg = $dom->documentElement;
+                if (!$svg || $svg->nodeName !== 'svg') continue;
+
+                $id = $svg->getAttribute('id') ?: Main::snakeCase(pathinfo($f->getBasename(), PATHINFO_FILENAME));
+
+                $base = $id; $i = 2;
+                while (isset($data[$id])) { $id = $base.'_'.$i; $i++; }
+                $data[$id] = true;
+
+                $symbol = $out->createElementNS($ns, 'symbol');
+                $symbol->setAttribute('id', $id);
+                if ($svg->hasAttribute('viewBox'))
+                    $symbol->setAttribute('viewBox', $svg->getAttribute('viewBox'));
+
+                foreach (iterator_to_array($svg->childNodes) as $child)
+                    $symbol->appendChild($out->importNode($child, true));
+
+                $root->appendChild($symbol);
+            }
+
+            return $out->saveXML($root);
+        }
+
+        $body = '';
+        foreach ($files as $f) {
+            $raw = $f->getRaw();
+            if (!preg_match('/<svg\b([^>]*)>(.*)<\/svg>/is', $raw, $m)) continue;
+
+            $attrs = $m[1];
+            $inner = $m[2];
+
+            $id = preg_match('/\bid\s*=\s*["\']([^"\']+)["\']/i', $attrs, $idm)
+                ? $idm[1]
+                : Main::snakeCase(pathinfo($f->getBasename(), PATHINFO_FILENAME));
+
+            $base = $id; $i = 2;
+            while (isset($data[$id])) { $id = $base.'_'.$i; $i++; }
+            $data[$id] = true;
+
+            $vb = preg_match('/\bviewBox\s*=\s*["\']([^"\']+)["\']/i', $attrs, $vbm)
+                ? ' viewBox="'.htmlspecialchars($vbm[1], ENT_QUOTES).'"'
+                : '';
+
+            $body .= '<symbol id="'.htmlspecialchars($id, ENT_QUOTES).'"'.$vb.'>'.$inner.'</symbol>';
+        }
+
+        return '<svg xmlns="'.$ns.'" xmlns:xlink="http://www.w3.org/1999/xlink" style="display:none">'.$body.'</svg>';
+    }
+
+    protected function __minify(string $content, array $config): string {
+        $content = preg_replace('/<!--[\s\S]*?-->/', '', $content);
+        $content = preg_replace('/>\s+</', '><', $content);
+        $content = preg_replace('/\s{2,}/', ' ', $content);
+        return trim($content);
     }
 }
