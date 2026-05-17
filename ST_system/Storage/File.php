@@ -96,17 +96,33 @@ final class File {
             'file' => $cache_filename
         ]);
 
-        $mime = $this->getMime();
+        $this->mime = static::resolveMimeService($this->getMime(), $this);
+    }
 
-        $this->mime = (
-            ($matched = array_filter(
-                static::config('mimes.services'),
-                fn($r, $m) => strpos($mime, $m) !== false,
-                ARRAY_FILTER_USE_BOTH
-            ))
-                ? new (reset($matched))($this)
-                : new class($this) extends Mimes\Mime {}
+    private static function resolveMimeService(string $mime, self $file): Mimes\Mime {
+        $matched = array_filter(
+            static::config('mimes.services'),
+            fn($r, $m) => strpos($mime, $m) !== false,
+            ARRAY_FILTER_USE_BOTH
         );
+
+        return $matched
+            ? new (reset($matched))($file)
+            : new class($file) extends Mimes\Mime {};
+    }
+
+    public function setMime(string $mime): self {
+        if (
+            !((new \ReflectionClass($this->mime))->isAnonymous()) && 
+            !$this->is_uri && 
+            $this->exists()
+        ) return $this;
+
+        $this->attributes['mime_override'] = $mime;
+        $this->mime_data = [];
+        $this->mime = static::resolveMimeService($mime, $this);
+
+        return $this;
     }
 
     public static function __callStatic(string $name, array $args) {
@@ -542,6 +558,9 @@ final class File {
     }
 
     public function getMime(): string {
+        if (!empty($this->attributes['mime_override']))
+            return $this->attributes['mime_override'];
+
         $extension = $this->getExtension();
         $path = $this->getPathname();
 

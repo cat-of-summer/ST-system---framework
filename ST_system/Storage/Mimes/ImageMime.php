@@ -166,6 +166,8 @@ class ImageMime extends Mime {
             $extensions
         ));
 
+        if (!in_array('svg', $result, true)) $result[] = 'svg';
+
         return $result;
     }
 
@@ -316,6 +318,11 @@ class ImageMime extends Mime {
         $instance = $this->file->is_uri
             ? $this->file->fetch()
             : $this->file;
+
+        if (($config['extension'] ?? null) === 'svg') {
+            if ($instance->getExtension() === 'svg') return $instance;
+            return $this->convertToSvgWrapper($instance, $config);
+        }
 
         $resize_config = (isset($config['width']) || isset($config['height']) || isset($config['side']))
             ? array_merge(
@@ -477,6 +484,35 @@ class ImageMime extends Mime {
                 break;
             }
 
+            $cache->setMeta([]);
+        }
+
+        return $instance->make($cache->file);
+    }
+
+    private function convertToSvgWrapper(File $instance, array $config): File {
+        ['width' => $sw, 'height' => $sh] = $instance->getImageSize();
+
+        $w = isset($config['width'])  ? (int)$config['width']
+           : (isset($config['height']) ? (int)round($config['height'] / $sh * $sw) : $sw);
+        $h = isset($config['height']) ? (int)$config['height']
+           : (isset($config['width'])  ? (int)round($config['width']  / $sw * $sh) : $sh);
+
+        $prefix = ($w !== $sw || $h !== $sh) ? "{$h}x{$w}_" : '';
+
+        $cache = $this->cache->make($instance->getOriginal(true)->getPathname(), [
+            'file' => $prefix.$instance->getBasename().'.svg',
+        ]);
+
+        if (($config['force'] ?? false) || !is_file($cache->file)) {
+            $cache->initDir();
+
+            $svg = '<?xml version="1.0" encoding="UTF-8"?>'
+                 .'<svg xmlns="http://www.w3.org/2000/svg" width="'.$w.'" height="'.$h.'" viewBox="0 0 '.$w.' '.$h.'">'
+                 .'<image href="data:'.$instance->getMime().';base64,'.base64_encode($instance->getRaw()).'" width="'.$w.'" height="'.$h.'"/>'
+                 .'</svg>';
+
+            file_put_contents($cache->file, $svg);
             $cache->setMeta([]);
         }
 

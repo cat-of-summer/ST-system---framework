@@ -845,6 +845,17 @@ final class Rule {
         ->seesSentinel()
         ->alias('digits');
 
+
+        self::create([
+            'string',
+            self::create(fn(&$v) => preg_match('/^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $v) === 1)
+                ->handleError(fn($v) => 'Invalid hex color'),
+        ])
+        ->order(700)
+        ->seesSentinel()
+        ->alias('hex_color')
+        ->alias('hexColor');
+
         
         (self::create(function(&$v, array $p): bool {
             $min = (float)($p[0] ?? 0);

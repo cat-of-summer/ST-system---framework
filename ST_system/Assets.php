@@ -4,6 +4,9 @@ namespace ST_system;
 
 use ST_system\Traits\HasConfig;
 use ST_system\Storage\File;
+use ST_system\Rule;
+use ST_system\Storage\Mimes\ImageMime;
+use ST_system\Cache\Manager as Cache;
 
 final class Assets {
 
@@ -19,8 +22,8 @@ final class Assets {
         ];
     }
 
-    private static array $buffers = [];
-    private static array $stack   = [];
+    private static array $buffers  = [];
+    private static array $stack    = [];
 
     private File $file;
     private string $buffer;
@@ -54,6 +57,16 @@ final class Assets {
             case 'addString':
                 if (($args[1] ?? '') === '' && $this->buffer !== '') $args[1] = $this->buffer;
                 return static::addString(...$args);
+
+            case 'setManifest':
+                if (isset($args[0]['favicon']) && is_string($args[0]['favicon']) && $args[0]['favicon'] !== ''
+                    && !filter_var($args[0]['favicon'], FILTER_VALIDATE_URL)
+                ) {
+                    $base = $this->file->isFile() ? $this->file->getDirectory() : $this->file->getPathname();
+                    $args[0]['favicon'] = $base.'/'.ltrim($args[0]['favicon'], '/');
+                }
+                if (($args[1] ?? '') === '' && $this->buffer !== '') $args[1] = $this->buffer;
+                return static::setManifest(...$args);
 
             case 'sprite':
             case 'svg':
@@ -221,6 +234,82 @@ final class Assets {
 
         foreach ((array)$string as $s)
             self::storeAsset($s."\n", $buffer);
+    }
+
+    private static function setManifest(array $params = [], string $buffer = ''): void {
+        static $done = false;
+
+        if ($done)
+            throw new \LogicException(__CLASS__.'::setManifest() can be called only once per request');
+
+        $favicon = $params['favicon'] ?? '';
+        unset($params['favicon']);
+
+        $source = File::make($favicon)->fetch();
+
+        $cache = Cache::make([__CLASS__, 'manifest', $params, $source->getPathname()], [
+            'driver' => 'filesystem',
+            'dir'    => File::config('cache.dir'),
+            'ttl'    => -1,
+        ]);
+
+        $html = $cache->remember(fn() => self::generateManifest($source, $params, $cache), -1);
+
+        self::storeAsset($html, $buffer !== '' ? $buffer : self::currentBuffer());
+
+        $done = true;
+    }
+
+    private static function generateManifest(File $source, array $params, Cache $cache): string {
+        $can_ico = in_array('ico', ImageMime::getAllowedExtension(), true);
+
+        $variants = [
+            ['favicon.svg',                  'svg',                    null, null, 'icon'],
+            ['favicon-96x96.png',            'png',                    96,   96,   'icon'],
+            ['apple-touch-icon.png',         'png',                    180,  180,  'apple-touch-icon'],
+            ['web-app-manifest-192x192.png', 'png',                    192,  192,  null],
+            ['web-app-manifest-512x512.png', 'png',                    512,  512,  null],
+            ['favicon.ico',                  $can_ico ? 'ico' : 'png', null, null, 'shortcut icon'],
+        ];
+
+        $files = [];
+        foreach ($variants as [$name, $ext, $w, $h]) {
+            $cfg = ['extension' => $ext];
+            if ($w !== null) { $cfg['width'] = $w; $cfg['height'] = $h; }
+            $files[$name] = $source->convert($cfg);
+        }
+
+        Rule::object([
+            'name' => ['string', Rule::default($_SERVER['HTTP_HOST'])],
+            'short_name' => ['string', Rule::default($_SERVER['HTTP_HOST'])],
+            'theme_color' => 'hex_color|default:#fff',
+            'background_color' => 'hex_color|default:#fff',
+            'display'          => 'string|default:standalone',
+        ])->apply($params);
+
+        $params['icons'] = [
+            ['src' => $files['web-app-manifest-192x192.png']->getRelativePath(), 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'maskable'],
+            ['src' => $files['web-app-manifest-512x512.png']->getRelativePath(), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
+        ];
+
+        $files['site.webmanifest'] = File::make($cache->make('', ['file' => 'site.webmanifest'])->file)->setMime('application/json');
+        $files['site.webmanifest']->putContents($params);
+
+        $html = [];
+
+        foreach ($variants as [$name, $m, $w, $h, $rel]) {
+            if ($rel === null) continue;
+            $html[] = '<link rel="'.$rel.'" type="'.$files[$name]->getMime().'"'
+                .($w !== null ? ' sizes="'.$w.'x'.$h.'"' : '')
+                .' href="'.$files[$name]->getRelativePath().'">';
+        }
+
+        $html[] = '<link rel="manifest" href="'.$files['site.webmanifest']->getRelativePath().'">';
+
+        if (!empty($params['theme_color']))
+            $html[] = '<meta name="theme-color" content="'.htmlspecialchars($params['theme_color'], ENT_QUOTES).'">';
+
+        return implode("\n", $html);
     }
 
     private static function addCss($href, array $attrs = [], string $buffer = ''): void {
