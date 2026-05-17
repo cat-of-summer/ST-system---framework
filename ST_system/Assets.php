@@ -30,7 +30,7 @@ final class Assets {
 
     public function __construct(string $path, string $buffer = '') {
         $this->file = File::make($path);
-        $this->buffer = $buffer;
+        $this->buffer = $buffer ?: static::config('default_buffer');
     }
 
     public static function create(string $path, string $buffer = ''): self {
@@ -38,51 +38,54 @@ final class Assets {
     }
 
     public static function __callStatic(string $name, array $args) {
-        if (method_exists(static::class, $name))
-            return static::$name(...$args);
+        switch ($name) {
+            case 'mount':
+            case 'render':
+            case 'finalize':
+            case 'addCss':
+            case 'addJs':
+            case 'addFont':
+            case 'addResource':
+            case 'addString':
+            case 'setManifest':
+            case 'svg':
+            case 'sprite':
+                return static::$name(...$args);
+        }
 
         throw new \BadMethodCallException("Method ".__CLASS__."::{$name}() not found");
     }
 
     public function __call(string $name, array $args) {
+        $base = $this->file->isFile() ? $this->file->getDirectory() : $this->file->getPathname();
+
         switch ($name) {
             case 'mount':
             case 'render':
-                if (($args[0] ?? '') === '' && $this->buffer !== '') $args[0] = $this->buffer;
-                return static::$name(...$args);
+                return static::$name($args[0] ?? $this->buffer);
 
             case 'finalize':
                 return static::finalize(...$args);
 
-            case 'addString':
-                if (($args[1] ?? '') === '' && $this->buffer !== '') $args[1] = $this->buffer;
-                return static::addString(...$args);
-
-            case 'setManifest':
-                if (isset($args[0]['favicon']) && is_string($args[0]['favicon']) && $args[0]['favicon'] !== ''
-                    && !filter_var($args[0]['favicon'], FILTER_VALIDATE_URL)
-                ) {
-                    $base = $this->file->isFile() ? $this->file->getDirectory() : $this->file->getPathname();
-                    $args[0]['favicon'] = $base.'/'.ltrim($args[0]['favicon'], '/');
-                }
-                if (($args[1] ?? '') === '' && $this->buffer !== '') $args[1] = $this->buffer;
-                return static::setManifest(...$args);
+            case 'svg':
+                $args[0] = ($args[0] ?? '') !== '' ? $base.'/'.ltrim($args[0], '/') : $base;
+                return static::svg(...$args);
 
             case 'sprite':
-            case 'svg':
+                $path = ($args[2] ?? '') !== '' ? $base.'/'.ltrim($args[2], '/') : $base;
+                return static::sprite($path, $args[0] ?? '', $args[1] ?? []);
+
             case 'addCss':
             case 'addJs':
             case 'addFont':
             case 'addResource':
-                $idx = $name === 'sprite' ? 2 : 0;
-                $input = $args[$idx] ?? '';
-                $args[$idx] = $input === ''
-                    ? $this->file->getPathname()
-                    : ($this->file->isFile() ? $this->file->getDirectory() : $this->file->getPathname()).'/'.ltrim($input, '/');
+                $args[0] = ($args[0] ?? '') !== '' ? $base.'/'.ltrim($args[0], '/') : $base;
+                if (empty($args[2])) $args[2] = $this->buffer;
+                return static::$name(...$args);
 
-                if ($name !== 'sprite' && $name !== 'svg' && ($args[2] ?? '') === '' && $this->buffer !== '')
-                    $args[2] = $this->buffer;
-
+            case 'addString':
+            case 'setManifest':
+                if (empty($args[1])) $args[1] = $this->buffer;
                 return static::$name(...$args);
         }
 
@@ -334,7 +337,7 @@ final class Assets {
         return $return_path ? $file->getRelativePath() : $file->extract($attrs);
     }
 
-    private static function sprite(string $icon_id, array $attrs = [], string $path = ''): string {
+    private static function sprite(string $path, string $icon_id, array $attrs = []): string {
         if ($path === '')
             throw new \InvalidArgumentException('Assets::sprite() requires a sprite file path.');
 
