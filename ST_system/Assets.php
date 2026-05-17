@@ -22,6 +22,10 @@ final class Assets {
         ];
     }
 
+    private static function placeholder(string $name): string {
+        return '<!-- __ASSETS__:'.$name.'__ -->';
+    }
+
     private static array $buffers  = [];
     private static array $stack    = [];
 
@@ -137,6 +141,19 @@ final class Assets {
     }
 
     private static function mount(string $name): void {
+        static $is_shutdown_initialized = false;
+        if (!$is_shutdown_initialized) {
+            $is_shutdown_initialized = true;
+            register_shutdown_function(static function () {
+                while ($name = array_pop(self::$stack)) {
+                    $captured = ob_get_clean();
+                    $replacement = self::unpackBuffer($name) . self::buildAssetsHtml($name);
+                    self::$buffers[$name]['started'] = false;
+                    echo str_replace(self::placeholder($name), $replacement, $captured);
+                }
+            });
+        }
+
         self::ensureBuffer($name);
 
         if (self::$buffers[$name]['started'])
@@ -148,6 +165,7 @@ final class Assets {
         if (static::config('bufferization')) {
             echo self::unpackBuffer($name);
             ob_start();
+            echo self::placeholder($name);
         } else {
             echo '<!-- '.__CLASS__.'::mount("'.$name.'") -->';
         }
@@ -161,25 +179,24 @@ final class Assets {
         }
 
         if (!in_array($buffer, self::$stack, true)) {
-            if (isset(self::$buffers[$buffer])) {
-                echo self::unpackBuffer($buffer);
-                self::renderAssets($buffer);
-            }
+            if (isset(self::$buffers[$buffer]))
+                echo self::unpackBuffer($buffer) . self::buildAssetsHtml($buffer);
             return;
         }
 
         if ($buffer !== self::currentBuffer())
             throw new \RuntimeException("Buffer mismatch: trying to end '{$buffer}', but top active is '".self::currentBuffer()."'. Use LIFO order.");
 
-        self::$buffers[$buffer]['content'] .= ob_get_clean();
+        $captured = ob_get_clean();
         array_pop(self::$stack);
         self::$buffers[$buffer]['started'] = false;
 
-        echo self::unpackBuffer($buffer);
-        self::renderAssets($buffer);
+        $replacement = self::unpackBuffer($buffer) . self::buildAssetsHtml($buffer);
+        echo str_replace(self::placeholder($buffer), $replacement, $captured);
     }
 
-    private static function renderAssets(string $buffer): void {
+    private static function buildAssetsHtml(string $buffer): string {
+        $html = '';
         foreach (['css', 'js', 'fonts'] as $type) {
             $items = self::$buffers[$buffer]['assets'][$type] ?? [];
             if (!$items) continue;
@@ -199,14 +216,15 @@ final class Assets {
                 if ($can_combine) {
                     $out = $files[0]->combine($files, $attrs);
                     if (static::config("{$type}.minify")) $out = $out->minify();
-                    echo $out->toHTML($attrs)."\n";
+                    $html .= $out->toHTML($attrs)."\n";
                 } else {
-                    foreach ($files as $f) echo $f->toHTML($attrs)."\n";
+                    foreach ($files as $f) $html .= $f->toHTML($attrs)."\n";
                 }
             }
         }
 
         self::$buffers[$buffer]['assets'] = ['css' => [], 'js' => [], 'fonts' => []];
+        return $html;
     }
 
     private static function push(string $type, $src, array $attrs, string $buffer): void {
@@ -223,10 +241,11 @@ final class Assets {
     }
 
     private static function finalize(string $html): string {
-        foreach (self::$buffers as $name => ['content' => &$content, 'started' => &$started]) {
-            $html = str_replace('<!-- '.__CLASS__.'::mount("'.$name.'") -->', $content, $html);
-            $started = false;
-            $content = '';
+        foreach (self::$buffers as $name => &$buf) {
+            $replacement = $buf['content'] . self::buildAssetsHtml($name);
+            $html = str_replace('<!-- '.__CLASS__.'::mount("'.$name.'") -->', $replacement, $html);
+            $buf['started'] = false;
+            $buf['content'] = '';
         }
 
         return $html;
