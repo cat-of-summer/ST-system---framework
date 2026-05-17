@@ -147,7 +147,7 @@ final class Main {
     public static function hash($value): string {
         $visited = [];
         $refs    = ['next' => 0, 'map' => []];
-        return static::_hash($value, $visited, $refs);
+        return md5(static::_hash($value, $visited, $refs));
     }
 
     private static function _hash($value, array &$visited, array &$refs): string {

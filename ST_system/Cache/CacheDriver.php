@@ -21,7 +21,7 @@ abstract class CacheDriver {
         static::hasConfigInit();
 
         $this->attributes['raw_key'] = $key;
-        $this->id = md5(Main::hash($key));
+        $this->id = Main::hash($key);
 
         Rule::scope(static::class, function() use (&$config) {
             Rule::create('defaultConfig')->apply($config);
@@ -36,7 +36,7 @@ abstract class CacheDriver {
     final public function spawn($key, array $override = []): self {
         $clone = clone $this;
         $clone->attributes['raw_key'] = $key;
-        $clone->id = md5(Main::hash($key));
+        $clone->id = Main::hash($key);
         $clone->data_cache   = [];
         $clone->meta_cache   = [];
         $clone->exists_cache = [];

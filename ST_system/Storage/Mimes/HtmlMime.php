@@ -48,7 +48,7 @@ class HtmlMime extends Mime {
         $source   = $instance->getOriginal(true) ?? $instance;
 
         $cache = $this->cache->make($source->getPathname(), [
-            'file' => 'extract_' . md5(Main::hash([$schema, $data])) . '.json'
+            'file' => Main::hash([$schema, $data]) . '.json'
         ]);
 
         if (

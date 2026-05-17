@@ -5,6 +5,7 @@ namespace ST_system;
 use ST_system\Traits\HasConfig;
 use ST_system\Storage\File;
 use ST_system\Rule;
+use ST_system\Main;
 use ST_system\Storage\Mimes\ImageMime;
 use ST_system\Cache\Manager as Cache;
 
@@ -203,7 +204,7 @@ final class Assets {
 
             $groups = [];
             foreach ($items as $item)
-                $groups[md5(serialize($item['attrs']))][] = $item;
+                $groups[Main::hash($item['attrs'])][] = $item;
 
             foreach ($groups as $group) {
                 $files = array_column($group, 'file');
@@ -232,7 +233,7 @@ final class Assets {
         self::ensureBuffer($buffer);
 
         foreach (self::resolve($src) as $file) {
-            $key = md5($file->getPathname().'|'.serialize($attrs));
+            $key = Main::hash([$file->getPathname(), $attrs]);
             if (isset(self::$buffers[$buffer]['seen'][$key])) continue;
 
             self::$buffers[$buffer]['seen'][$key] = true;
@@ -377,7 +378,7 @@ final class Assets {
                   : null));
 
             if ($type !== null) {
-                $key = md5($file->getPathname().'|'.serialize($attrs));
+                $key = $file->getPathname().'|'.Main::hash($attrs);
                 if (isset(self::$buffers[$buffer]['seen'][$key])) continue;
                 self::$buffers[$buffer]['seen'][$key] = true;
                 self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs];
