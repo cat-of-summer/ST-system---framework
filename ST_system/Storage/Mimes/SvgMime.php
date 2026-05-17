@@ -206,6 +206,33 @@ class SvgMime extends Mime {
                 $svg = $dom->documentElement;
                 if (!$svg || $svg->nodeName !== 'svg') continue;
 
+                $symbols = [];
+                foreach ($svg->childNodes as $child)
+                    if ($child->nodeType === XML_ELEMENT_NODE && $child->localName === 'symbol')
+                        $symbols[] = $child;
+
+                if ($symbols) {
+                    foreach ($symbols as $sym) {
+                        $id = $sym->getAttribute('id');
+                        if ($id === '') continue;
+
+                        $base = $id; $i = 2;
+                        while (isset($data[$id])) { $id = $base.'_'.$i; $i++; }
+                        $data[$id] = true;
+
+                        $symbol = $out->createElementNS($ns, 'symbol');
+                        $symbol->setAttribute('id', $id);
+                        if ($sym->hasAttribute('viewBox'))
+                            $symbol->setAttribute('viewBox', $sym->getAttribute('viewBox'));
+
+                        foreach (iterator_to_array($sym->childNodes) as $child)
+                            $symbol->appendChild($out->importNode($child, true));
+
+                        $root->appendChild($symbol);
+                    }
+                    continue;
+                }
+
                 $id = $svg->getAttribute('id') ?: Main::snakeCase(pathinfo($f->getBasename(), PATHINFO_FILENAME));
 
                 $base = $id; $i = 2;
@@ -233,6 +260,27 @@ class SvgMime extends Mime {
 
             $attrs = $m[1];
             $inner = $m[2];
+
+            if (preg_match_all('/<symbol\b([^>]*)>(.*?)<\/symbol>/is', $inner, $sm, PREG_SET_ORDER)) {
+                foreach ($sm as $s) {
+                    $sAttrs = $s[1];
+                    $sInner = $s[2];
+
+                    if (!preg_match('/\bid\s*=\s*["\']([^"\']+)["\']/i', $sAttrs, $idm)) continue;
+                    $id = $idm[1];
+
+                    $base = $id; $i = 2;
+                    while (isset($data[$id])) { $id = $base.'_'.$i; $i++; }
+                    $data[$id] = true;
+
+                    $vb = preg_match('/\bviewBox\s*=\s*["\']([^"\']+)["\']/i', $sAttrs, $vbm)
+                        ? ' viewBox="'.htmlspecialchars($vbm[1], ENT_QUOTES).'"'
+                        : '';
+
+                    $body .= '<symbol id="'.htmlspecialchars($id, ENT_QUOTES).'"'.$vb.'>'.$sInner.'</symbol>';
+                }
+                continue;
+            }
 
             $id = preg_match('/\bid\s*=\s*["\']([^"\']+)["\']/i', $attrs, $idm)
                 ? $idm[1]
