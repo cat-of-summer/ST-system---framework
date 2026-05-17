@@ -9,7 +9,9 @@ use ST_system\Storage\File;
 
 class ImageMime extends Mime {
 
-    use HasConfig;
+    use HasConfig {
+        config as traitConfig;
+    }
 
     protected static function getDefaultConfig(): array {
         return [
@@ -56,7 +58,7 @@ class ImageMime extends Mime {
                 'imagick' => [
                     'jpg' => true,
                     'jpeg' => true,
-                    
+
                     'webp' => true,
                     'bmp' => true,
                     'tiff' => true,
@@ -100,6 +102,22 @@ class ImageMime extends Mime {
 
     private static string $IMAGE_DRIVER = '';
 
+    public static function config(string $key = '') {
+        static $imagick_extended = false;
+
+        $result = static::traitConfig($key);
+
+        if (!$imagick_extended && static::getImageDriver() === 'imagick'
+            && ($key === '' || $key === 'formats' || strpos($key, 'formats.imagick') === 0)
+        ) {
+            $imagick_extended = true;
+            static::getAllowedExtension();
+            $result = static::traitConfig($key);
+        }
+
+        return $result;
+    }
+
     public static function getImageDriver(): string {
         if (static::$IMAGE_DRIVER == '')
             static::$IMAGE_DRIVER = class_exists('Imagick')
@@ -114,33 +132,39 @@ class ImageMime extends Mime {
     
     public static function getAllowedExtension(): array {
         static $result = [];
+        static $computed = false;
 
-        if (empty($result)) {
-            switch (static::getImageDriver()) {
-                case 'imagick':
-                    $formats = array_map('strtolower', \Imagick::queryFormats('*'));
-                    $extensions = in_array('jpeg', $formats) && !in_array('jpg', $formats) ? array_merge($formats, ['jpg']) : $formats;
-                    break;
-                case 'gd':
-                    $types = imagetypes();
-                    $extensions = array_merge(['gd', 'gd2'], ...array_values(array_filter([
-                        'IMG_JPG'  => ['jpg', 'jpeg'],
-                        'IMG_PNG'  => ['png'],
-                        'IMG_WEBP' => ['webp'],
-                        'IMG_BMP'  => ['bmp'],
-                        'IMG_GIF'  => ['gif'],
-                        'IMG_AVIF' => ['avif'],
-                    ], fn($v, $k) => defined($k) && ($types & constant($k)), ARRAY_FILTER_USE_BOTH)));
-                    break;
-                default:
-                    return [];
-            }
+        if ($computed) return $result;
+        $computed = true;
 
-            $result = array_values(array_intersect(
-                array_map('mb_strtolower', array_keys(static::config('formats.' . static::getImageDriver()) ?: [])),
-                $extensions
-            ));
+        $extensions = [];
+
+        switch (static::getImageDriver()) {
+            case 'imagick':
+                $formats = array_map('strtolower', \Imagick::queryFormats('*'));
+                if (in_array('jpeg', $formats) && !in_array('jpg', $formats))
+                    $formats[] = 'jpg';
+                $extensions = $formats;
+
+                static::setConfig(['formats.imagick' => array_fill_keys($formats, true)]);
+                break;
+            case 'gd':
+                $types = imagetypes();
+                $extensions = array_merge(['gd', 'gd2'], ...array_values(array_filter([
+                    'IMG_JPG'  => ['jpg', 'jpeg'],
+                    'IMG_PNG'  => ['png'],
+                    'IMG_WEBP' => ['webp'],
+                    'IMG_BMP'  => ['bmp'],
+                    'IMG_GIF'  => ['gif'],
+                    'IMG_AVIF' => ['avif'],
+                ], fn($v, $k) => defined($k) && ($types & constant($k)), ARRAY_FILTER_USE_BOTH)));
+                break;
         }
+
+        $result = array_values(array_intersect(
+            array_map('mb_strtolower', array_keys(static::config('formats.' . static::getImageDriver()) ?: [])),
+            $extensions
+        ));
 
         return $result;
     }

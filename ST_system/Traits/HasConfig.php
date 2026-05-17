@@ -12,7 +12,7 @@ trait HasConfig {
             Config::setImmutableConfig(static::class, $key, $value);
     }
 
-    final public static function config(string $key = '') {
+    public static function config(string $key = '') {
         static $initialized = [];
         if (!isset($initialized[static::class])) {
 
