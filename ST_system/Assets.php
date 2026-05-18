@@ -35,13 +35,11 @@ final class Assets {
     private File $file;
     private string $buffer;
 
+    public static function create(...$args): self { return new static(...$args); }
+
     public function __construct(string $path, string $buffer = '') {
         $this->file = File::make($path);
         $this->buffer = $buffer ?: static::config('default_buffer');
-    }
-
-    public static function create(string $path, string $buffer = ''): self {
-        return new static($path, $buffer);
     }
 
     public static function __callStatic(string $name, array $args) {
