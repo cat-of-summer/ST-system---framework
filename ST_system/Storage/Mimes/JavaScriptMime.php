@@ -19,10 +19,7 @@ class JavaScriptMime extends Mime {
     }
 
     protected function __combine(array $files, array $config): string {
-        return implode("\n", array_map(
-            fn($f) => "(function(){\n".$f->getRaw()."\n})();",
-            $files
-        ));
+        return implode(";\n", array_map(fn($f) => $f->getRaw(), $files));
     }
 
     protected function __combineExtension(): string {
