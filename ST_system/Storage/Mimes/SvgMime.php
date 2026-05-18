@@ -315,4 +315,8 @@ class SvgMime extends Mime {
         $content = preg_replace('/\s{2,}/', ' ', $content);
         return trim($content);
     }
+
+    protected function __combineExtension(): string {
+        return 'svg';
+    }
 }

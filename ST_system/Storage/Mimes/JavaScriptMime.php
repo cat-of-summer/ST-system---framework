@@ -24,6 +24,10 @@ class JavaScriptMime extends Mime {
             $files
         ));
     }
+
+    protected function __combineExtension(): string {
+        return 'js';
+    }
     
     protected $input;
     
