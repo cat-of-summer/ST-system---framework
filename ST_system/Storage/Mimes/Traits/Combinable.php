@@ -10,6 +10,12 @@ trait Combinable {
             ? File::find($files, ['fallback' => 'make'])
             : $this->file->find($files, ['fallback' => 'make']);
 
+        foreach ($files as $i => $f) {
+            if ($f->is_uri) $files[$i] = $f = $f->fetch();
+            if (!$f->exists())
+                throw new \InvalidArgumentException("File not found: {$f->getPathname()}");
+        }
+
         $paths = array_map(fn($f) => $f->getPathname(), $files);
         $key   = md5(implode("\n", $paths));
         $ext   = $this->__combineExtension();

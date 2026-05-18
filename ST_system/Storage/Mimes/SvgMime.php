@@ -13,6 +13,9 @@ class SvgMime extends Mime {
     use Combinable;
 
     public function bySprite(string $id, array $config = []): string {
+        if (!$this->file->is_uri && !$this->file->exists())
+            throw new \InvalidArgumentException("File not found: {$this->file->getPathname()}");
+
         $attr_str = '';
 
         foreach ($config as $k => $v)
@@ -22,6 +25,9 @@ class SvgMime extends Mime {
     }
 
     public function extractSprite(string $id, array $config = []): string {
+        if (!$this->file->is_uri && !$this->file->exists())
+            throw new \InvalidArgumentException("File not found: {$this->file->getPathname()}");
+
         $content = $this->file->getRaw();
 
         if (class_exists('DOMDocument')) {
@@ -119,6 +125,9 @@ class SvgMime extends Mime {
     }
 
     public function extract(array $config = []): string {
+        if (!$this->file->is_uri && !$this->file->exists())
+            throw new \InvalidArgumentException("File not found: {$this->file->getPathname()}");
+
         static $counter = 0; $counter++;
 
         $content = $this->file->getRaw();

@@ -45,6 +45,10 @@ class HtmlMime extends Mime {
 
     public function extract(array $schema, array $data = []): array {
         $instance = $this->file;
+
+        if (!$instance->is_uri && !$instance->exists())
+            throw new \InvalidArgumentException("File not found: {$instance->getPathname()}");
+
         $source   = $instance->getOriginal(true) ?? $instance;
 
         $cache = $this->cache->make($source->getPathname(), [

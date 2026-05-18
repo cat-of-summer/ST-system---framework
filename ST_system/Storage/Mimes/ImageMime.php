@@ -212,7 +212,10 @@ class ImageMime extends Mime {
         $instance = $this->file->is_uri
             ? $this->file->fetch()
             : $this->file;
-        
+
+        if (!$instance->exists())
+            throw new \InvalidArgumentException("File not found: {$instance->getPathname()}");
+
         $extension = $config['extension'] ?? 'webp';
         $viewport = $config['viewport'] ?? [];
         $quality = $config['quality'] ?? static::config('convert.config.quality');
@@ -272,6 +275,9 @@ class ImageMime extends Mime {
             ? $this->file->fetch()
             : $this->file;
 
+        if (!$instance->exists())
+            throw new \InvalidArgumentException("File not found: {$instance->getPathname()}");
+
         $cache = $this->cache->make($instance->getOriginal(true)->getPathname());
 
         if ($result = $cache->getMeta()['imageSize'])
@@ -316,6 +322,9 @@ class ImageMime extends Mime {
         $instance = $this->file->is_uri
             ? $this->file->fetch()
             : $this->file;
+
+        if (!$instance->exists())
+            throw new \InvalidArgumentException("File not found: {$instance->getPathname()}");
 
         if (($config['extension'] ?? null) === 'svg') {
             if ($instance->getExtension() === 'svg') return $instance;

@@ -31,6 +31,9 @@ trait Minifiable {
             ? $this->file->fetch()
             : $this->file;
 
+        if (!$instance->exists())
+            throw new \InvalidArgumentException("File not found: {$instance->getPathname()}");
+
         if ($instance->is_minified)
             return $instance;
 
