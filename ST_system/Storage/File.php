@@ -247,7 +247,7 @@ final class File {
             }
 
             $i = $input_cache[$item] ??= Main::preparePath($item, 5);
-            $hasGlob = (bool)preg_match('/[\\(\\[\\{\\|\\?\\+\\*]/', $i);
+            $hasGlob = (bool)preg_match('/[\\(\\[\\{\\|\\?\\+\\*]/', $i, $glob_match, PREG_OFFSET_CAPTURE);
             $results = [];
 
             if (!$hasGlob) {
@@ -266,10 +266,8 @@ final class File {
                         $results[$i] = $i;
                 }
             } else {
-                $dir_prefix = substr($i, 0, preg_match('/[\\(\\[\\{\\|\\?\\+\\*]/', $i, $m, PREG_OFFSET_CAPTURE)
-                    ? $m[0][1]
-                    : 0
-                );
+                $regex_offset = $glob_match[0][1];
+                $dir_prefix   = substr($i, 0, $regex_offset);
 
                 $start_dir = $dir_prefix == ''
                     ? $i
@@ -281,7 +279,7 @@ final class File {
                 if (!is_dir($start_dir) || !is_readable($start_dir))
                     throw new \InvalidArgumentException("Start directory '{$start_dir}' does not exist or is not readable.");
 
-                $pattern = str_replace('\\', '/', $i);
+                $pattern = str_replace('\\', '/', $dir_prefix) . substr($i, $regex_offset);
 
                 $delimiter = '#';
                 foreach (['#', '~', '%', '@', '!', '$', '`', ';', '|'] as $candidate)
@@ -309,7 +307,7 @@ final class File {
                     }
 
                     if ($file->isFile() && (!isset($config['extension']) || in_array($file->getExtension(), $config['extension'], true))) {
-                        if (@preg_match($pattern, $file->getPathname()) === 1) {
+                        if (@preg_match($pattern, str_replace('\\', '/', $file->getPathname())) === 1) {
                             $results[$file->getPathname()] = $file->getPathname();
                             if ($config['max_files'] > 0 && count($results) >= $config['max_files'] )
                                 break;
