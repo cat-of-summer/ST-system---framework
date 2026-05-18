@@ -97,8 +97,11 @@ final class Assets {
                 return static::addString(...$args);
 
             case 'setManifest':
-                if (isset($args[0]['favicon']) && is_string($args[0]['favicon']) && $args[0]['favicon'] !== '')
-                    $args[0]['favicon'] = $this->file->make($args[0]['favicon'])->getPathname();
+                if (isset($args[0]['favicon']) && is_string($args[0]['favicon']) && $args[0]['favicon'] !== '') {
+                    $found = $this->file->find($args[0]['favicon'], ['fallback' => 'make']);
+                    $first = is_array($found) ? reset($found) : $found;
+                    if ($first instanceof File) $args[0]['favicon'] = $first->getPathname();
+                }
                 if (empty($args[1])) $args[1] = $this->buffer;
                 return static::setManifest(...$args);
         }
