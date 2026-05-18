@@ -88,11 +88,12 @@ final class Assets {
             case 'addFont':
             case 'addResource':
                 $args[0] = $this->file->find($args[0] ?? '', ['fallback' => 'make']);
+                if (!isset($args[1]) || !is_array($args[1])) $args[1] = [];
                 if (empty($args[2])) $args[2] = $this->buffer;
                 return static::$name(...$args);
 
             case 'addString':
-                if (empty($args[1])) $args[1] = $this->buffer;
+                if (!isset($args[1]) || !is_string($args[1]) || $args[1] === '') $args[1] = $this->buffer;
                 return static::addString(...$args);
 
             case 'setManifest':
