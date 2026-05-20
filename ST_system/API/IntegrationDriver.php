@@ -105,11 +105,8 @@ abstract class IntegrationDriver {
         $http                   = strtoupper((string)($config['method'] ?? 'GET'));
         $config['method']       = in_array($http, ['GET', 'POST'], true)   ? $http                 : 'GET';
         $config['params']       = is_array($config['params'] ?? null)       ? $config['params']     : [];
-        if (!empty($config['params'])) {
-            try {
-                $config['params'] = Rule::scope(static::class, fn() => Rule::object($config['params']));
-            } catch (\Throwable $e) {}
-        }
+        if (!empty($config['params']))
+            $config['params'] = Rule::scope(static::class, fn() => Rule::object($config['params']));
         $config['on_prepare']   = is_callable($config['on_prepare'] ?? null) ? $config['on_prepare'] : null;
         $config['cache_ttl']    = is_int($config['cache_ttl'] ?? null)      ? $config['cache_ttl']  : 0;
         $config['meta']         = is_array($config['meta'] ?? null)         ? $config['meta']       : [];

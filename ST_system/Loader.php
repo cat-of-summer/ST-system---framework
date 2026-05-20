@@ -20,7 +20,7 @@ final class Loader {
                         case 'include': include $realpath; break;
                         case 'include_once': include_once $realpath; break;
                     }
-                } catch (\Throwable $th) {}                
+                } catch (\Throwable $th) {}
                 break;
             default:
                 throw new \Exception("Method {$action} not found");

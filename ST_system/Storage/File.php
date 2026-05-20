@@ -134,16 +134,7 @@ final class File {
     public static function __callStatic(string $name, array $args) {
         switch ($name) {
             case 'make':
-            case 'fetch':
-            case 'exists':
-                if (!isset($args[0]) || !is_string($args[0]))
-                    throw new \InvalidArgumentException("File::{$name}() requires a string path argument");
-                break;
-        }
-
-        switch ($name) {
-            case 'make':
-                return static::make($args[0], $args[1] ?? []);
+                return static::make(...$args);
             case 'fetch':
                 return static::make($args[0], $args[2] ?? [])->fetch($args[1] ?? false);
             case 'find':
@@ -156,9 +147,6 @@ final class File {
     }
 
     public function __call(string $name, array $args) {
-        if ($name === 'make' && (!isset($args[0]) || !is_string($args[0])))
-            throw new \InvalidArgumentException("\$file->make() requires a string path argument");
-
         switch ($name) {
             case 'fetch':
             case 'exists':

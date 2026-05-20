@@ -175,7 +175,9 @@ class FontMime extends Mime {
                         if (strpos($sub, $key) !== false) { $meta['style'] = $s; break; }
                 }
             }
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+            return $meta;
+        }
 
         $cache->set($meta);
         $cache->setMeta(['src_mtime' => $src_mtime]);
