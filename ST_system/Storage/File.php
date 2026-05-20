@@ -63,6 +63,23 @@ final class File {
 
     private static function make(string $path, array $options = []) { return new static($path, null, $options); }
 
+    private static function logCallTrace(string $tag, string $name, array $args): void {
+        $bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+        $lines = ["[FILE_DIAG] {$tag} File::{$name}({$name}) args=".json_encode(array_map(fn($v) => is_scalar($v) || $v === null ? $v : '<'.get_debug_type($v).'>', $args))];
+        foreach (array_slice($bt, 0, 12) as $i => $frame) {
+            $lines[] = sprintf(
+                '#%d %s:%d %s%s%s()',
+                $i,
+                $frame['file'] ?? '?',
+                $frame['line'] ?? 0,
+                $frame['class'] ?? '',
+                $frame['type'] ?? '',
+                $frame['function'] ?? ''
+            );
+        }
+        error_log(implode("\n", $lines));
+    }
+
     private \SplFileInfo $info;
     private array $info_data = [];
     private Mimes\Mime $mime;
@@ -132,13 +149,9 @@ final class File {
     }
 
     public static function __callStatic(string $name, array $args) {
-        switch ($name) {
-            case 'make':
-            case 'fetch':
-            case 'exists':
-                if (!isset($args[0]))
-                    throw new \InvalidArgumentException("File::{$name}() requires a path argument");
-                break;
+        if (in_array($name, ['make', 'fetch', 'exists'], true) && (!isset($args[0]) || !is_string($args[0]))) {
+            static::logCallTrace('STATIC', $name, $args);
+            throw new \InvalidArgumentException("File::{$name}() requires a string path argument (got ".get_debug_type($args[0] ?? null).")");
         }
 
         switch ($name) {
@@ -156,6 +169,11 @@ final class File {
     }
 
     public function __call(string $name, array $args) {
+        if ($name === 'make' && (!isset($args[0]) || !is_string($args[0]))) {
+            static::logCallTrace('INSTANCE', $name, $args);
+            throw new \InvalidArgumentException("\$file->make() requires a string path argument (got ".get_debug_type($args[0] ?? null).")");
+        }
+
         switch ($name) {
             case 'fetch':
             case 'exists':
