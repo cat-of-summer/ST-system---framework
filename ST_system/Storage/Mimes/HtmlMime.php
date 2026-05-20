@@ -118,7 +118,7 @@ class HtmlMime extends Mime {
                 $result[$key] = $asArray ? $values : ($values[0] ?? null);
             } elseif (is_callable($extract)) {
                 $result[$key] = $asArray
-                    ? $extract($nodes, $data)
+                    ? array_map(fn($node) => $extract($node, $data), $nodes)
                     : $extract($nodes[0] ?? null, $data);
             } elseif (is_array($extract)) {
                 if ($asArray) {
