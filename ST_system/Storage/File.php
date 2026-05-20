@@ -61,7 +61,7 @@ final class File {
         ];
     }
 
-    public static function make(string $path, array $options = []) { return new static($path, null, $options); }
+    private static function make(string $path, array $options = []) { return new static($path, null, $options); }
 
     private \SplFileInfo $info;
     private array $info_data = [];
@@ -133,6 +133,8 @@ final class File {
 
     public static function __callStatic(string $name, array $args) {
         switch ($name) {
+            case 'make':
+                return static::make($args[0], $args[1] ?? []);
             case 'fetch':
                 return static::make($args[0], $args[2] ?? [])->fetch($args[1] ?? false);
             case 'find':
