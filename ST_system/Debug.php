@@ -10,6 +10,38 @@ final class Debug {
     use HasConfig;
 
     protected static function getDefaultConfig(): array {
+        $a = [
+            'format' => [
+                'timestamp' => [
+                    'output' => 'd-m-Y H:i:s',
+                    'file'   => 'd-m-Y~H-i-s',
+                ],
+                'output' => 'json_encode',
+            ],
+            'filesystem' => [
+                'dir'  => '~logs',
+                'file' => 'log.html',
+            ],
+            'handle_error' => [
+                'reporting' => [
+                    'level' => E_ALL,
+                ],
+                'shutdown' => [
+                    'level' => [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR],
+                ],
+                'output' => [
+                    'method' => 'toFile',
+                    'display' => false,
+                    'template' => <<<HTML
+                        <div style="border:1px solid #f00; padding:10px; margin:10px 0; background:#fee;">
+                            <strong>Error:</strong> %s<br>
+                            <strong>Code:</strong> %s<br>
+                            <pre>%s</pre>
+                        </div>
+                    HTML,
+                ],
+            ]
+        ];
         return [
             'timestamp_format_output' => 'd-m-Y H:i:s',
             'timestamp_format_file' => 'd-m-Y~H-i-s',
@@ -149,7 +181,7 @@ final class Debug {
 
     private array $config = [];
 
-    private function get_output($content): string {
+    private function getOutput($content): string {
         $this->config = array_merge(
             [
                 'backtrace' => false,
@@ -191,24 +223,24 @@ final class Debug {
         );
 
         $this->config['dir'] = Main::preparePath($this->config['dir'], 3);
-        $this->config['file'] = trim($this->config['file'], DIRECTORY_SEPARATOR);
+        $this->config['file'] = trim($this->config['file'], '/');
     }
 
-    private function throw($content): void {
+    private function exception($content): void {
         throw new \Exception(
-            static::get_output($content)
+            static::getOutput($content)
         );
     }
 
     private function here($content): void {
-        echo static::get_output($content);
+        echo static::getOutput($content);
     }
 
-    private function to_console($content): void {
-        echo '<script>console.log(`'.static::get_output($content).'`)</script>';
+    private function toConsole($content): void {
+        echo '<script>console.log(`'.static::getOutput($content).'`)</script>';
     }
 
-    private function to_email($content): bool {
+    private function toEmail($content): bool {
         $this->config = array_merge(
             [
                 'to' => null,
@@ -217,10 +249,10 @@ final class Debug {
             $this->config
         );
 
-        return mail($this->config['to'], $this->config['subject'], static::get_output($content));
+        return mail($this->config['to'], $this->config['subject'], static::getOutput($content));
     }
 
-    private function to_file($content) {
+    private function toFile($content) {
         $this->config = array_merge(
             [
                 'timestamp' => false,
@@ -243,7 +275,7 @@ final class Debug {
 
         static::$dumper_counter[$path] = (static::$dumper_counter[$path] ?? 0) + 1;
 
-        return file_put_contents($path, static::get_output($content), (
+        return file_put_contents($path, static::getOutput($content), (
             (self::$dumper_counter[$path] ?? 0) === 1
                 ? ($this->config['append'] && file_exists($path))
                 : $this->config['merge']

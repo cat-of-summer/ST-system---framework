@@ -161,7 +161,7 @@ final class Access {
             echo $content;
     }
 
-    public static function throw(int $code = 404): void {
+    public static function throw(int $code): void {
         if (self::getInstance()->fire('throw', $code) === false)
             Response::status($code)->header('X-Content-Type-Options', 'nosniff')->send();
     }
