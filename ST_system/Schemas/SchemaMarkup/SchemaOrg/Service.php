@@ -2,7 +2,6 @@
 
 namespace ST_system\Schemas\SchemaMarkup\SchemaOrg;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 
 final class Service extends DefaultSchema
@@ -12,9 +11,9 @@ final class Service extends DefaultSchema
         return 'schema';
     }
 
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        $schema = Schema::entity('service', ['fields' => [
+        $schema = self::entity('service', ['fields' => [
             'service_type'      => 'required|string',
             'name'              => 'sometimes|string',
             'description'       => 'sometimes|string',
@@ -24,7 +23,7 @@ final class Service extends DefaultSchema
             'provider'          => 'sometimes|@provider',
             'offers'            => 'sometimes|@offer',
             'has_offer_catalog' => 'sometimes|@offer-catalog',
-        ], 'print' => function (Schema $s): string {
+        ], 'print' => function (DefaultSchema $s): string {
             $data = [
                 '@context'    => 'https://schema.org',
                 '@type'       => 'Service',

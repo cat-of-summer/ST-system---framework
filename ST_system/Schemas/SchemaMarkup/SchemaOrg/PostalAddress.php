@@ -2,7 +2,6 @@
 
 namespace ST_system\Schemas\SchemaMarkup\SchemaOrg;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 
 final class PostalAddress extends DefaultSchema
@@ -12,14 +11,14 @@ final class PostalAddress extends DefaultSchema
         return 'schema.service';
     }
 
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        return Schema::entity('postal-address', ['fields' => [
+        return self::entity('postal-address', ['fields' => [
             'street_address'   => 'sometimes|string',
             'address_locality' => 'sometimes|string',
             'postal_code'      => 'sometimes|string',
             'address_country'  => 'sometimes|string',
-        ], 'toArray' => function (Schema $s): array {
+        ], 'toArray' => function (DefaultSchema $s): array {
             $data = ['@type' => 'PostalAddress'];
 
             if ($s->field('street_address') !== null) {

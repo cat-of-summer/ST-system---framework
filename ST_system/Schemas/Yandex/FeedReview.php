@@ -2,7 +2,6 @@
 
 namespace ST_system\Schemas\Yandex;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 
 final class FeedReview extends DefaultSchema
@@ -12,9 +11,9 @@ final class FeedReview extends DefaultSchema
         return 'yandex-medical-feed';
     }
 
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        return Schema::entity('review', ['fields' => [
+        return self::entity('review', ['fields' => [
             'date'           => 'required|string',
             'checked'        => 'sometimes|bool',
             'used_in_rating' => 'sometimes|bool',
@@ -27,7 +26,7 @@ final class FeedReview extends DefaultSchema
             'positive'       => 'sometimes|string',
             'negative'       => 'sometimes|string',
             'response'       => 'sometimes|string',
-        ], 'print' => function (Schema $s): string {
+        ], 'print' => function (DefaultSchema $s): string {
             $xml  = '<review>';
             $xml .= '<date>' . $s->field('date') . '</date>';
             if ($s->field('checked') !== null) {

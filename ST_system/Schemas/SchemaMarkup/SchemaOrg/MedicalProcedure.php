@@ -2,7 +2,6 @@
 
 namespace ST_system\Schemas\SchemaMarkup\SchemaOrg;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 
 final class MedicalProcedure extends DefaultSchema
@@ -12,9 +11,9 @@ final class MedicalProcedure extends DefaultSchema
         return 'schema';
     }
 
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        return Schema::entity('medical-procedure', ['fields' => [
+        return self::entity('medical-procedure', ['fields' => [
             'name'               => 'required|string',
             'description'        => 'sometimes|string',
             'procedure_type'     => 'sometimes|string',
@@ -28,7 +27,7 @@ final class MedicalProcedure extends DefaultSchema
             'how_performed'      => 'sometimes|string',
             'url'                => 'sometimes|url',
             'image'              => 'sometimes|url',
-        ], 'print' => function (Schema $s): string {
+        ], 'print' => function (DefaultSchema $s): string {
             $data = [
                 '@context' => 'https://schema.org',
                 '@type'    => 'MedicalProcedure',

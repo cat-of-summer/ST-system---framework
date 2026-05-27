@@ -2,7 +2,6 @@
 
 namespace ST_system\Schemas\Yandex;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 
 final class FeedClinic extends DefaultSchema
@@ -12,9 +11,9 @@ final class FeedClinic extends DefaultSchema
         return 'yandex-medical-feed';
     }
 
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        return Schema::entity('clinic', ['fields' => [
+        return self::entity('clinic', ['fields' => [
             'id'          => 'required|string',
             'internal_id' => 'sometimes|string',
             'name'        => 'required|string',
@@ -25,7 +24,7 @@ final class FeedClinic extends DefaultSchema
             'email'       => 'sometimes|string',
             'picture'     => 'sometimes|url',
             'company_id'  => 'sometimes|string',
-        ], 'print' => function (Schema $s): string {
+        ], 'print' => function (DefaultSchema $s): string {
             $internalId = $s->field('internal_id') ?? $s->field('id');
             $xml  = '<clinic id="' . $s->field('id') . '">';
             $xml .= '<url>' . $s->field('url') . '</url>';

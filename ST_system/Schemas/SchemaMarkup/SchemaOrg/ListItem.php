@@ -2,7 +2,6 @@
 
 namespace ST_system\Schemas\SchemaMarkup\SchemaOrg;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 
 final class ListItem extends DefaultSchema
@@ -12,16 +11,16 @@ final class ListItem extends DefaultSchema
         return 'schema.item-list';
     }
 
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        return Schema::entity('list-item', ['fields' => [
+        return self::entity('list-item', ['fields' => [
             'position'  => 'required|int',
             'name'      => 'sometimes|string',
             'url'       => 'sometimes|url',
             'item_type' => 'sometimes|string',
             'item_name' => 'sometimes|string',
             'item_url'  => 'sometimes|url',
-        ], 'toArray' => function (Schema $s): array {
+        ], 'toArray' => function (DefaultSchema $s): array {
             $result = [
                 '@type'    => 'ListItem',
                 'position' => $s->field('position'),

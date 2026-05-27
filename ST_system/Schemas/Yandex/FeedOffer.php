@@ -2,7 +2,6 @@
 
 namespace ST_system\Schemas\Yandex;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 
 final class FeedOffer extends DefaultSchema
@@ -12,9 +11,9 @@ final class FeedOffer extends DefaultSchema
         return 'yandex-medical-feed';
     }
 
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        return Schema::entity('offer', ['fields' => [
+        return self::entity('offer', ['fields' => [
             'id'                   => 'required|string',
             'url'                  => 'required|url',
             'oms'                  => 'sometimes|bool',
@@ -30,7 +29,7 @@ final class FeedOffer extends DefaultSchema
             'house_call'           => 'sometimes|bool',
             'telemed'              => 'sometimes|bool',
             'is_base_service'      => 'sometimes|bool',
-        ], 'print' => function (Schema $s): string {
+        ], 'print' => function (DefaultSchema $s): string {
             $xml  = '<offer id="' . $s->field('id') . '">';
             $xml .= '<url>' . $s->field('url') . '</url>';
 

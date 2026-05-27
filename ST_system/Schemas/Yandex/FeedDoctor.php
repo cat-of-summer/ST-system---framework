@@ -2,7 +2,6 @@
 
 namespace ST_system\Schemas\Yandex;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 
 final class FeedDoctor extends DefaultSchema
@@ -12,9 +11,9 @@ final class FeedDoctor extends DefaultSchema
         return 'yandex-medical-feed';
     }
 
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        return Schema::entity('doctor', ['fields' => [
+        return self::entity('doctor', ['fields' => [
             'id'                  => 'required|string',
             'internal_id'         => 'sometimes|string',
             'name'                => 'required|string',
@@ -29,12 +28,12 @@ final class FeedDoctor extends DefaultSchema
             'degree'              => 'sometimes|string',
             'rank'                => 'sometimes|string',
             'category'            => 'sometimes|string',
-            'education'           => [Schema::arrayOf('education'),   'sometimes'],
-            'job'                 => [Schema::arrayOf('job'),         'sometimes'],
-            'certificate'         => [Schema::arrayOf('certificate'), 'sometimes'],
+            'education'           => [self::arrayOf('education'),   'sometimes'],
+            'job'                 => [self::arrayOf('job'),         'sometimes'],
+            'certificate'         => [self::arrayOf('certificate'), 'sometimes'],
             'reviews_total_count' => 'sometimes|int',
-            'review'              => [Schema::arrayOf('review'),      'sometimes'],
-        ], 'print' => function (Schema $s): string {
+            'review'              => [self::arrayOf('review'),      'sometimes'],
+        ], 'print' => function (DefaultSchema $s): string {
             $internalId = $s->field('internal_id') ?? $s->field('id');
             $xml  = '<doctor id="' . $s->field('id') . '">';
             $xml .= '<name>' . $s->field('name') . '</name>';

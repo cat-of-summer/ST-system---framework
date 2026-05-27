@@ -2,26 +2,25 @@
 
 namespace ST_system\Schemas\Yandex;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 use ST_system\Rule;
 
 final class MedicalFeed extends DefaultSchema
 {
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        $schema = Schema::entity('yandex-medical-feed', ['fields' => [
+        $schema = self::entity('yandex-medical-feed', ['fields' => [
             'date'     => 'date_format:Y-m-d H:i|default:' . date('Y-m-d H:i'),
             'name'     => 'required|string',
             'company'  => 'sometimes|string',
             'url'      => 'required|url',
             'picture'  => 'sometimes|url',
             'email'    => 'sometimes|string',
-            'doctors'  => [Schema::arrayOf('doctor'),  'sometimes'],
-            'clinics'  => [Schema::arrayOf('clinic'),  'sometimes'],
-            'services' => [Schema::arrayOf('service'), 'sometimes'],
-            'offers'   => [Schema::arrayOf('offer'),   'sometimes'],
-        ], 'print' => function (Schema $s): string {
+            'doctors'  => [self::arrayOf('doctor'),  'sometimes'],
+            'clinics'  => [self::arrayOf('clinic'),  'sometimes'],
+            'services' => [self::arrayOf('service'), 'sometimes'],
+            'offers'   => [self::arrayOf('offer'),   'sometimes'],
+        ], 'print' => function (DefaultSchema $s): string {
             $xml  = '<?xml version="1.0" encoding="UTF-8"?>';
             $xml .= '<shop version="2.0" date="' . $s->field('date') . '">';
             $xml .= '<name>' . $s->field('name') . '</name>';

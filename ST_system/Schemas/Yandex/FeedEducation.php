@@ -2,7 +2,6 @@
 
 namespace ST_system\Schemas\Yandex;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 
 final class FeedEducation extends DefaultSchema
@@ -12,14 +11,14 @@ final class FeedEducation extends DefaultSchema
         return 'yandex-medical-feed';
     }
 
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        return Schema::entity('education', ['fields' => [
+        return self::entity('education', ['fields' => [
             'organization'   => 'required|string',
             'finish_year'    => 'sometimes|int',
             'type'           => 'sometimes|string',
             'specialization' => 'sometimes|string',
-        ], 'print' => function (Schema $s): string {
+        ], 'print' => function (DefaultSchema $s): string {
             $xml  = '<education>';
             $xml .= '<organization>' . $s->field('organization') . '</organization>';
             if ($s->field('finish_year') !== null) {

@@ -2,7 +2,6 @@
 
 namespace ST_system\Schemas\Yandex;
 
-use ST_system\Schema;
 use ST_system\Schemas\DefaultSchema;
 
 final class FeedService extends DefaultSchema
@@ -12,15 +11,15 @@ final class FeedService extends DefaultSchema
         return 'yandex-medical-feed';
     }
 
-    protected static function define(): Schema
+    protected static function define(): self
     {
-        return Schema::entity('service', ['fields' => [
+        return self::entity('service', ['fields' => [
             'id'          => 'required|string',
             'internal_id' => 'sometimes|string',
             'name'        => 'required|string',
             'gov_id'      => 'sometimes|string',
             'description' => 'sometimes|string',
-        ], 'print' => function (Schema $s): string {
+        ], 'print' => function (DefaultSchema $s): string {
             $internalId = $s->field('internal_id') ?? $s->field('id');
             $xml  = '<service id="' . $s->field('id') . '">';
             $xml .= '<name>' . $s->field('name') . '</name>';
