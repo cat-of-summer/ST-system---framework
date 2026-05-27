@@ -31,6 +31,8 @@ class DefaultSchema
     private ?\Closure $inlinePrint   = null;
     private ?\Closure $inlineToArray = null;
 
+    public static function create(...$args): static { return new static(...$args); }
+
     /**
      * Подкласс — обычный `new ChildClass()`.
      * Inline-схема — `new DefaultSchema(['fields' => [...], 'print' => fn($s)=>..., 'toArray' => fn($s)=>...])`.
