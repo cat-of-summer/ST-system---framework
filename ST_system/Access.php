@@ -30,6 +30,7 @@ final class Access {
             'salt' => '',
             'firewall' => [
                 'driver'  => 'filesystem',
+                'dir'     => '',
                 'limits'  => [[5, 1, 10], [10, 2, 30], [60, 60], [600, 3600]],
                 'ttl'     => 3600,
                 'exclude' => [],
@@ -50,10 +51,15 @@ final class Access {
     private Cache $cache;
 
     private function __construct() {
-        $this->cache = Cache::make(static::config('salt') ?: 'st_access', [
+        $config = [
             'driver' => static::config('firewall.driver'),
             'ttl'    => static::config('firewall.ttl'),
-        ]);
+        ];
+
+        if ($config['driver'] === 'filesystem')
+            $config['dir'] = static::config('firewall.dir');
+
+        $this->cache = Cache::make(static::config('salt') ?: 'st_access', $config);
     }
 
     public static function on(string $event, callable $listener): void {
