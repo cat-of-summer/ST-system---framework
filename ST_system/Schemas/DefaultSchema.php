@@ -5,7 +5,7 @@ namespace ST_system\Schemas;
 use ST_system\Rule;
 use ST_system\Main;
 
-abstract class DefaultSchema
+class DefaultSchema
 {
     private const ROOT_NAMESPACE = __NAMESPACE__;
     private const M_ARRAY_OF     = 3;
@@ -18,23 +18,45 @@ abstract class DefaultSchema
     private static array $scopeCache   = [];
     private static array $nameCache    = [];
 
-    private array   $data        = [];
-    private bool    $filled      = false;
-    private ?string $printCache  = null;
-    private ?self   $parent      = null;
-    private array   $fillParams  = [];
-    private array   $rawData     = [];
-    private array   $beforeHooks = [];
-    private array   $afterHooks  = [];
+    private array     $data        = [];
+    private bool      $filled      = false;
+    private ?string   $printCache  = null;
+    private ?self     $parent      = null;
+    private array     $fillParams  = [];
+    private array     $rawData     = [];
+    private array     $beforeHooks = [];
+    private array     $afterHooks  = [];
 
-    final public function __construct()
+    private ?array    $inlineFields  = null;
+    private ?\Closure $inlinePrint   = null;
+    private ?\Closure $inlineToArray = null;
+
+    /**
+     * Подкласс — обычный `new ChildClass()`.
+     * Inline-схема — `new DefaultSchema(['fields' => [...], 'print' => fn($s)=>..., 'toArray' => fn($s)=>...])`.
+     */
+    final public function __construct(?array $inline = null)
     {
+        if ($inline !== null) {
+            if (isset($inline['fields']) && is_array($inline['fields'])) {
+                $this->inlineFields = $inline['fields'];
+            }
+            if (isset($inline['print']) && $inline['print'] instanceof \Closure) {
+                $this->inlinePrint = $inline['print'];
+            }
+            if (isset($inline['toArray']) && $inline['toArray'] instanceof \Closure) {
+                $this->inlineToArray = $inline['toArray'];
+            }
+        }
         static::ensureInited();
     }
 
     // ─── Hooks for subclasses ────────────────────────────────────────────────
 
-    abstract protected static function getFields(): array;
+    protected static function getFields(): array
+    {
+        return [];
+    }
 
     protected static function getPrint(): ?\Closure
     {
@@ -94,9 +116,16 @@ abstract class DefaultSchema
         }
         self::$initialized[$class] = true;
 
-        $parent = self::parentSchemaClass($class);
-        if ($parent !== null) {
-            $parent::ensureInited();
+        $pos  = strrpos($class, '\\');
+        $root = self::ROOT_NAMESPACE;
+        if ($pos !== false) {
+            $ns = substr($class, 0, $pos);
+            if (
+                $ns !== '' && $ns !== $root && strpos($ns, $root . '\\') === 0
+                && class_exists($ns) && is_subclass_of($ns, self::class)
+            ) {
+                $ns::ensureInited();
+            }
         }
 
         $fullPath = $class::fullPath();
@@ -107,26 +136,6 @@ abstract class DefaultSchema
         } else {
             self::withEntityScope($fullPath, $init);
         }
-    }
-
-    private static function parentSchemaClass(string $class): ?string
-    {
-        $pos = strrpos($class, '\\');
-        if ($pos === false) {
-            return null;
-        }
-        $ns   = substr($class, 0, $pos);
-        $root = self::ROOT_NAMESPACE;
-        if ($ns === '' || $ns === $root || strpos($ns, $root . '\\') !== 0) {
-            return null;
-        }
-        if (!class_exists($ns)) {
-            return null;
-        }
-        if (!is_subclass_of($ns, self::class)) {
-            return null;
-        }
-        return $ns;
     }
 
     // ─── arrayOf / oneOf markers ─────────────────────────────────────────────
@@ -157,13 +166,95 @@ abstract class DefaultSchema
         $computed   = [];
         $ruleSchema = [];
 
-        self::withEntityScope($ctx, function () use ($ctxClass, &$ruleSchema, &$computed): void {
-            foreach (static::getFields() as $key => $spec) {
+        $fields = $this->inlineFields ?? static::getFields();
+
+        self::withEntityScope($ctx, function () use ($fields, $ctxClass, &$ruleSchema, &$computed): void {
+            foreach ($fields as $key => $spec) {
                 if ($spec instanceof \Closure) {
                     $computed[$key] = $spec;
                     continue;
                 }
-                $ruleSchema[$key] = self::compileFieldSpec($spec, $ctxClass);
+
+                if ($spec instanceof Rule) {
+                    $ruleSchema[$key] = $spec;
+                    continue;
+                }
+
+                if (is_string($spec) && strpos($spec, '@') !== false) {
+                    $parts   = explode('|', $spec);
+                    $refPart = null;
+                    $mods    = [];
+                    foreach ($parts as $part) {
+                        if ($refPart === null && strpos($part, '@') === 0) {
+                            $refPart = $part;
+                        } else {
+                            $mods[] = $part;
+                        }
+                    }
+                    if ($refPart !== null) {
+                        $refRule = self::makeEntityRefRule(ltrim($refPart, '@'), $ctxClass);
+                        if (empty($mods)) {
+                            $ruleSchema[$key] = Rule::create([$refRule, 'required']);
+                        } else {
+                            array_unshift($mods, $refRule);
+                            $ruleSchema[$key] = Rule::create($mods);
+                        }
+                        continue;
+                    }
+                }
+
+                if (is_string($spec)) {
+                    if (self::looksLikeClass($spec)) {
+                        $ruleSchema[$key] = Rule::create([self::makeEntityRefRule($spec, $ctxClass), 'required']);
+                    } else {
+                        $ruleSchema[$key] = Rule::create($spec);
+                    }
+                    continue;
+                }
+
+                if (is_object($spec) && isset($spec->__m)) {
+                    if ($spec->__m === self::M_ARRAY_OF) {
+                        $ruleSchema[$key] = Rule::create([self::makeArrayOfRule($spec->spec, $ctxClass), 'required']);
+                        continue;
+                    }
+                    if ($spec->__m === self::M_ONE_OF) {
+                        $ruleSchema[$key] = Rule::create([self::makeOneOfRule($spec->specs, $ctxClass), 'required']);
+                        continue;
+                    }
+                }
+
+                if (is_array($spec)) {
+                    $marker = null;
+                    $mods   = [];
+                    foreach ($spec as $item) {
+                        if (is_object($item) && isset($item->__m)) {
+                            if ($item->__m === self::M_ARRAY_OF) {
+                                $marker = self::makeArrayOfRule($item->spec, $ctxClass);
+                            } elseif ($item->__m === self::M_ONE_OF) {
+                                $marker = self::makeOneOfRule($item->specs, $ctxClass);
+                            }
+                        } elseif ($marker === null && is_string($item) && strpos($item, '@') === 0) {
+                            $marker = self::makeEntityRefRule(ltrim($item, '@'), $ctxClass);
+                        } elseif ($marker === null && is_string($item) && self::looksLikeClass($item)) {
+                            $marker = self::makeEntityRefRule($item, $ctxClass);
+                        } else {
+                            $mods[] = $item;
+                        }
+                    }
+                    if ($marker !== null) {
+                        if (empty($mods)) {
+                            $ruleSchema[$key] = Rule::create([$marker, 'required']);
+                        } else {
+                            array_unshift($mods, $marker);
+                            $ruleSchema[$key] = Rule::create($mods);
+                        }
+                        continue;
+                    }
+                    $ruleSchema[$key] = Rule::create($spec);
+                    continue;
+                }
+
+                throw new \RuntimeException('Schema: unsupported field spec type');
             }
         });
 
@@ -271,7 +362,7 @@ abstract class DefaultSchema
                 return $this->printCache;
             }
 
-            $printer = static::getPrint();
+            $printer = $this->inlinePrint ?? static::getPrint();
             if ($printer !== null) {
                 $out = (string)$printer($this, self::$printContext);
             } else {
@@ -334,7 +425,7 @@ abstract class DefaultSchema
 
     final public function toArray(array $params = []): array
     {
-        $custom = static::getToArray();
+        $custom = $this->inlineToArray ?? static::getToArray();
         if ($custom !== null) {
             return $custom($this, $params);
         }
@@ -443,90 +534,7 @@ abstract class DefaultSchema
         return strpos($s, '\\') !== false && class_exists($s);
     }
 
-    private static function looksLikeRef(string $s): bool
-    {
-        return $s !== '' && (
-            $s[0] === '@'
-            || strpos($s, '\\') !== false
-            || (bool)preg_match(self::REF_RE, $s)
-        );
-    }
-
-    // ─── Field spec compilation ──────────────────────────────────────────────
-
-    private static function compileFieldSpec($spec, string $ctxClass): Rule
-    {
-        if ($spec instanceof Rule) {
-            return $spec;
-        }
-
-        if (is_string($spec) && strpos($spec, '@') !== false) {
-            $parts   = explode('|', $spec);
-            $refPart = null;
-            $mods    = [];
-            foreach ($parts as $part) {
-                if ($refPart === null && strpos($part, '@') === 0) {
-                    $refPart = $part;
-                } else {
-                    $mods[] = $part;
-                }
-            }
-            if ($refPart !== null) {
-                $refRule = self::makeEntityRefRule(ltrim($refPart, '@'), $ctxClass);
-                if (empty($mods)) {
-                    return Rule::create([$refRule, 'required']);
-                }
-                array_unshift($mods, $refRule);
-                return Rule::create($mods);
-            }
-        }
-
-        if (is_string($spec)) {
-            if (self::looksLikeClass($spec)) {
-                return Rule::create([self::makeEntityRefRule($spec, $ctxClass), 'required']);
-            }
-            return Rule::create($spec);
-        }
-
-        if (is_object($spec) && isset($spec->__m)) {
-            if ($spec->__m === self::M_ARRAY_OF) {
-                return Rule::create([self::makeArrayOfRule($spec->spec, $ctxClass), 'required']);
-            }
-            if ($spec->__m === self::M_ONE_OF) {
-                return Rule::create([self::makeOneOfRule($spec->specs, $ctxClass), 'required']);
-            }
-        }
-
-        if (is_array($spec)) {
-            $marker = null;
-            $mods   = [];
-            foreach ($spec as $item) {
-                if (is_object($item) && isset($item->__m)) {
-                    if ($item->__m === self::M_ARRAY_OF) {
-                        $marker = self::makeArrayOfRule($item->spec, $ctxClass);
-                    } elseif ($item->__m === self::M_ONE_OF) {
-                        $marker = self::makeOneOfRule($item->specs, $ctxClass);
-                    }
-                } elseif ($marker === null && is_string($item) && strpos($item, '@') === 0) {
-                    $marker = self::makeEntityRefRule(ltrim($item, '@'), $ctxClass);
-                } elseif ($marker === null && is_string($item) && self::looksLikeClass($item)) {
-                    $marker = self::makeEntityRefRule($item, $ctxClass);
-                } else {
-                    $mods[] = $item;
-                }
-            }
-            if ($marker !== null) {
-                if (empty($mods)) {
-                    return Rule::create([$marker, 'required']);
-                }
-                array_unshift($mods, $marker);
-                return Rule::create($mods);
-            }
-            return Rule::create($spec);
-        }
-
-        throw new \RuntimeException('Schema: unsupported field spec type');
-    }
+    // ─── Ref-rule helpers ────────────────────────────────────────────────────
 
     private static function makeEntityRefRule(string $ref, string $ctxClass): Rule
     {
@@ -545,7 +553,35 @@ abstract class DefaultSchema
                 return ['Expected array'];
             }
             try {
-                $v = self::processArrayOf($spec, $v, $ctxClass);
+                $isRef = $spec !== '' && (
+                    $spec[0] === '@'
+                    || strpos($spec, '\\') !== false
+                    || (bool)preg_match(self::REF_RE, $spec)
+                );
+
+                if ($isRef) {
+                    $fqcn   = self::resolveRef($spec, $ctxClass);
+                    $result = [];
+                    foreach ($v as $i => $item) {
+                        try {
+                            $result[] = self::coerceToSchema($fqcn, $item);
+                        } catch (\RuntimeException $e) {
+                            throw new \RuntimeException("[{$i}].{$e->getMessage()}");
+                        }
+                    }
+                    $v = $result;
+                    return [];
+                }
+
+                $rule       = Rule::forEach($spec);
+                $copy       = $v;
+                $ruleErrors = $rule->apply($copy);
+
+                if (!empty($ruleErrors)) {
+                    return $ruleErrors;
+                }
+
+                $v = $copy;
                 return [];
             } catch (\RuntimeException $e) {
                 return [$e->getMessage()];
@@ -556,12 +592,40 @@ abstract class DefaultSchema
     private static function makeOneOfRule(array $specs, string $ctxClass): Rule
     {
         return Rule::create(function (&$v) use ($specs, $ctxClass): array {
-            try {
-                $v = self::processOneOf($specs, $v, $ctxClass);
-                return [];
-            } catch (\RuntimeException $e) {
-                return [$e->getMessage()];
+            $lastErr = '';
+
+            foreach ($specs as $spec) {
+                if (!is_string($spec)) {
+                    return ['oneOf: unsupported spec type ' . (is_object($spec) ? get_class($spec) : gettype($spec))];
+                }
+
+                try {
+                    if ($spec[0] === '@') {
+                        $v = self::coerceToSchema(self::resolveRef(ltrim($spec, '@'), $ctxClass), $v);
+                        return [];
+                    }
+
+                    if (self::looksLikeClass($spec)) {
+                        $v = self::coerceToSchema(self::resolveRef($spec, $ctxClass), $v);
+                        return [];
+                    }
+
+                    $copy = $v;
+                    $errs = Rule::create($spec)->apply($copy);
+                    if (empty($errs)) {
+                        $v = $copy;
+                        return [];
+                    }
+                    $lastErr = implode('; ', $errs);
+                } catch (\RuntimeException $e) {
+                    $lastErr = $e->getMessage();
+                }
             }
+
+            return [
+                'No match in [' . implode(', ', $specs) . ']'
+                . ($lastErr !== '' ? ": {$lastErr}" : '')
+            ];
         })->order(600);
     }
 
@@ -589,72 +653,4 @@ abstract class DefaultSchema
         throw new \RuntimeException("Expected array or Schema for '{$fqcn}'");
     }
 
-    private static function processArrayOf(string $spec, array $items, string $ctxClass): array
-    {
-        if (self::looksLikeRef($spec)) {
-            $fqcn   = self::resolveRef($spec, $ctxClass);
-            $result = [];
-            foreach ($items as $i => $item) {
-                try {
-                    $result[] = self::coerceToSchema($fqcn, $item);
-                } catch (\RuntimeException $e) {
-                    throw new \RuntimeException("[{$i}].{$e->getMessage()}");
-                }
-            }
-            return $result;
-        }
-
-        $rule       = Rule::forEach($spec);
-        $copy       = $items;
-        $ruleErrors = $rule->apply($copy);
-
-        if (!empty($ruleErrors)) {
-            throw new \RuntimeException(implode('; ', $ruleErrors));
-        }
-
-        return $copy;
-    }
-
-    private static function processOneOf(array $specs, $value, string $ctxClass)
-    {
-        $lastErr = '';
-
-        foreach ($specs as $spec) {
-            if (!is_string($spec)) {
-                throw new \RuntimeException(
-                    'oneOf: unsupported spec type ' . (is_object($spec) ? get_class($spec) : gettype($spec))
-                );
-            }
-
-            try {
-                if ($spec !== '' && $spec[0] === '@') {
-                    return self::coerceToSchema(
-                        self::resolveRef(ltrim($spec, '@'), $ctxClass),
-                        $value
-                    );
-                }
-
-                if (self::looksLikeClass($spec)) {
-                    return self::coerceToSchema(
-                        self::resolveRef($spec, $ctxClass),
-                        $value
-                    );
-                }
-
-                $copy = $value;
-                $errs = Rule::create($spec)->apply($copy);
-                if (empty($errs)) {
-                    return $copy;
-                }
-                $lastErr = implode('; ', $errs);
-            } catch (\RuntimeException $e) {
-                $lastErr = $e->getMessage();
-            }
-        }
-
-        throw new \RuntimeException(
-            'No match in [' . implode(', ', $specs) . ']'
-            . ($lastErr !== '' ? ": {$lastErr}" : '')
-        );
-    }
 }
