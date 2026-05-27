@@ -293,48 +293,51 @@ final class Debug {
         if ($done)
             throw new \LogicException(__CLASS__.'::handleError() can be called only once per request');
 
-        Rule::object([
+        static::applyConfig($config, [
             'onError'     => 'callable|nullable',
             'onException' => 'callable|nullable',
             'onShutdown'  => 'callable|nullable',
-        ])->throwable()->apply($config);
+            'display'     => 'nullable|bool|@handle_error.output.display',
+            'dir'         => 'string|@filesystem.dir',
+            'file'        => 'string|@filesystem.file',
+        ]);
 
         if (!empty($config['onError']))     static::getInstance()->_on('on_error',     $config['onError']);
         if (!empty($config['onException'])) static::getInstance()->_on('on_exception', $config['onException']);
-        if (!empty($config['onShutdown']))  static::getInstance()   ->_on('on_shutdown',  $config['onShutdown']);
+        if (!empty($config['onShutdown']))  static::getInstance()->_on('on_shutdown',  $config['onShutdown']);
 
         error_reporting(static::config('handle_error.reporting.level'));
 
-        $display = static::config('handle_error.output.display') ? '1' : '0';
+        $display = $config['display'] ? '1' : '0';
         ini_set('display_errors',         $display);
         ini_set('display_startup_errors', $display);
         ini_set('log_errors', '1');
 
-        $dir  = Main::preparePath(static::config('filesystem.dir'), 3);
-        $file = trim(static::config('filesystem.file'), '/');
+        $dir = Main::preparePath($config['dir'], 3);
+        $file = trim($config['file'], '/');
         if (!is_dir($dir)) mkdir($dir, 0777, true);
-        ini_set('error_log', $dir . '/' . $file);
+        ini_set('error_log', $dir . DIRECTORY_SEPARATOR . $file);
 
-        set_error_handler([static::class, 'onError']);
-        set_exception_handler([static::class, 'onException']);
-        register_shutdown_function([static::class, 'onShutdown']);
+        set_error_handler(fn(int $severity, string $message, string $file, int $line) => static::onError($severity, $message, $file, $line));
+        set_exception_handler(fn(\Throwable $th) => static::onException($th));
+        register_shutdown_function(fn() => static::onShutdown());
 
         $done = true;
     }
 
-    public static function onError(int $severity, string $message, string $file, int $line): void {
+    private static function onError(int $severity, string $message, string $file, int $line): void {
         $error = compact('severity', 'message', 'file', 'line');
 
         if (static::getInstance()->fire('on_error', $error) === false)
             call_user_func([static::class, static::config('handle_error.output.method')], $error);
     }
 
-    public static function onException(\Throwable $th): void {
+    private static function onException(\Throwable $th): void {
         if (static::getInstance()->fire('on_exception', $th) === false)
             call_user_func([static::class, static::config('handle_error.output.method')], $th->getMessage());
     }
 
-    public static function onShutdown(): void {
+    private static function onShutdown(): void {
         $error = error_get_last();
 
         if (!$error || !in_array($error['type'], static::config('handle_error.shutdown.level'), true)) return;
