@@ -5,15 +5,27 @@ namespace ST_system;
 use ST_system\Main;
 use ST_system\Rule;
 use ST_system\Traits\HasConfig;
+use ST_system\Traits\HasEvents;
 use ST_system\Traits\HasInstance;
 
 final class Debug {
 
     use HasInstance;
     use HasConfig;
+    use HasEvents {
+        on as private _on;
+    }
+
+    protected static function getReservedEvents(): array {
+        return ['on_error', 'on_exception', 'on_shutdown'];
+    }
+
+    public static function on(string $event, callable $listener): void {
+        static::getInstance()->_on($event, $listener);
+    }
 
     protected static function getDefaultConfig(): array {
-        $a = [
+        return [
             'format' => [
                 'timestamp' => [
                     'output' => 'd-m-Y H:i:s',
@@ -34,23 +46,9 @@ final class Debug {
                 ],
                 'output' => [
                     'method' => 'toFile',
-                    'display' => false,
-                    'template' => <<<HTML
-                        <div style="border:1px solid #f00; padding:10px; margin:10px 0; background:#fee;">
-                            <strong>Error:</strong> %s<br>
-                            <strong>Code:</strong> %s<br>
-                            <pre>%s</pre>
-                        </div>
-                    HTML,
+                    'display' => false
                 ],
             ]
-        ];
-        return [
-            'timestamp_format_output' => 'd-m-Y H:i:s',
-            'timestamp_format_file'   => 'd-m-Y~H-i-s',
-            'dir'         => '~logs',
-            'file'        => 'log.html',
-            'output_type' => 'json_encode',
         ];
     }
 
@@ -213,40 +211,40 @@ final class Debug {
 
     private function exception($content, array $config = []): void {
         static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@output_type',
+            'output_type'             => 'nullable|string|@format.output',
             'backtrace'               => ['nullable|bool', Rule::default(false)],
             'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@timestamp_format_output',
+            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
         ]);
         throw new \Exception($this->getOutput($content, $config));
     }
 
     private function here($content, array $config = []): void {
         static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@output_type',
+            'output_type'             => 'nullable|string|@format.output',
             'backtrace'               => ['nullable|bool', Rule::default(false)],
             'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@timestamp_format_output',
+            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
         ]);
         echo $this->getOutput($content, $config);
     }
 
     private function toConsole($content, array $config = []): void {
         static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@output_type',
+            'output_type'             => 'nullable|string|@format.output',
             'backtrace'               => ['nullable|bool', Rule::default(false)],
             'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@timestamp_format_output',
+            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
         ]);
         echo '<script>console.log(`'.$this->getOutput($content, $config).'`)</script>';
     }
 
     private function toEmail($content, array $config = []): bool {
         static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@output_type',
+            'output_type'             => 'nullable|string|@format.output',
             'backtrace'               => ['nullable|bool', Rule::default(false)],
             'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@timestamp_format_output',
+            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
             'to'                      => 'nullable|string',
             'subject'                 => ['nullable|string', Rule::default('dump_to_email_log')],
         ]);
@@ -255,14 +253,14 @@ final class Debug {
 
     private function toFile($content, array $config = []) {
         static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@output_type',
+            'output_type'             => 'nullable|string|@format.output',
             'backtrace'               => ['nullable|bool', Rule::default(false)],
             'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@timestamp_format_output',
-            'dir'                     => 'string|@dir',
-            'file'                    => 'string|@file',
+            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
+            'dir'                     => 'string|@filesystem.dir',
+            'file'                    => 'string|@filesystem.file',
             'timestamp'               => ['nullable|bool', Rule::default(false)],
-            'timestamp_format_file'   => 'nullable|string|@timestamp_format_file',
+            'timestamp_format_file'   => 'nullable|string|@format.timestamp.file',
             'merge'                   => ['nullable|bool', Rule::default(true)],
             'append'                  => ['nullable|bool', Rule::default(false)],
         ]);
@@ -288,6 +286,61 @@ final class Debug {
                 ? ($config['append'] && file_exists($path))
                 : $config['merge']
         ) ? FILE_APPEND : 0);
+    }
+
+    public static function handleError(array $config = []): void {
+        static $done = false;
+        if ($done)
+            throw new \LogicException(__CLASS__.'::handleError() can be called only once per request');
+
+        Rule::object([
+            'onError'     => 'callable|nullable',
+            'onException' => 'callable|nullable',
+            'onShutdown'  => 'callable|nullable',
+        ])->throwable()->apply($config);
+
+        if (!empty($config['onError']))     static::getInstance()->_on('on_error',     $config['onError']);
+        if (!empty($config['onException'])) static::getInstance()->_on('on_exception', $config['onException']);
+        if (!empty($config['onShutdown']))  static::getInstance()   ->_on('on_shutdown',  $config['onShutdown']);
+
+        error_reporting(static::config('handle_error.reporting.level'));
+
+        $display = static::config('handle_error.output.display') ? '1' : '0';
+        ini_set('display_errors',         $display);
+        ini_set('display_startup_errors', $display);
+        ini_set('log_errors', '1');
+
+        $dir  = Main::preparePath(static::config('filesystem.dir'), 3);
+        $file = trim(static::config('filesystem.file'), '/');
+        if (!is_dir($dir)) mkdir($dir, 0777, true);
+        ini_set('error_log', $dir . '/' . $file);
+
+        set_error_handler([static::class, 'onError']);
+        set_exception_handler([static::class, 'onException']);
+        register_shutdown_function([static::class, 'onShutdown']);
+
+        $done = true;
+    }
+
+    public static function onError(int $severity, string $message, string $file, int $line): void {
+        $error = compact('severity', 'message', 'file', 'line');
+
+        if (static::getInstance()->fire('on_error', $error) === false)
+            call_user_func([static::class, static::config('handle_error.output.method')], $error);
+    }
+
+    public static function onException(\Throwable $th): void {
+        if (static::getInstance()->fire('on_exception', $th) === false)
+            call_user_func([static::class, static::config('handle_error.output.method')], $th->getMessage());
+    }
+
+    public static function onShutdown(): void {
+        $error = error_get_last();
+
+        if (!$error || !in_array($error['type'], static::config('handle_error.shutdown.level'), true)) return;
+
+        if (static::getInstance()->fire('on_shutdown', $error) === false)
+            call_user_func([static::class, static::config('handle_error.output.method')], $error);
     }
 
     public static function __callStatic(string $name, array $arguments) {
