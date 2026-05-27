@@ -142,7 +142,7 @@ class ImageMime extends Mime {
         switch (static::getImageDriver()) {
             case 'imagick':
                 $formats = array_map('strtolower', \Imagick::queryFormats('*'));
-                if (in_array('jpeg', $formats) && !in_array('jpg', $formats))
+                if (in_array('jpeg', $formats, true) && !in_array('jpg', $formats, true))
                     $formats[] = 'jpg';
                 $extensions = $formats;
 
@@ -356,7 +356,7 @@ class ImageMime extends Mime {
         $prefix = '';
         
         if (!empty($resize_config)) {
-            $resize_config['object-fit'] = in_array($resize_config['object-fit'], static::config('resize.object-fit'))
+            $resize_config['object-fit'] = in_array($resize_config['object-fit'], static::config('resize.object-fit'), true)
                 ? $resize_config['object-fit']
                 : static::config('resize.config.object-fit');
 

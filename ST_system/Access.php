@@ -358,12 +358,12 @@ final class Access {
 
         $request_origin = self::getRequestOrigin();
 
-        if (!empty($request_origin) && in_array($request_origin, $config['forbidden_origins']))
+        if (!empty($request_origin) && in_array($request_origin, $config['forbidden_origins'], true))
             self::throw(403);
 
-        $origin_header = in_array('*', $config['allowed_origins'])
+        $origin_header = in_array('*', $config['allowed_origins'], true)
             ? '*'
-            : ((!empty($request_origin) && in_array($request_origin, $config['allowed_origins']))
+            : ((!empty($request_origin) && in_array($request_origin, $config['allowed_origins'], true))
                 ? $request_origin
                 : null);
 

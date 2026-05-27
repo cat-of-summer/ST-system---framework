@@ -139,7 +139,7 @@ trait HasHTMLRules {
                 $attr_str .= ' '.$k.'="'.htmlspecialchars($v, ENT_QUOTES | ENT_HTML5, 'UTF-8').'"';
             });
 
-            $html .= in_array($tag, self::$void_elements)
+            $html .= in_array($tag, self::$void_elements, true)
                 ? "<{$tag}{$attr_str} />"
                 : "<{$tag}{$attr_str}>".self::parse_nodes_recursive($node->childNodes)."</{$tag}>";
 

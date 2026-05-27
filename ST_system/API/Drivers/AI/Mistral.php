@@ -73,7 +73,7 @@ final class Mistral extends OpenAICompatibleDriver {
             ->handleError(fn($v) => 'temperature должен быть числом от 0 до 2')
             ->alias('temperature', 1);
 
-        Rule::create(fn(&$v) => in_array($v, static::config('models')))
+        Rule::create(fn(&$v) => in_array($v, static::config('models'), true))
             ->handleError(fn($v) => "Недопустимая модель '{$v}'")
             ->alias('model', 1);
 

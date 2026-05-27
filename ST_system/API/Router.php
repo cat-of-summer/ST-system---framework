@@ -38,7 +38,7 @@ class Router {
             self::$URL_parsers_list[] = $this;
 
         foreach ($this->params as $key => &$value)
-            if (isset($PARAMS[$key]) && !in_array($key, ['methods']))
+            if (isset($PARAMS[$key]) && !in_array($key, ['methods'], true))
                 switch (gettype($value)) {
                     case 'boolean': $value = (bool)$PARAMS[$key]; break;
                     case 'integer': $value = (int)$PARAMS[$key]; break;
@@ -87,7 +87,7 @@ class Router {
     public function apply(...$PAGE_PARAMS) {
         $request_url = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-        if (!in_array($_SERVER['REQUEST_METHOD'], $this->params['methods']))
+        if (!in_array($_SERVER['REQUEST_METHOD'], $this->params['methods'], true))
             throw new \Exception("Метод {$_SERVER['REQUEST_METHOD']} не доступен");
         
         $PARSER_PARAMS = [];
