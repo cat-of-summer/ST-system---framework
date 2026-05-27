@@ -147,6 +147,85 @@ if (!$result['ok']) {
 
 ---
 
+### `static on(string $event, callable $listener): void`
+
+Регистрирует обработчик события. Обработчики накапливаются в singleton-инстансе.
+
+События:
+- `'on_error'` — PHP-ошибка; передаётся `array $error` с ключами `severity`, `message`, `file`, `line`.
+- `'on_exception'` — неперехваченное исключение; передаётся `\Throwable $th`.
+- `'on_shutdown'` — фатальная ошибка при shutdown; передаётся `array $error` из `error_get_last()`.
+
+Если хотя бы один слушатель зарегистрирован — дефолтный вывод ошибки (в файл) **не** выполняется.
+
+```php
+Debug::on('on_error', function(array $error): void {
+    // $error = ['severity' => ..., 'message' => ..., 'file' => ..., 'line' => ...]
+    error_log("PHP Error: {$error['message']} in {$error['file']}:{$error['line']}");
+});
+
+Debug::on('on_exception', function(\Throwable $th): void {
+    // отправить в Sentry и т.д.
+    error_log($th->getMessage());
+});
+```
+
+---
+
+### `static handleError(array $config = []): void`
+
+Устанавливает глобальные обработчики ошибок, исключений и shutdown. **Можно вызвать только один раз** — повторный вызов бросает `LogicException`.
+
+| Ключ `$config` | Тип | Описание |
+|----------------|-----|----------|
+| `onError` | `callable\|null` | Обработчик PHP-ошибок (заменяет дефолтный вывод) |
+| `onException` | `callable\|null` | Обработчик неперехваченных исключений |
+| `onShutdown` | `callable\|null` | Обработчик фатальных ошибок при shutdown |
+| `display` | `bool` | Показывать ошибки в ответе. Умолч: `false` |
+| `dir` | `string` | Директория для лога ошибок PHP (`error_log`). Умолч: `~logs` |
+| `file` | `string` | Имя файла лога. Умолч: `log.html` |
+
+```php
+// В bootstrap.php — один раз:
+Debug::handleError([
+    'display' => false,
+    'dir'     => __DIR__ . '/logs',
+    'file'    => 'errors.log',
+    'onException' => function(\Throwable $th): void {
+        // кастомная обработка; если задан — дефолтный вывод не срабатывает
+        header('Content-Type: application/json');
+        echo json_encode(['error' => $th->getMessage()]);
+    },
+]);
+```
+
+---
+
+### `static addDumpMethod(string $name, \Closure $fn): void`
+
+Регистрирует кастомный метод дампа, который затем вызывается через `__callStatic`.
+
+| Параметр | Тип | Описание |
+|----------|-----|----------|
+| `$name` | `string` | Имя нового метода |
+| `$fn` | `Closure` | `fn(string $output, array $config): mixed` |
+
+**Бросает:** `BadMethodCallException` если метод с таким именем уже зарегистрирован.
+
+```php
+Debug::addDumpMethod('toSlack', function(string $output, array $config): void {
+    $webhook = $config['webhook'] ?? '';
+    file_get_contents($webhook, false, stream_context_create([
+        'http' => ['method' => 'POST', 'content' => json_encode(['text' => $output])],
+    ]));
+});
+
+// Использование:
+Debug::toSlack($someVar, ['webhook' => 'https://hooks.slack.com/...']);
+```
+
+---
+
 ### `static __callStatic(string $name, array $arguments): mixed`
 
 **Магический вызов.** Создаёт экземпляр `Debug` с конфигом из `$arguments[1]` и вызывает на нём метод `$name` с значением `$arguments[0]`.

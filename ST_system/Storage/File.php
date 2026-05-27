@@ -38,7 +38,7 @@ final class File {
                     'text/html' => Mimes\HtmlMime::class,
                     'text/plain' => Mimes\TextPlainMime::class,
                     'text/css' => Mimes\CssMime::class,
-                    'application/javascript' => Mimes\JavaScriptMime::class,
+                    'application/javascript' => Mimes\JsMime::class,
                     'application/json' => Mimes\JsonMime::class,
                     'font/' => Mimes\FontMime::class,
                     'image/' => Mimes\ImageMime::class,

@@ -6,7 +6,7 @@ use ST_system\Storage\Mimes\Mime;
 use ST_system\Storage\Mimes\Traits\Minifiable;
 use ST_system\Storage\Mimes\Traits\Combinable;
 
-class JavaScriptMime extends Mime {
+class JsMime extends Mime {
     use Minifiable;
     use Combinable;
 

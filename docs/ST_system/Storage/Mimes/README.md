@@ -11,7 +11,7 @@
 - [FontMime.php](FontMime.php.md)
 - [HtmlMime.php](HtmlMime.php.md)
 - [ImageMime.php](ImageMime.php.md)
-- [JavaScriptMime.php](JavaScriptMime.php.md)
+- [JsMime.php](JsMime.php.md)
 - [JsonMime.php](JsonMime.php.md)
 - [Mime.php](Mime.php.md)
 - [SvgMime.php](SvgMime.php.md)

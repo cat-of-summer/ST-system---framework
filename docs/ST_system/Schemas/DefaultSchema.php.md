@@ -1,213 +1,306 @@
 # DefaultSchema.php
 
-> Для AI-агентов: этот документ описывает **всю** публичную поверхность класса `Schema`.  
-> Класс живёт в пространстве имён `ST_system`, файл `Schema.php`.
+> Для AI-агентов: этот документ описывает **всю** публичную поверхность класса `DefaultSchema`.  
+> Класс живёт в пространстве имён `ST_system\Schemas`, файл `ST_system/Schemas/DefaultSchema.php`.
 
 ---
 
 ## 1. Концепция
 
-`Schema` — **типизированный реестр сущностей (entities)** с валидацией, рендерингом и экспортом. Финальный класс.
+`DefaultSchema` — **базовый класс для типизированных схем** с валидацией полей, рендерингом и экспортом данных.
+
+Два способа использования:
+
+1. **Подкласс** — расширяешь `DefaultSchema`, переопределяешь `getFields()` и опционально `getPrint()`/`getToArray()`. Все конкретные схемы (`Doctor`, `Clinic`, `Service` и т.д.) используют этот подход.
+2. **Инлайн-схема** — передаёшь конфиг в конструктор `new DefaultSchema([...])` без создания отдельного класса.
 
 Ключевые концепции:
 
-1. **Entity** — именованный тип данных. Регистрируется через `Schema::entity()` один раз (повторная регистрация — исключение).
-2. **Instance** — заполненный экземпляр. Создаётся через `Schema::create()->fill()`.
-3. **Scope** — иерархический префикс для entity (`'schema.service'`).
-4. **Поля entity.** Могут быть: Rule-строки, ссылки на entity (`@Name`), `Schema::arrayOf()`, `Schema::oneOf()`, `Closure` (вычисляемые поля).
-5. **print / toArray.** Entity может иметь пользовательский `print`-callback (для XML/кастомного текста) и `toArray`-callback (для кастомной структуры). Если не заданы — дефолтные поведения.
-6. **before/after-хуки.** Вызываются до/после `fill()` для всех экземпляров entity.
+1. **Поля** — описываются в `getFields()`: Rule-строки, ссылки на другие схемы (`@ref`), маркеры `arrayOf`/`oneOf`, Closure (вычисляемые поля).
+2. **`fill()`** — валидирует и заполняет экземпляр; обязателен перед `print()`/`toArray()`/`field()`.
+3. **Хуки `before`/`after`** — вызываются до и после валидации.
+4. **`print()`** — рендерит схему в строку (JSON / XML / JSON-LD). Если задан `getPrint()` — использует его, иначе `json_encode`.
+5. **`toArray()`** — экспортирует в массив. Если задан `getToArray()` — использует его.
+6. **Вложенные схемы** — поля-ссылки `@ref` автоматически создают и заполняют дочерние экземпляры.
 
 ---
 
-## 2. Статические методы
-
-### `static entity(string $name, array $options = []): self`
-
-Регистрирует entity в реестре. возвращает entity-инстанц, на котором можно вызвать `->before()`, `->after()`, `->scope()`.
-
-| Ключ `$options` | Тип | Описание |
-|----------------|-----|----------|
-| `fields` | `array` | Схема полей (`'key' => spec`). Умолч: `[]` |
-| `print` | `callable\|null` | `fn(Schema $s, array $params): string`. Умолч: `json_encode` |
-| `toArray` | `callable\|null` | `fn(Schema $s, array $params): array`. Умолч: рекурсия `$this->data` |
-
-**Бросает:** `RuntimeException` если entity с таким путём уже зарегистрирована.
+## 2. Методы для подклассов (protected, переопределяются)
 
 ```php
-Schema::entity('Doctor', [
-    'fields' => [
-        'name'  => 'required|string',
-        'email' => 'required|email',
-        'age'   => 'sometimes|int|min:0',
-    ],
-    'print' => fn(Schema $s) => "<doctor>{$s->field('name')}</doctor>",
-]);
+protected static function getFields(): array  // правила валидации полей
+protected static function getPrint(): ?\Closure  // кастомный рендер → string
+protected static function getToArray(): ?\Closure  // кастомный экспорт → array
+protected static function _init(): void  // хук инициализации класса (один раз)
+```
+
+**Сигнатуры коллбэков:**
+
+- `getPrint()` возвращает `fn(DefaultSchema $s, array $params): string`
+- `getToArray()` возвращает `fn(DefaultSchema $s, array $params): array`
+
+```php
+namespace ST_system\Schemas;
+
+class Doctor extends DefaultSchema
+{
+    protected static function getFields(): array
+    {
+        return [
+            'name'  => 'required|string',
+            'email' => 'required|email',
+            'age'   => 'sometimes|int|min:0',
+        ];
+    }
+
+    protected static function getPrint(): ?\Closure
+    {
+        return fn(self $s, array $p) => "<doctor>{$s->field('name')}</doctor>";
+    }
+}
 ```
 
 ---
 
-### `static scope(string $fullPath, callable $fn): self`
+## 3. Статические методы (final)
 
-Устанавливает назывной скоп для регистрации entity. Идемпотентен: добавляет префикс ковсем entity внутри `$fn`.
+### `static create(...$args): self`
+
+Фабричный метод — эквивалент `new static(...)`. Удобен для цепочек.
 
 ```php
-Schema::scope('medical', function() {
-    Schema::entity('Doctor', [...]);  // fullPath = 'medical.Doctor'
-    Schema::entity('Clinic', [...]);  // fullPath = 'medical.Clinic'
-});
-
-$doc = Schema::create('medical.Doctor')->fill([...]);
+$doc = Doctor::create()->fill(['name' => 'Иванов', 'email' => 'doc@med.ru']);
 ```
 
 ---
 
-### `static create(string $entityPath): self`
+### `static name(): string`
 
-Создаёт пустой (unfilled) экземпляр entity.
+Возвращает **kebab-case** имя класса (по `basename`).
 
-**Бросает:** `RuntimeException` если entity не зарегистрирована.
+```php
+Doctor::name();      // 'doctor'
+OfferCatalog::name(); // 'offer-catalog'
+```
+
+---
+
+### `static scope(): string`
+
+Возвращает dot-путь неймспейса относительно `ST_system\Schemas`, **без имени самого класса**.
+
+```php
+// ST_system\Schemas\SchemaOrg\Service\Offer
+Offer::scope(); // 'schema-org.service'
+```
+
+---
+
+### `static path(): string`
+
+Возвращает `scope() + '.' + name()`. Если scope пустой — только `name()`.
+
+```php
+Offer::path(); // 'schema-org.service.offer'
+Doctor::path(); // 'doctor' (если в корне ST_system\Schemas)
+```
 
 ---
 
 ### `static arrayOf(string $spec): object`
 
-Создаёт маркер для поля-массива.
+Создаёт маркер для поля-массива схем или скалярных Rule-значений.
 
 | Спецификация | Описание |
 |-------------|----------|
-| `'@Doctor'` | Массив entity 'Doctor' |
-| `'string'` | Массив значений Rule 'string' |
+| `'@doctor'` | Массив вложенных схем `Doctor` |
+| `'string'` | Массив Rule-строк |
+| `Doctor::class` | Массив конкретного класса (FQCN) |
 
 ```php
-Schema::entity('Clinic', [
-    'fields' => [
-        'doctors' => Schema::arrayOf('@Doctor'),                   // обязательный
-        'tags'    => [Schema::arrayOf('string'), 'sometimes'],     // необязательный
-    ],
-]);
+protected static function getFields(): array
+{
+    return [
+        'doctors' => static::arrayOf('@doctor'),            // обязательный
+        'tags'    => [static::arrayOf('string'), 'sometimes'], // необязательный
+    ];
+}
 ```
 
 ---
 
 ### `static oneOf(array $specs): object`
 
-Создаёт маркер «один из» нескольких вариантов.
+Создаёт маркер «один из» — значение должно пройти хотя бы одну из спецификаций.
 
 ```php
-'author' => Schema::oneOf(['@Person', '@Organization'])
+'author' => static::oneOf(['@person', '@organization'])
 ```
 
 ---
 
-## 3. Инстанс-методы
+## 4. Инстанс-методы (final)
 
 ### `fill(array $data, array $fillParams = []): self`
 
-Заполняет экземпляр. Выполняет: before-хуки, валидацию (через `Rule::object()`), вычисляемые поля, after-хуки.
+Валидирует и заполняет экземпляр данными. Выполняет: before-хуки → валидация полей → вычисляемые поля → after-хуки.
 
-| Параметр | Описание |
-|----------|----------|
-| `$data` | Ассоциативный массив данных |
-| `$fillParams` | Параметры контекста (пробрасываются в `print`/`toArray`) |
+| Параметр | Тип | Описание |
+|----------|-----|----------|
+| `$data` | `array` | Ассоциативный массив входных данных |
+| `$fillParams` | `array` | Параметры контекста (пробрасываются в `print`/`toArray`) |
 
-**Бросает:** `RuntimeException` со списком ошибок валидации.
+**Бросает:** `RuntimeException` со списком ошибок если валидация не прошла.
 
 ```php
-$doctor = Schema::create('Doctor')->fill([
+$doc = (new Doctor())->fill([
     'name'  => 'Иванов',
     'email' => 'doc@med.ru',
-], ['lang' => 'ru']);
+    'age'   => 35,
+]);
 ```
 
 ---
 
 ### `append(array $data): self`
 
-Повторно вызывает `fill(array_merge($rawData, $data), $fillParams)`.
+Мержит `$data` поверх исходных данных и повторно вызывает `fill()`. Если экземпляр ещё не заполнен — просто вызывает `fill($data)`.
 
 ```php
-$doctor->append(['age' => 35]);
+$doc->append(['age' => 40]);
 ```
 
 ---
 
 ### `before(callable $fn): self`
 
-Регистрирует before-хук на entity-определении. Вызывается до валидации. Callback: `fn(array &$data): void`.
+Регистрирует хук **до** валидации. Вызывается при каждом `fill()`. Callback: `fn(array &$data): void`.
 
 ```php
-Schema::entity('Offer', [...])->before(function(array &$data): void {
-    $data['price'] = (float)str_replace(',', '.', $data['price'] ?? '0');
-});
+(new Doctor())
+    ->before(function (array &$data): void {
+        $data['name'] = trim($data['name'] ?? '');
+    })
+    ->fill(['name' => ' Иванов ', 'email' => 'doc@med.ru']);
 ```
 
 ---
 
 ### `after(callable $fn): self`
 
-Регистрирует after-хук. Вызывается после `fill()`. Callback: `fn(Schema $s): void`. Для изменения данных — `$s->set()`.
+Регистрирует хук **после** `fill()`. Callback: `fn(DefaultSchema $s): void`. Для изменения данных используй `$s->set()`.
+
+```php
+(new Doctor())
+    ->after(function (DefaultSchema $s): void {
+        if ($s->field('age') < 18) {
+            $s->set('age', 18);
+        }
+    })
+    ->fill(['name' => 'Иванов', 'email' => 'doc@med.ru', 'age' => 5]);
+```
 
 ---
 
 ### `set(string $path, mixed $value): self`
 
-Напрямую записывает значение поля без валидации. Поддерживает dot-notation и `[N]`-индексы. Инвалидирует кэш печати.
+Напрямую записывает значение по dot-notation пути **без валидации**. Поддерживает `[N]`-индексы. Инвалидирует кэш `print`.
 
 ```php
-$doctor->set('name', 'Сидоров');
-$doctor->set('items.0.price', 500);
-$doctor->set('items.[1].name', 'Услуга 2');
+$doc->set('name', 'Сидоров');
+$doc->set('address.city', 'Москва');
+$doc->set('items.0.price', 500);
+$doc->set('items.[1].name', 'Услуга 2');  // [N] и N эквивалентны
+```
+
+---
+
+### `field(string $name = ''): mixed`
+
+Читает поле по dot-notation пути. Пустая строка возвращает весь массив данных. Поддерживает `[N]`-индексы.
+
+```php
+$doc->field();                  // ['name' => 'Иванов', 'email' => '...']
+$doc->field('name');            // 'Иванов'
+$doc->field('address');         // DefaultSchema-инстанс address
+$doc->field('address.city');    // делегирует → $address->field('city')
+$doc->field('items.0');         // $data['items'][0]
+$doc->field('items.0.price');   // $data['items'][0]->field('price')
 ```
 
 ---
 
 ### `print(array $params = []): string`
 
-Возвращает строковое представление. `$params` мержится с `$fillParams`. Результат кэшируется если `$params` и `$fillParams` пусты.
+Возвращает строковое представление схемы. Если определён `getPrint()` — использует его; иначе `json_encode(toArray())`.
+
+`$params` мержится с `$fillParams`. Результат кэшируется если оба пусты.
 
 ```php
-$xml = $doctor->print();            // с дефолтным json_encode если нет print-callback
-$xml = $doctor->print(['format' => 'xml']); // параметр передаётся в callback
+echo $doc->print();                    // JSON или кастомный вывод
+echo $doc->print(['format' => 'xml']); // параметр пробрасывается в getPrint()
 ```
+
+**Бросает:** `RuntimeException` если экземпляр не заполнен.
 
 ---
 
 ### `toArray(array $params = []): array`
 
-Возвращает массив данных. Вложенные Schema-экземпляры разворачиваются рекурсивно. Без `toArray`-callback добавляет `'@type' => name`.
-
----
-
-### `field(string $name = ''): mixed`
-
-Читает поле или весь массив данных. Поддерживает dot-notation и `[N]`-индексы.
+Экспортирует данные в массив. Вложенные `DefaultSchema`-экземпляры рекурсивно разворачиваются. Если определён `getToArray()` — использует его.
 
 ```php
-$doctor->field();                // весь $this->data
-$doctor->field('name');          // 'Иванов'
-$doctor->field('address');       // Schema-инстанс address
-$doctor->field('address.city');  // делегирует → $address->field('city')
-$doctor->field('items.0');       // $data['items'][0]
-$doctor->field('items.[0]');     // то же самое
-$doctor->field('items.0.price'); // $data['items'][0]->field('price')
+$arr = $doc->toArray(); // ['name' => 'Иванов', 'email' => '...']
 ```
 
 ---
 
 ### `parent(): ?self`
 
-Возвращает родительский Schema-экземпляр или `null` если экземпляр корневой.
+Возвращает родительский экземпляр `DefaultSchema` если эта схема является вложенным полем. Иначе `null`.
+
+```php
+$address = $clinic->field('address');
+$address->parent() === $clinic; // true
+```
 
 ---
 
-## 4. Спецификации полей entity
+## 5. Инлайн-схема
+
+Альтернатива созданию подкласса — передать конфиг в конструктор `DefaultSchema`:
+
+```php
+$schema = new DefaultSchema([
+    'fields' => [
+        'title'   => 'required|string',
+        'content' => 'sometimes|string',
+    ],
+    'print'   => fn($s, $p) => "<article><h1>{$s->field('title')}</h1></article>",
+    'toArray' => fn($s, $p) => ['headline' => $s->field('title')],
+]);
+
+$result = $schema->fill(['title' => 'Новость'])->print();
+// <article><h1>Новость</h1></article>
+```
+
+| Ключ `$inline` | Тип | Описание |
+|----------------|-----|----------|
+| `fields` | `array` | Правила полей (те же форматы что в `getFields()`) |
+| `print` | `Closure\|null` | `fn(DefaultSchema $s, array $params): string` |
+| `toArray` | `Closure\|null` | `fn(DefaultSchema $s, array $params): array` |
+
+---
+
+## 6. Спецификации полей (`getFields()`)
 
 | Формат | Пример | Описание |
 |--------|---------|----------|
-| Rule-строка | `'required\|string\|max:100'` | Стандартная валидация |
-| Ссылка на entity | `'@Address'` | Обязательный вложенный entity |
-| `arrayOf` | `Schema::arrayOf('@Doctor')` | Массив entity |
-| `oneOf` | `Schema::oneOf(['@A', '@B'])` | Один из вариантов |
-| Closure | `fn(array $data): string` | Вычисляемое поле |
-| Массив | `['@Doctor', 'sometimes']` | Маркер + модификаторы |
+| Rule-строка | `'required\|string\|max:100'` | Стандартная Rule-валидация |
+| `@ref` | `'@address'` | Обязательная вложенная схема (по имени) |
+| FQCN | `Address::class` | Обязательная схема по полному имени класса |
+| `arrayOf` | `static::arrayOf('@doctor')` | Обязательный массив схем/значений |
+| `oneOf` | `static::oneOf(['@a', '@b'])` | Один из вариантов |
+| Closure | `fn(array $d): string` | Вычисляемое поле (не валидируется, исполняется после валидации) |
+| Массив | `[static::arrayOf('@doctor'), 'sometimes']` | Маркер + модификаторы Rule |
+| Строка с `@` + модификаторы | `'@address\|sometimes'` | Необязательная вложенная схема |

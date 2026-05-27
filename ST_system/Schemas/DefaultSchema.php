@@ -102,7 +102,7 @@ class DefaultSchema
         return self::$scopeCache[$class] = implode('.', $parts);
     }
 
-    final public static function fullPath(): string
+    final public static function path(): string
     {
         $scope = static::scope();
         return $scope === '' ? static::name() : $scope . '.' . static::name();
@@ -130,13 +130,13 @@ class DefaultSchema
             }
         }
 
-        $fullPath = $class::fullPath();
+        $path = $class::path();
         $init     = static fn() => $class::_init();
 
-        if ($fullPath === '') {
+        if ($path === '') {
             $init();
         } else {
-            self::withEntityScope($fullPath, $init);
+            self::withEntityScope($path, $init);
         }
     }
 
@@ -156,7 +156,7 @@ class DefaultSchema
 
     final public function fill(array $data, array $fillParams = []): self
     {
-        $ctx      = static::fullPath();
+        $ctx      = static::path();
         $ctxClass = static::class;
 
         $this->rawData = $data;

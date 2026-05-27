@@ -265,6 +265,16 @@ Access::unbanIp('203.0.113.7');
 
 ---
 
+### `static unbanAll(): void`
+
+Снимает все активные баны (очищает весь кэш фаервола). Поднимает событие `'unbanAll'`.
+
+```php
+Access::unbanAll(); // разбанить всех IP
+```
+
+---
+
 ### `static handleCORS(array $PARAMS = []): void`
 
 Устанавливает CORS-заголовки и обрабатывает preflight-запросы `OPTIONS`. Если Origin запрещён или не разрешён — вызывается `throw(403)`.

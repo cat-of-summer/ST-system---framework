@@ -4,8 +4,12 @@ namespace ST_system;
 
 use ST_system\Storage\File;
 use ST_system\Debug;
+use ST_system\Rule;
+use ST_system\Traits\HasConfig;
 
 final class Loader {
+
+    use HasConfig;
 
     private static function connect(string $realpath, string $action): void {
         switch ($action) {
@@ -27,8 +31,7 @@ final class Loader {
         }
     }
 
-    
-    public static function create(...$args): self { return new static(...$args); }
+    public static function create(...$args): static { return new static(...$args); }
 
     public static function __callStatic(string $name, array $args) {
         switch ($name) {
@@ -115,16 +118,13 @@ final class Loader {
     private function registerDir(array $config = []): void {
         static $directories_map = [];
 
-        $config = array_merge(
-            [
-                'throw'   => true,
-                'prepend' => false,
-                'prefix'  => '',
-            ],
-            $config
-        );
+        static::applyConfig($config, [
+            'throw'   => ['nullable|bool',   Rule::default(true)],
+            'prepend' => ['nullable|bool',   Rule::default(false)],
+            'prefix'  => ['nullable|string', Rule::default(''), 'trim:\\'],
+        ]);
 
-        $prefix    = trim($config['prefix'], '\\');
+        $prefix    = $config['prefix'];
         $directory = $this->file;
         $mapKey    = $directory->getPathname() . ':' . $prefix;
 
