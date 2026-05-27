@@ -4,6 +4,7 @@
 ## Папки
 
 - [SchemaMarkup](SchemaMarkup/)
+- [SchemaOrg](SchemaOrg/)
 - [Yandex](Yandex/)
 
 ## Файлы
