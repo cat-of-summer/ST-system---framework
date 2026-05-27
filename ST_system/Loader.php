@@ -5,11 +5,8 @@ namespace ST_system;
 use ST_system\Storage\File;
 use ST_system\Debug;
 use ST_system\Rule;
-use ST_system\Traits\HasConfig;
 
 final class Loader {
-
-    use HasConfig;
 
     private static function connect(string $realpath, string $action): void {
         switch ($action) {
@@ -118,11 +115,11 @@ final class Loader {
     private function registerDir(array $config = []): void {
         static $directories_map = [];
 
-        static::applyConfig($config, [
-            'throw'   => ['nullable|bool',   Rule::default(true)],
-            'prepend' => ['nullable|bool',   Rule::default(false)],
-            'prefix'  => ['nullable|string', Rule::default(''), 'trim:\\'],
-        ]);
+        Rule::object([
+            'throw'   => [Rule::default(true), 'bool'],
+            'prepend' => 'bool',
+            'prefix'  => 'string|trim:\\',
+        ])->throwable()->apply($config);
 
         $prefix    = $config['prefix'];
         $directory = $this->file;
