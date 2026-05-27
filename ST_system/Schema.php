@@ -5,7 +5,7 @@ namespace ST_system;
 use ST_system\Rule;
 
 
-final class Schema
+class Schema
 {
     private const M_ARRAY_OF = 3;
     private const M_ONE_OF   = 4;
@@ -15,7 +15,7 @@ final class Schema
     private static array $printContext = [];
     private static int   $printDepth   = 0;
 
-    private ?object $entityDef;
+    protected ?object $entityDef;
     private array   $data       = [];
     private bool    $filled     = false;
     private ?string $printCache = null;
@@ -23,7 +23,7 @@ final class Schema
     private array   $fillParams = [];
     private array   $rawData    = [];
 
-    private function __construct(?object $entityDef = null)
+    protected function __construct(?object $entityDef = null)
     {
         $this->entityDef = $entityDef;
     }
@@ -65,6 +65,16 @@ final class Schema
             array_pop(self::$nsStack);
         }
         return $this;
+    }
+
+    protected static function withinScope(string $path, \Closure $fn): void
+    {
+        self::$nsStack[] = $path;
+        try {
+            Rule::scope($path, $fn);
+        } finally {
+            array_pop(self::$nsStack);
+        }
     }
 
     public function __call(string $name, array $args)
