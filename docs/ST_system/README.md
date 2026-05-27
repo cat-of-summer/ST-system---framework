@@ -23,6 +23,5 @@
 - [Main.php](Main.php.md)
 - [Menu.php](Menu.php.md)
 - [Rule.php](Rule.php.md)
-- [Schema.php](Schema.php.md)
 
 <!-- DOCGEN:END -->
