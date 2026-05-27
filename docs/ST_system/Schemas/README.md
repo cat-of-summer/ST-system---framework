@@ -4,9 +4,10 @@
 ## Папки
 
 - [SchemaMarkup](SchemaMarkup/)
+- [Yandex](Yandex/)
 
 ## Файлы
 
-- [yandex-medical-feed.php](yandex-medical-feed.php.md)
+- [DefaultSchema.php](DefaultSchema.php.md)
 
 <!-- DOCGEN:END -->
