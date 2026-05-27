@@ -6,20 +6,20 @@ use ST_system\Schemas\DefaultSchema;
 
 final class ItemList extends DefaultSchema
 {
-    protected static function defineScope(): string
+    protected static function getFields(): array
     {
-        return 'schema';
-    }
-
-    protected static function define(): self
-    {
-        $schema = self::entity('item-list', ['fields' => [
+        return [
             'name'            => 'required|string',
             'description'     => 'sometimes|string',
             'url'             => 'sometimes|url',
             'number_of_items' => 'sometimes|int',
-            'items'           => [self::arrayOf('@list-item'), 'sometimes'],
-        ], 'print' => function (DefaultSchema $s): string {
+            'items'           => [self::arrayOf('list-item'), 'sometimes'],
+        ];
+    }
+
+    protected static function getPrint(): \Closure
+    {
+        return function (DefaultSchema $s): string {
             $items = $s->field('items') ?? [];
 
             $data = [
@@ -47,10 +47,6 @@ final class ItemList extends DefaultSchema
             return '<script type="application/ld+json">'
                 . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 . '</script>';
-        }]);
-
-        ListItem::boot();
-
-        return $schema;
+        };
     }
 }

@@ -6,14 +6,9 @@ use ST_system\Schemas\DefaultSchema;
 
 final class Service extends DefaultSchema
 {
-    protected static function defineScope(): string
+    protected static function getFields(): array
     {
-        return 'schema';
-    }
-
-    protected static function define(): self
-    {
-        $schema = self::entity('service', ['fields' => [
+        return [
             'service_type'      => 'required|string',
             'name'              => 'sometimes|string',
             'description'       => 'sometimes|string',
@@ -23,7 +18,12 @@ final class Service extends DefaultSchema
             'provider'          => 'sometimes|@provider',
             'offers'            => 'sometimes|@offer',
             'has_offer_catalog' => 'sometimes|@offer-catalog',
-        ], 'print' => function (DefaultSchema $s): string {
+        ];
+    }
+
+    protected static function getPrint(): \Closure
+    {
+        return function (DefaultSchema $s): string {
             $data = [
                 '@context'    => 'https://schema.org',
                 '@type'       => 'Service',
@@ -65,13 +65,6 @@ final class Service extends DefaultSchema
             return '<script type="application/ld+json">'
                 . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 . '</script>';
-        }]);
-
-        PostalAddress::boot();
-        ServiceProvider::boot();
-        ServiceOffer::boot();
-        ServiceOfferCatalog::boot();
-
-        return $schema;
+        };
     }
 }

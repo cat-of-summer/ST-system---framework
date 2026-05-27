@@ -5,208 +5,170 @@ namespace ST_system\Schemas;
 use ST_system\Rule;
 use ST_system\Main;
 
-class DefaultSchema
+abstract class DefaultSchema
 {
-    private const M_ARRAY_OF = 3;
-    private const M_ONE_OF   = 4;
+    private const ROOT_NAMESPACE = __NAMESPACE__;
+    private const M_ARRAY_OF     = 3;
+    private const M_ONE_OF       = 4;
+    private const REF_RE         = '/^[a-z][a-z0-9-]*$/';
 
-    private static array $registry     = [];
-    private static array $nsStack      = [];
     private static array $printContext = [];
     private static int   $printDepth   = 0;
+    private static array $initialized  = [];
+    private static array $scopeCache   = [];
+    private static array $nameCache    = [];
 
-    private static array $booted = [];
-    private static array $defs   = [];
+    private array   $data        = [];
+    private bool    $filled      = false;
+    private ?string $printCache  = null;
+    private ?self   $parent      = null;
+    private array   $fillParams  = [];
+    private array   $rawData     = [];
+    private array   $beforeHooks = [];
+    private array   $afterHooks  = [];
 
-    protected ?object $entityDef;
-    private array     $data       = [];
-    private bool      $filled     = false;
-    private ?string   $printCache = null;
-    private ?self     $parent     = null;
-    private array     $fillParams = [];
-    private array     $rawData    = [];
-
-    public function __construct(?object $entityDef = null)
+    final public function __construct()
     {
-        if ($entityDef !== null) {
-            $this->entityDef = $entityDef;
-        } else {
-            static::ensureBooted();
-            $this->entityDef = self::$defs[static::class];
-        }
+        static::ensureInited();
     }
 
-    // ─── Boot ────────────────────────────────────────────────────────────────
+    // ─── Hooks for subclasses ────────────────────────────────────────────────
 
-    public static function boot(): void
-    {
-        static::ensureBooted();
-    }
+    abstract protected static function getFields(): array;
 
-    private static function ensureBooted(): void
-    {
-        $class = static::class;
-        if (!isset(self::$booted[$class])) {
-            self::$booted[$class] = true;
-            $scope = static::defineScope();
-            if ($scope !== null) {
-                $result = null;
-                static::withinScope($scope, static function () use (&$result, $class): void {
-                    $result = $class::define();
-                });
-            } else {
-                $result = static::define();
-            }
-            self::$defs[$class] = $result->entityDef;
-        }
-    }
-
-    protected static function defineScope(): ?string
+    protected static function getPrint(): ?\Closure
     {
         return null;
     }
 
-    protected static function define(): self
+    protected static function getToArray(): ?\Closure
     {
-        throw new \LogicException(static::class . ' must implement define()');
+        return null;
     }
 
-    protected static function withinScope(string $path, \Closure $fn): void
+    protected static function _init(): void {}
+
+    // ─── Derived identity ────────────────────────────────────────────────────
+
+    final public static function name(): string
     {
-        self::$nsStack[] = $path;
-        try {
-            Rule::scope($path, $fn);
-        } finally {
-            array_pop(self::$nsStack);
+        $class = static::class;
+        if (isset(self::$nameCache[$class])) {
+            return self::$nameCache[$class];
+        }
+        $pos      = strrpos($class, '\\');
+        $basename = $pos === false ? $class : substr($class, $pos + 1);
+        return self::$nameCache[$class] = Main::kebabCase($basename);
+    }
+
+    final public static function scope(): string
+    {
+        $class = static::class;
+        if (isset(self::$scopeCache[$class])) {
+            return self::$scopeCache[$class];
+        }
+        $root = self::ROOT_NAMESPACE;
+        if (strpos($class, $root . '\\') !== 0) {
+            throw new \LogicException("Schema class {$class} must live under {$root}");
+        }
+        $relative = substr($class, strlen($root) + 1);
+        $segments = explode('\\', $relative);
+        array_pop($segments);
+        $parts = array_map([Main::class, 'kebabCase'], $segments);
+        return self::$scopeCache[$class] = implode('.', $parts);
+    }
+
+    final public static function fullPath(): string
+    {
+        $scope = static::scope();
+        return $scope === '' ? static::name() : $scope . '.' . static::name();
+    }
+
+    // ─── Lazy init walk-up ───────────────────────────────────────────────────
+
+    private static function ensureInited(): void
+    {
+        $class = static::class;
+        if (isset(self::$initialized[$class])) {
+            return;
+        }
+        self::$initialized[$class] = true;
+
+        $parent = self::parentSchemaClass($class);
+        if ($parent !== null) {
+            $parent::ensureInited();
+        }
+
+        $fullPath = $class::fullPath();
+        $init     = static fn() => $class::_init();
+
+        if ($fullPath === '') {
+            $init();
+        } else {
+            self::withEntityScope($fullPath, $init);
         }
     }
 
-    // ─── Registry ────────────────────────────────────────────────────────────
-
-    public static function entity(string $name, array $options = []): self
+    private static function parentSchemaClass(string $class): ?string
     {
-        $fullPath = empty(self::$nsStack)
-            ? $name
-            : end(self::$nsStack) . '.' . $name;
-
-        if (isset(self::$registry[$fullPath])) {
-            throw new \RuntimeException("Schema: entity '{$fullPath}' already registered");
+        $pos = strrpos($class, '\\');
+        if ($pos === false) {
+            return null;
         }
-
-        $def = (object)[
-            'name'        => $name,
-            'fullPath'    => $fullPath,
-            'fields'      => $options['fields'] ?? [],
-            'print'       => isset($options['print']) && is_callable($options['print']) ? $options['print'] : null,
-            'toArray'     => isset($options['toArray']) && is_callable($options['toArray']) ? $options['toArray'] : null,
-            'parentPath'  => empty(self::$nsStack) ? null : end(self::$nsStack),
-            'beforeHooks' => [],
-            'afterHooks'  => [],
-        ];
-
-        self::$registry[$fullPath] = $def;
-
-        return new self($def);
+        $ns   = substr($class, 0, $pos);
+        $root = self::ROOT_NAMESPACE;
+        if ($ns === '' || $ns === $root || strpos($ns, $root . '\\') !== 0) {
+            return null;
+        }
+        if (!class_exists($ns)) {
+            return null;
+        }
+        if (!is_subclass_of($ns, self::class)) {
+            return null;
+        }
+        return $ns;
     }
 
-    public static function create(string $entityPath): self
-    {
-        if (!isset(self::$registry[$entityPath])) {
-            throw new \RuntimeException("Schema: unknown entity '{$entityPath}'");
-        }
-        return new self(self::$registry[$entityPath]);
-    }
+    // ─── arrayOf / oneOf markers ─────────────────────────────────────────────
 
-    public static function arrayOf(string $spec): object
+    final public static function arrayOf(string $spec): object
     {
         return (object)['__m' => self::M_ARRAY_OF, 'spec' => $spec];
     }
 
-    public static function oneOf(array $specs): object
+    final public static function oneOf(array $specs): object
     {
         return (object)['__m' => self::M_ONE_OF, 'specs' => $specs];
     }
 
-    // ─── Instance scope ──────────────────────────────────────────────────────
-
-    private function scope(\Closure $fn): self
-    {
-        self::$nsStack[] = $this->entityDef->fullPath;
-        try {
-            Rule::scope($this->entityDef->fullPath, function () use ($fn) {
-                $fn();
-            });
-        } finally {
-            array_pop(self::$nsStack);
-        }
-        return $this;
-    }
-
-    public function __call(string $name, array $args)
-    {
-        if ($name === 'scope') {
-            return $this->scope(...$args);
-        }
-        throw new \Error("Call to undefined method " . __CLASS__ . "::{$name}()");
-    }
-
-    public static function __callStatic(string $name, array $args)
-    {
-        if ($name === 'scope') {
-            [$fullPath, $fn] = $args;
-
-            if (isset(self::$registry[$fullPath])) {
-                $instance = new self(self::$registry[$fullPath]);
-            } else {
-                $parts = explode('.', $fullPath);
-                $def   = (object)[
-                    'name'        => end($parts),
-                    'fullPath'    => $fullPath,
-                    'fields'      => [],
-                    'print'       => null,
-                    'toArray'     => null,
-                    'parentPath'  => count($parts) > 1 ? implode('.', array_slice($parts, 0, -1)) : null,
-                    'beforeHooks' => [],
-                    'afterHooks'  => [],
-                ];
-                self::$registry[$fullPath] = $def;
-                $instance = new self($def);
-            }
-
-            return $instance->scope($fn);
-        }
-
-        throw new \Error("Call to undefined static method " . __CLASS__ . "::{$name}()");
-    }
-
     // ─── Fill ────────────────────────────────────────────────────────────────
 
-    public function fill(array $data, array $fillParams = []): self
+    final public function fill(array $data, array $fillParams = []): self
     {
-        $def = $this->entityDef;
-        $ctx = $def->fullPath;
+        $ctx      = static::fullPath();
+        $ctxClass = static::class;
 
         $this->rawData = $data;
 
-        foreach ($def->beforeHooks as $fn) {
+        foreach ($this->beforeHooks as $fn) {
             $fn($data);
         }
 
         $computed   = [];
         $ruleSchema = [];
 
-        Rule::scope($ctx, function () use ($def, $ctx, &$ruleSchema, &$computed) {
-            foreach ($def->fields as $key => $spec) {
+        self::withEntityScope($ctx, function () use ($ctxClass, &$ruleSchema, &$computed): void {
+            foreach (static::getFields() as $key => $spec) {
                 if ($spec instanceof \Closure) {
                     $computed[$key] = $spec;
                     continue;
                 }
-                $ruleSchema[$key] = self::compileFieldSpec($spec, $ctx);
+                $ruleSchema[$key] = self::compileFieldSpec($spec, $ctxClass);
             }
         });
 
         $result = $data;
-        Rule::scope($ctx, fn () => Rule::object($ruleSchema)->throwable()->apply($result));
+        self::withEntityScope($ctx, fn () => Rule::object($ruleSchema)->throwable()->apply($result));
 
         foreach ($computed as $key => $fn) {
             $result[$key] = $fn($result);
@@ -218,25 +180,17 @@ class DefaultSchema
         $this->printCache = null;
 
         foreach ($this->data as $value) {
-            if ($value instanceof self) {
-                $value->parent = $this;
-            } elseif (is_array($value)) {
-                foreach ($value as $item) {
-                    if ($item instanceof self) {
-                        $item->parent = $this;
-                    }
-                }
-            }
+            self::linkParent($value, $this);
         }
 
-        foreach ($def->afterHooks as $fn) {
+        foreach ($this->afterHooks as $fn) {
             $fn($this);
         }
 
         return $this;
     }
 
-    public function append(array $data): self
+    final public function append(array $data): self
     {
         if (!$this->filled) {
             return $this->fill($data);
@@ -244,19 +198,19 @@ class DefaultSchema
         return $this->fill(array_merge($this->rawData, $data), $this->fillParams);
     }
 
-    public function before(callable $fn): self
+    final public function before(callable $fn): self
     {
-        $this->entityDef->beforeHooks[] = $fn;
+        $this->beforeHooks[] = $fn;
         return $this;
     }
 
-    public function after(callable $fn): self
+    final public function after(callable $fn): self
     {
-        $this->entityDef->afterHooks[] = $fn;
+        $this->afterHooks[] = $fn;
         return $this;
     }
 
-    public function set(string $path, $value): self
+    final public function set(string $path, $value): self
     {
         $path = str_replace(['[', ']'], '', $path);
 
@@ -298,7 +252,7 @@ class DefaultSchema
 
     // ─── Output ──────────────────────────────────────────────────────────────
 
-    public function print(array $params = []): string
+    final public function print(array $params = []): string
     {
         if (!$this->filled) {
             throw new \RuntimeException('Schema: cannot print unfilled instance');
@@ -317,8 +271,9 @@ class DefaultSchema
                 return $this->printCache;
             }
 
-            if ($this->entityDef->print !== null) {
-                $out = (string)($this->entityDef->print)($this, self::$printContext);
+            $printer = static::getPrint();
+            if ($printer !== null) {
+                $out = (string)$printer($this, self::$printContext);
             } else {
                 $out = json_encode(
                     $this->toArray(self::$printContext),
@@ -339,7 +294,7 @@ class DefaultSchema
         }
     }
 
-    public function field(string $name = '')
+    final public function field(string $name = '')
     {
         if ($name === '') {
             return $this->data;
@@ -377,10 +332,11 @@ class DefaultSchema
         return null;
     }
 
-    public function toArray(array $params = []): array
+    final public function toArray(array $params = []): array
     {
-        if ($this->entityDef->toArray !== null) {
-            return ($this->entityDef->toArray)($this, $params);
+        $custom = static::getToArray();
+        if ($custom !== null) {
+            return $custom($this, $params);
         }
 
         $out = [];
@@ -390,7 +346,7 @@ class DefaultSchema
         return $out;
     }
 
-    public function parent(): ?self
+    final public function parent(): ?self
     {
         return $this->parent;
     }
@@ -413,11 +369,7 @@ class DefaultSchema
     private static function deepExport($value, array $params)
     {
         if ($value instanceof self) {
-            $arr = $value->toArray($params);
-            if ($value->entityDef->toArray === null) {
-                $arr = array_merge(['@type' => $value->entityDef->name], $arr);
-            }
-            return $arr;
+            return $value->toArray($params);
         }
 
         if (is_array($value)) {
@@ -427,7 +379,82 @@ class DefaultSchema
         return $value;
     }
 
-    private static function compileFieldSpec($spec, string $ctx): Rule
+    private static function withEntityScope(string $ctx, \Closure $fn): void
+    {
+        if ($ctx === '') {
+            $fn();
+            return;
+        }
+
+        $segments = explode('.', $ctx);
+        $invoke   = static function () use ($ctx, $fn): void { Rule::scope($ctx, $fn); };
+
+        for ($i = count($segments) - 1; $i >= 1; $i--) {
+            $ancestor = implode('.', array_slice($segments, 0, $i));
+            $inner    = $invoke;
+            $invoke   = static function () use ($ancestor, $inner): void {
+                Rule::scope($ancestor, $inner);
+            };
+        }
+
+        $invoke();
+    }
+
+    // ─── Ref resolution ──────────────────────────────────────────────────────
+
+    private static function resolveRef(string $ref, string $ctxClass): string
+    {
+        if (self::looksLikeClass($ref)) {
+            if (!is_subclass_of($ref, self::class)) {
+                throw new \RuntimeException("Schema: '{$ref}' is not a DefaultSchema subclass");
+            }
+            return $ref;
+        }
+
+        $ref      = ltrim($ref, '@');
+        $basename = Main::studlyCase($ref);
+
+        $candidate = $ctxClass . '\\' . $basename;
+        if (class_exists($candidate) && is_subclass_of($candidate, self::class)) {
+            return $candidate;
+        }
+
+        $root = self::ROOT_NAMESPACE;
+        $ns   = $ctxClass;
+        while (($pos = strrpos($ns, '\\')) !== false) {
+            $ns = substr($ns, 0, $pos);
+            if ($ns === '' || strpos($ns, $root) !== 0) {
+                break;
+            }
+            $candidate = $ns . '\\' . $basename;
+            if (class_exists($candidate) && is_subclass_of($candidate, self::class)) {
+                return $candidate;
+            }
+            if ($ns === $root) {
+                break;
+            }
+        }
+
+        throw new \RuntimeException("Schema: cannot resolve '{$ref}' from '{$ctxClass}'");
+    }
+
+    private static function looksLikeClass(string $s): bool
+    {
+        return strpos($s, '\\') !== false && class_exists($s);
+    }
+
+    private static function looksLikeRef(string $s): bool
+    {
+        return $s !== '' && (
+            $s[0] === '@'
+            || strpos($s, '\\') !== false
+            || (bool)preg_match(self::REF_RE, $s)
+        );
+    }
+
+    // ─── Field spec compilation ──────────────────────────────────────────────
+
+    private static function compileFieldSpec($spec, string $ctxClass): Rule
     {
         if ($spec instanceof Rule) {
             return $spec;
@@ -445,7 +472,7 @@ class DefaultSchema
                 }
             }
             if ($refPart !== null) {
-                $refRule = self::makeEntityRefRule($refPart, $ctx);
+                $refRule = self::makeEntityRefRule(ltrim($refPart, '@'), $ctxClass);
                 if (empty($mods)) {
                     return Rule::create([$refRule, 'required']);
                 }
@@ -455,15 +482,18 @@ class DefaultSchema
         }
 
         if (is_string($spec)) {
+            if (self::looksLikeClass($spec)) {
+                return Rule::create([self::makeEntityRefRule($spec, $ctxClass), 'required']);
+            }
             return Rule::create($spec);
         }
 
         if (is_object($spec) && isset($spec->__m)) {
             if ($spec->__m === self::M_ARRAY_OF) {
-                return Rule::create([self::makeArrayOfRule($spec->spec, $ctx), 'required']);
+                return Rule::create([self::makeArrayOfRule($spec->spec, $ctxClass), 'required']);
             }
             if ($spec->__m === self::M_ONE_OF) {
-                return Rule::create([self::makeOneOfRule($spec->specs, $ctx), 'required']);
+                return Rule::create([self::makeOneOfRule($spec->specs, $ctxClass), 'required']);
             }
         }
 
@@ -473,12 +503,14 @@ class DefaultSchema
             foreach ($spec as $item) {
                 if (is_object($item) && isset($item->__m)) {
                     if ($item->__m === self::M_ARRAY_OF) {
-                        $marker = self::makeArrayOfRule($item->spec, $ctx);
+                        $marker = self::makeArrayOfRule($item->spec, $ctxClass);
                     } elseif ($item->__m === self::M_ONE_OF) {
-                        $marker = self::makeOneOfRule($item->specs, $ctx);
+                        $marker = self::makeOneOfRule($item->specs, $ctxClass);
                     }
                 } elseif ($marker === null && is_string($item) && strpos($item, '@') === 0) {
-                    $marker = self::makeEntityRefRule($item, $ctx);
+                    $marker = self::makeEntityRefRule(ltrim($item, '@'), $ctxClass);
+                } elseif ($marker === null && is_string($item) && self::looksLikeClass($item)) {
+                    $marker = self::makeEntityRefRule($item, $ctxClass);
                 } else {
                     $mods[] = $item;
                 }
@@ -493,27 +525,27 @@ class DefaultSchema
             return Rule::create($spec);
         }
 
-        throw new \RuntimeException("Schema: unsupported field spec type");
+        throw new \RuntimeException('Schema: unsupported field spec type');
     }
 
-    private static function makeEntityRefRule(string $ref, string $ctx): Rule
+    private static function makeEntityRefRule(string $ref, string $ctxClass): Rule
     {
-        $entityPath = self::resolveRef($ref, $ctx);
+        $fqcn = self::resolveRef($ref, $ctxClass);
 
-        return Rule::create(function (&$v) use ($entityPath): bool {
-            $v = self::coerceToSchema($entityPath, $v);
+        return Rule::create(function (&$v) use ($fqcn): bool {
+            $v = self::coerceToSchema($fqcn, $v);
             return true;
         })->order(600);
     }
 
-    private static function makeArrayOfRule(string $spec, string $ctx): Rule
+    private static function makeArrayOfRule(string $spec, string $ctxClass): Rule
     {
-        return Rule::create(function (&$v) use ($spec, $ctx): array {
+        return Rule::create(function (&$v) use ($spec, $ctxClass): array {
             if (!is_array($v)) {
                 return ['Expected array'];
             }
             try {
-                $v = self::processArrayOf($spec, $v, $ctx);
+                $v = self::processArrayOf($spec, $v, $ctxClass);
                 return [];
             } catch (\RuntimeException $e) {
                 return [$e->getMessage()];
@@ -521,11 +553,11 @@ class DefaultSchema
         })->order(600);
     }
 
-    private static function makeOneOfRule(array $specs, string $ctx): Rule
+    private static function makeOneOfRule(array $specs, string $ctxClass): Rule
     {
-        return Rule::create(function (&$v) use ($specs, $ctx): array {
+        return Rule::create(function (&$v) use ($specs, $ctxClass): array {
             try {
-                $v = self::processOneOf($specs, $v, $ctx);
+                $v = self::processOneOf($specs, $v, $ctxClass);
                 return [];
             } catch (\RuntimeException $e) {
                 return [$e->getMessage()];
@@ -533,64 +565,38 @@ class DefaultSchema
         })->order(600);
     }
 
-    private static function resolveRef(string $ref, string $contextPath): string
-    {
-        $name = ltrim($ref, '@');
-
-        if (isset(self::$registry[$name])) {
-            return $name;
-        }
-
-        $parts = explode('.', $contextPath);
-        while (!empty($parts)) {
-            $candidate = implode('.', $parts) . '.' . $name;
-            if (isset(self::$registry[$candidate])) {
-                return $candidate;
-            }
-            array_pop($parts);
-        }
-
-        throw new \RuntimeException("Cannot resolve '@{$name}' from '{$contextPath}'");
-    }
-
-    private static function coerceToSchema(string $entityPath, $value): self
+    private static function coerceToSchema(string $fqcn, $value): self
     {
         if ($value instanceof self) {
-            if ($value->entityDef->fullPath !== $entityPath) {
+            if (!($value instanceof $fqcn)) {
                 throw new \RuntimeException(
-                    "Expected '{$entityPath}', got '{$value->entityDef->fullPath}'"
+                    "Expected '{$fqcn}', got '" . get_class($value) . "'"
                 );
             }
             if (!$value->filled) {
                 throw new \RuntimeException(
-                    "Schema instance for '{$entityPath}' is not filled"
+                    "Schema instance for '{$fqcn}' is not filled"
                 );
             }
             return $value;
         }
 
         if (is_array($value)) {
-            return self::create($entityPath)->fill($value);
+            $inst = new $fqcn();
+            return $inst->fill($value);
         }
 
-        throw new \RuntimeException("Expected array or Schema for '{$entityPath}'");
+        throw new \RuntimeException("Expected array or Schema for '{$fqcn}'");
     }
 
-    private static function processArrayOf(string $spec, array $items, string $ctx): array
+    private static function processArrayOf(string $spec, array $items, string $ctxClass): array
     {
-        $refName = (strpos($spec, '@') === 0) ? $spec : '@' . $spec;
-
-        try {
-            $entityPath = self::resolveRef($refName, $ctx);
-        } catch (\RuntimeException $e) {
-            $entityPath = null;
-        }
-
-        if ($entityPath !== null) {
+        if (self::looksLikeRef($spec)) {
+            $fqcn   = self::resolveRef($spec, $ctxClass);
             $result = [];
             foreach ($items as $i => $item) {
                 try {
-                    $result[] = self::coerceToSchema($entityPath, $item);
+                    $result[] = self::coerceToSchema($fqcn, $item);
                 } catch (\RuntimeException $e) {
                     throw new \RuntimeException("[{$i}].{$e->getMessage()}");
                 }
@@ -609,27 +615,38 @@ class DefaultSchema
         return $copy;
     }
 
-    private static function processOneOf(array $specs, $value, string $ctx)
+    private static function processOneOf(array $specs, $value, string $ctxClass)
     {
         $lastErr = '';
 
         foreach ($specs as $spec) {
+            if (!is_string($spec)) {
+                throw new \RuntimeException(
+                    'oneOf: unsupported spec type ' . (is_object($spec) ? get_class($spec) : gettype($spec))
+                );
+            }
+
             try {
-                if (is_string($spec) && strpos($spec, '@') === 0) {
+                if ($spec !== '' && $spec[0] === '@') {
                     return self::coerceToSchema(
-                        self::resolveRef($spec, $ctx),
+                        self::resolveRef(ltrim($spec, '@'), $ctxClass),
                         $value
                     );
                 }
 
-                if (is_string($spec)) {
-                    $copy = $value;
-                    $errs = Rule::create($spec)->apply($copy);
-                    if (empty($errs)) {
-                        return $copy;
-                    }
-                    $lastErr = implode('; ', $errs);
+                if (self::looksLikeClass($spec)) {
+                    return self::coerceToSchema(
+                        self::resolveRef($spec, $ctxClass),
+                        $value
+                    );
                 }
+
+                $copy = $value;
+                $errs = Rule::create($spec)->apply($copy);
+                if (empty($errs)) {
+                    return $copy;
+                }
+                $lastErr = implode('; ', $errs);
             } catch (\RuntimeException $e) {
                 $lastErr = $e->getMessage();
             }

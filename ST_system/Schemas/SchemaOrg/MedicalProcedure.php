@@ -6,14 +6,9 @@ use ST_system\Schemas\DefaultSchema;
 
 final class MedicalProcedure extends DefaultSchema
 {
-    protected static function defineScope(): string
+    protected static function getFields(): array
     {
-        return 'schema';
-    }
-
-    protected static function define(): self
-    {
-        return self::entity('medical-procedure', ['fields' => [
+        return [
             'name'               => 'required|string',
             'description'        => 'sometimes|string',
             'procedure_type'     => 'sometimes|string',
@@ -27,7 +22,12 @@ final class MedicalProcedure extends DefaultSchema
             'how_performed'      => 'sometimes|string',
             'url'                => 'sometimes|url',
             'image'              => 'sometimes|url',
-        ], 'print' => function (DefaultSchema $s): string {
+        ];
+    }
+
+    protected static function getPrint(): \Closure
+    {
+        return function (DefaultSchema $s): string {
             $data = [
                 '@context' => 'https://schema.org',
                 '@type'    => 'MedicalProcedure',
@@ -85,6 +85,6 @@ final class MedicalProcedure extends DefaultSchema
             return '<script type="application/ld+json">'
                 . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 . '</script>';
-        }]);
+        };
     }
 }
