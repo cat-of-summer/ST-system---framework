@@ -48,7 +48,17 @@ final class Debug {
                     'method' => 'toFile',
                     'display' => false
                 ],
-            ]
+            ],
+            'dump_methods' => [
+                'toEmail' => function(string $output, array $config = []): bool {
+                    static::applyConfig($config, [
+                        'to'      => 'nullable|string',
+                        'subject' => 'string|default:dump_to_email_log',
+                    ]);
+                    
+                    return mail($config['to'], $config['subject'], $output);
+                },
+            ],
         ];
     }
 
@@ -239,18 +249,6 @@ final class Debug {
         echo '<script>console.log(`'.$this->getOutput($content, $config).'`)</script>';
     }
 
-    private function toEmail($content, array $config = []): bool {
-        static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@format.output',
-            'backtrace'               => ['nullable|bool', Rule::default(false)],
-            'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
-            'to'                      => 'nullable|string',
-            'subject'                 => ['nullable|string', Rule::default('dump_to_email_log')],
-        ]);
-        return mail($config['to'], $config['subject'], $this->getOutput($content, $config));
-    }
-
     private function toFile($content, array $config = []) {
         static::applyConfig($config, [
             'output_type'             => 'nullable|string|@format.output',
@@ -346,10 +344,33 @@ final class Debug {
             call_user_func([static::class, static::config('handle_error.output.method')], $error);
     }
 
+    public static function addDumpMethod(string $name, \Closure $fn): void {
+        if (method_exists(static::getInstance(), $name) || array_key_exists($name, static::config('dump_methods')))
+            throw new \BadMethodCallException("Dump method '{$name}' is already registered in " . static::class);
+
+        static::setConfig(["dump_methods.{$name}" => $fn]);
+    }
+
     public static function __callStatic(string $name, array $arguments) {
-        $instance = static::getInstance();
-        if (method_exists($instance, $name))
-            return $instance->$name($arguments[0] ?? null, $arguments[1] ?? []);
+        if (method_exists(static::getInstance(), $name))
+            return static::getInstance()->$name($arguments[0] ?? null, $arguments[1] ?? []);
+
+        if (array_key_exists($name, static::config('dump_methods'))) {
+            $config = $arguments[1] ?? [];
+
+            static::applyConfig($config, [
+                'output_type'             => 'nullable|string|@format.output',
+                'backtrace'               => ['nullable|bool', Rule::default(false)],
+                'pre'                     => ['nullable|bool', Rule::default(true)],
+                'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
+            ]);
+
+            $arguments[0] = static::getInstance()->getOutput($arguments[0] ?? null, $config);
+            $arguments[1] = $config;
+
+            return static::config('dump_methods')[$name](...$arguments);
+        }
+
         throw new \BadMethodCallException("Method {$name} not found in " . static::class);
     }
 
