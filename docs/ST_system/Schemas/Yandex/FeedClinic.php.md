@@ -1,1 +1,0 @@
-# FeedClinic.php
