@@ -1,6 +1,6 @@
 <?php
 
-namespace ST_system\Schemas\SchemaMarkup\SchemaOrg;
+namespace ST_system\Schemas\SchemaOrg;
 
 use ST_system\Schemas\DefaultSchema;
 
