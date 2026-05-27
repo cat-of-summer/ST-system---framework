@@ -26,32 +26,51 @@ trait HasConfig {
         return Config::getImmutableConfig(static::class, $key);
     }
 
-    public static function hasConfigInit(): void {
-        if (Rule::get('defaultConfig') !== null) return;
+    public static function applyConfig(array &$config, array $schema = []): void {
+        if (!Rule::get('defaultConfig')) {
+            Rule::create(function(&$v, array $p): bool {
+                $class = $p[0];
 
-        Rule::create(function(&$v, array $p): bool {
-            $class = $p[0];
-
-            if (is_array($v) && !isset($p[1])) {
-                foreach ($class::config() as $k => $_) {
-                    if (!array_key_exists($k, $v) || $v[$k] === null || $v[$k] === '')
-                        $v[$k] = $class::config($k);
+                if (is_array($v) && !isset($p[1])) {
+                    foreach ($class::config() as $k => $_) {
+                        if (!array_key_exists($k, $v) || $v[$k] === null || $v[$k] === '')
+                            $v[$k] = $class::config($k);
+                    }
+                    return true;
                 }
-                return true;
-            }
 
-            if (Rule::isSentinel($v) || $v === null || $v === '') {
-                $v = $class::config($p[1] ?? '');
-            }
-            
-            return true;
-        })
-        ->before(function(&$v, array &$p): void {
-            if (count($p) < 2 && ($prefix = Rule::currentPrefix()) !== null) {
-                array_unshift($p, $prefix);
-            }
-        })
-        ->seesSentinel()->order(-3)->alias('\\defaultConfig');
+                if (Rule::isSentinel($v) || $v === null || $v === '') {
+                    $v = $class::config($p[1] ?? '');
+                }
+
+                return true;
+            })
+            ->before(function(&$v, array &$p): void {
+                if (count($p) < 2 && ($prefix = Rule::currentPrefix()) !== null) {
+                    array_unshift($p, $prefix);
+                }
+            })
+            ->seesSentinel()->order(-3)->alias('\\defaultConfig');
+        }
+
+        if (empty($schema)) {
+            Rule::scope(static::class, function() use (&$config) {
+                Rule::get('defaultConfig')->apply($config);
+            });
+            return;
+        }
+
+        Rule::scope(static::class, function() use (&$config, $schema) {
+            Rule::object(array_map(fn($spec) => static::resolveAtSpec($spec), $schema))->throwable()->apply($config);
+        });
+    }
+
+    private static function resolveAtSpec($spec) {
+        if (is_string($spec))
+            return str_replace('@', 'defaultConfig:', $spec);
+        if (is_array($spec))
+            return array_map(fn($item) => static::resolveAtSpec($item), $spec);
+        return $spec;
     }
 
     protected static function getDefaultConfig(): array {

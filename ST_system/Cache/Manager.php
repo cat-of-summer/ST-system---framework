@@ -34,7 +34,7 @@ final class Manager {
         $driverConfigs = [];
 
         foreach ($flat as $key => $value) {
-            if (str_starts_with($key, 'drivers.')) {
+            if (strncmp($key, 'drivers.', 8) === 0) {
                 $rest   = substr($key, strlen('drivers.'));
                 $dotPos = strpos($rest, '.');
 
@@ -70,8 +70,6 @@ final class Manager {
             $this->driver = $key;
             return;
         }
-
-        static::hasConfigInit();
 
         $requested = $config['driver'] ?? static::config('drivers.default');
         $default   = static::config('drivers.default');

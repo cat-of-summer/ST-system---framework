@@ -4,6 +4,7 @@ namespace ST_system;
 
 use ST_system\Traits\HasConfig;
 use ST_system\Traits\HasEvents;
+use ST_system\Traits\HasInstance;
 use ST_system\HTTP\Request;
 use ST_system\HTTP\Response;
 use ST_system\Cache\Manager as Cache;
@@ -11,11 +12,9 @@ use ST_system\Rule;
 
 final class Access {
 
-    use HasConfig;
+    use HasInstance;
 
-    use HasEvents {
-        on as private _on;
-    }
+    use HasConfig;
 
     protected static function getDefaultConfig(): array {
         return [
@@ -38,6 +37,10 @@ final class Access {
         ];
     }
 
+    use HasEvents {
+        on as private _on;
+    }
+
     private static $block = [
         'name'         => null,
         'value'        => null,
@@ -51,15 +54,6 @@ final class Access {
             'driver' => static::config('firewall.driver'),
             'ttl'    => static::config('firewall.ttl'),
         ]);
-    }
-
-    private static function getInstance(): self {
-        static $instance = null;
-
-        if ($instance === null)
-            $instance = new static();
-
-        return $instance;
     }
 
     public static function on(string $event, callable $listener): void {
@@ -82,15 +76,13 @@ final class Access {
     }
 
     public static function requestAccess(array $config = []) {
-        Rule::scope(static::class, function() use (&$config) {
-            Rule::object([
-                'name'         => 'string|escape_html|defaultConfig:credentials.name',
-                'value'        => 'string|escape_html|defaultConfig:credentials.value',
-                'accessMethod' => 'nullable|string|defaultConfig:accessMethod',
-                'onFail'       => ['callable', Rule::default(fn() => self::throw(401))],
-                'onSuccess'    => 'nullable|callable'
-            ])->throwable()->apply($config);
-        });
+        static::applyConfig($config, [
+            'name'         => 'string|escape_html|@credentials.name',
+            'value'        => 'string|escape_html|@credentials.value',
+            'accessMethod' => 'nullable|string|@accessMethod',
+            'onFail'       => ['callable', Rule::default(fn() => self::throw(401))],
+            'onSuccess'    => 'nullable|callable'
+        ]);
 
         $val = self::extractCredential($config['name'], $config['accessMethod']);
 
@@ -100,12 +92,10 @@ final class Access {
     }
 
     public static function httpAccess(array $config = []) {
-        Rule::scope(static::class, function() use (&$config) {
-            Rule::object([
-                'login' => 'string|escape_html|defaultConfig:credentials.name',
-                'password' => 'string|escape_html|defaultConfig:credentials.value'
-            ])->throwable()->apply($config);
-        });
+        static::applyConfig($config, [
+            'login'    => 'string|escape_html|@credentials.name',
+            'password' => 'string|escape_html|@credentials.value',
+        ]);
 
         if (
             !isset($_SERVER['PHP_AUTH_USER']) ||
@@ -118,13 +108,11 @@ final class Access {
     }
 
     public static function call(callable $f, array $config = []) {
-        Rule::scope(static::class, function() use (&$config) {
-            Rule::object([
-                'name'         => 'string|escape_html|defaultConfig:credentials.name',
-                'value'        => 'string|escape_html|defaultConfig:credentials.value',
-                'accessMethod' => 'nullable|string|defaultConfig:accessMethod',
-            ])->throwable()->apply($config);
-        });
+        static::applyConfig($config, [
+            'name'         => 'string|escape_html|@credentials.name',
+            'value'        => 'string|escape_html|@credentials.value',
+            'accessMethod' => 'nullable|string|@accessMethod',
+        ]);
 
         $val = self::extractCredential($config['name'], $config['accessMethod']);
 
@@ -133,13 +121,11 @@ final class Access {
     }
 
     public static function startBlock(array $config = []) {
-        Rule::scope(static::class, function() use (&$config) {
-            Rule::object([
-                'name'         => 'string|escape_html|defaultConfig:credentials.name',
-                'value'        => 'string|escape_html|defaultConfig:credentials.value',
-                'accessMethod' => 'nullable|string|defaultConfig:accessMethod',
-            ])->throwable()->apply($config);
-        });
+        static::applyConfig($config, [
+            'name'         => 'string|escape_html|@credentials.name',
+            'value'        => 'string|escape_html|@credentials.value',
+            'accessMethod' => 'nullable|string|@accessMethod',
+        ]);
 
         self::$block = [
             'name'         => $config['name'],
@@ -363,14 +349,12 @@ final class Access {
     }
 
     public static function handleCORS(array $config = []) {
-        Rule::scope(static::class, function() use (&$config) {
-            Rule::object([
-                'allowed_origins'    => ['array', Rule::default(['*'], true), Rule::forEach('url')],
-                'forbidden_origins'  => ['sometimes|array|foreach:url'],
-                'methods'            => ['array|defaultConfig:CORS.methods', Rule::forEach(['required|string|strtoupper', Rule::in(self::config('CORS.methods'))])],
-                'headers'            => ['array|defaultConfig:CORS.headers,foreach:required|string|escape_html'],
-            ])->throwable()->apply($config);
-        });
+        static::applyConfig($config, [
+            'allowed_origins'   => ['array', Rule::default(['*'], true), Rule::forEach('url')],
+            'forbidden_origins' => 'sometimes|array|foreach:url',
+            'methods'           => ['array|@CORS.methods', Rule::forEach(['required|string|strtoupper', Rule::in(self::config('CORS.methods'))])],
+            'headers'           => ['array|@CORS.headers', Rule::forEach('required|string|escape_html')],
+        ]);
 
         $request_origin = self::getRequestOrigin();
 

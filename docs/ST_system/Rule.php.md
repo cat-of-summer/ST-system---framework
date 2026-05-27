@@ -243,7 +243,52 @@ Rule::object(['remote_ip' => 'required|ip']);
 
 ---
 
-### 4.10 `Rule::get(string): ?Rule` — получить из реестра
+### 4.10 `Rule::scope(string $prefix, Closure $fn): void` — установить префикс-контекст
+
+Выполняет замыкание `$fn` в контексте именованного префикса. Внутри `$fn` вызов `Rule::currentPrefix()` вернёт `$prefix`. Скопы вкладываются через стек — после выхода из `$fn` предыдущий префикс восстанавливается.
+
+Используется для привязки правил к конкретному классу (например, чтобы `defaultConfig` знало, чью конфигурацию читать):
+
+```php
+Rule::scope(static::class, function() use (&$config) {
+    Rule::object([
+        'timeout' => 'nullable|int|defaultConfig:timeout',
+    ])->apply($config);
+});
+// За пределами замыкания — предыдущий prefix восстановлен
+```
+
+Вложенные скопы:
+
+```php
+Rule::scope('Outer', function() {
+    // Rule::currentPrefix() === 'Outer'
+    Rule::scope('Inner', function() {
+        // Rule::currentPrefix() === 'Inner'
+    });
+    // Rule::currentPrefix() === 'Outer'
+});
+```
+
+---
+
+### 4.10.1 `Rule::currentPrefix(): ?string` — текущий префикс
+
+Возвращает префикс, установленный ближайшим активным `Rule::scope()`, или `null` если вызов происходит вне скопа.
+
+```php
+Rule::currentPrefix(); // null
+
+Rule::scope('MyClass', function() {
+    Rule::currentPrefix(); // 'MyClass'
+});
+```
+
+Используется в `before()`-хуках правил, которым нужно знать контекст вызова. Например, `defaultConfig` автоматически получает имя класса через этот механизм.
+
+---
+
+### 4.11 `Rule::get(string): ?Rule` — получить из реестра
 
 ```php
 $rule = Rule::get('required'); // встроенное правило

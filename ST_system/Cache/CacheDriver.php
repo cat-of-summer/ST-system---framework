@@ -18,15 +18,11 @@ abstract class CacheDriver {
     protected array $exists_cache = [];
 
     final public function __construct($key, array $config = []) {
-        static::hasConfigInit();
-
         $this->attributes['raw_key'] = $key;
         $this->id = Main::hash($key);
 
-        Rule::scope(static::class, function() use (&$config) {
-            Rule::create('defaultConfig')->apply($config);
-            $this->__init($config);
-        });
+        static::applyConfig($config);
+        Rule::scope(static::class, fn() => $this->__init($config));
 
         $this->attributes['file'] = (string)($config['file'] ?? 'data');
         $this->attributes['ttl']  = (int)($config['ttl']  ?? 0);
