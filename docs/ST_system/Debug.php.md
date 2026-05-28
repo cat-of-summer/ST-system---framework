@@ -7,7 +7,7 @@
 
 ## 1. Концепция
 
-`Debug` — **утилита отладки, логирования и профилирования**. Финальный класс, использует трейт `HasConfig`.
+`Debug` — **утилита отладки, логирования и профилирования**. Финальный класс, использует трейты `HasInstance` (синглтон), `HasConfig`, `HasEvents`.
 
 Ключевые идеи:
 
@@ -15,24 +15,24 @@
 
 2. **Магический `__callStatic`.** Любой неизвестный статический вызов создаёт экземпляр `Debug` с конфигом (второй аргумент) и вызывает одноимённый метод с первым аргументом.
 
-3. **Основные on-instance методы.** `here` (эхо в HTML), `throw` (брасает Exception), `to_file` (запись в файл), `to_email` (отправка по почте), `to_console` (ввод через `console.log`).
+3. **Основные on-instance методы.** `here` (эхо в HTML), `throw` (бросает Exception), `toFile` (запись в файл), `toEmail` (отправка по почте), `toConsole` (вывод через `console.log`).
 
 **Дефолтная конфигурация** (переопределяется через `Debug::setConfig()`):
 
 | Ключ | Значение | Описание |
 |-----|---------|----------|
-| `timestamp_format_output` | `'d-m-Y H:i:s'` | Формат даты в выводе |
-| `timestamp_format_file` | `'d-m-Y~H-i-s'` | Формат даты в имени файла |
-| `dir` | `'~logs'` | Директория для записи логов |
-| `file` | `'log.html'` | Имя файла лога |
-| `output_type` | `'json_encode'` | Способ сериализации: `json_encode`, `print_r`, `var_export`, `var_dump` |
+| `format.timestamp.output` | `'d-m-Y H:i:s'` | Формат даты в выводе |
+| `format.timestamp.file` | `'d-m-Y~H-i-s'` | Формат даты в имени файла |
+| `format.output` | `'json_encode'` | Сериализация: `json_encode`, `print_r`, `var_export`, `var_dump` |
+| `filesystem.dir` | `'~logs'` | Директория для записи логов |
+| `filesystem.file` | `'log.html'` | Имя файла лога |
 
 ```php
 // Быстрый дамп в HTML:
 Debug::here($someVar);
 
 // Дамп в файл с настройкой:
-Debug::to_file($someVar, ['dir' => '~/logs', 'file' => 'debug.html', 'merge' => true]);
+Debug::toFile($someVar, ['dir' => '~/logs', 'file' => 'debug.html', 'merge' => true]);
 
 // Бросить исключение с данными:
 Debug::throw($data);
@@ -40,7 +40,7 @@ Debug::throw($data);
 // Измерение времени:
 Debug::start('my-op');
 // ... работа ...
-$seconds = Debug::finish('my-op'); // флоат, секунды
+$seconds = Debug::finish('my-op');
 ```
 
 ---
@@ -152,21 +152,24 @@ if (!$result['ok']) {
 Регистрирует обработчик события. Обработчики накапливаются в singleton-инстансе.
 
 События:
-- `'on_error'` — PHP-ошибка; передаётся `array $error` с ключами `severity`, `message`, `file`, `line`.
-- `'on_exception'` — неперехваченное исключение; передаётся `\Throwable $th`.
-- `'on_shutdown'` — фатальная ошибка при shutdown; передаётся `array $error` из `error_get_last()`.
 
-Если хотя бы один слушатель зарегистрирован — дефолтный вывод ошибки (в файл) **не** выполняется.
+| Событие | Аргумент слушателя | Описание |
+|---|---|---|
+| `'on_error'` | `array $error` | PHP-ошибка, прошедшая через `set_error_handler` |
+| `'on_exception'` | `\Throwable $th` | Неперехваченное исключение |
+| `'on_shutdown'` | `array $error` | Фатальная ошибка при shutdown (`error_get_last()`) |
+
+`array $error` для `on_error` и `on_shutdown` содержит ключи: `severity` / `type`, `message`, `file`, `line`.
+
+Если слушатель не вернул `false` — дефолтный вывод (в файл) **не** выполняется. Если слушатель вернул `false` — дефолтный вывод срабатывает.
 
 ```php
 Debug::on('on_error', function(array $error): void {
-    // $error = ['severity' => ..., 'message' => ..., 'file' => ..., 'line' => ...]
     error_log("PHP Error: {$error['message']} in {$error['file']}:{$error['line']}");
 });
 
 Debug::on('on_exception', function(\Throwable $th): void {
     // отправить в Sentry и т.д.
-    error_log($th->getMessage());
 });
 ```
 
@@ -176,14 +179,31 @@ Debug::on('on_exception', function(\Throwable $th): void {
 
 Устанавливает глобальные обработчики ошибок, исключений и shutdown. **Можно вызвать только один раз** — повторный вызов бросает `LogicException`.
 
-| Ключ `$config` | Тип | Описание |
+Аргумент `$config` принимает быстрые ключи:
+
+| Ключ | Тип | Описание |
 |----------------|-----|----------|
-| `onError` | `callable\|null` | Обработчик PHP-ошибок (заменяет дефолтный вывод) |
-| `onException` | `callable\|null` | Обработчик неперехваченных исключений |
-| `onShutdown` | `callable\|null` | Обработчик фатальных ошибок при shutdown |
-| `display` | `bool` | Показывать ошибки в ответе. Умолч: `false` |
-| `dir` | `string` | Директория для лога ошибок PHP (`error_log`). Умолч: `~logs` |
+| `onError` | `callable\|null` | Shortcut для `Debug::on('on_error', ...)` |
+| `onException` | `callable\|null` | Shortcut для `Debug::on('on_exception', ...)` |
+| `onShutdown` | `callable\|null` | Shortcut для `Debug::on('on_shutdown', ...)` |
+| `display` | `bool` | `display_errors`. Умолч: `false` |
+| `dir` | `string` | Директория лога PHP (`error_log`). Умолч: `~logs` |
 | `file` | `string` | Имя файла лога. Умолч: `log.html` |
+
+Фильтрация и поведение настраиваются через `Debug::setConfig()`:
+
+| Ключ `setConfig` | Умолчание | Описание |
+|---|---|---|
+| `handle_error.reporting.level` | `E_ALL` | Передаётся в `error_reporting()` — какие ошибки PHP вообще генерирует |
+| `handle_error.error.level` | `[E_WARNING, E_NOTICE, E_USER_ERROR, E_USER_WARNING, E_USER_NOTICE, E_RECOVERABLE_ERROR, E_DEPRECATED, E_USER_DEPRECATED]` | Whitelist severity-кодов для `onError`. Ошибки вне списка молча игнорируются |
+| `handle_error.exception.level` | `[\Throwable::class]` | Whitelist классов исключений для `onException`. Проверка через `instanceof` |
+| `handle_error.shutdown.level` | `[E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR]` | Whitelist типов фатальных ошибок для `onShutdown` |
+| `handle_error.output.method` | `'toFile'` | Метод вывода ошибки (любой dump-метод) |
+| `handle_error.output.display` | `false` | `display_errors` |
+| `handle_error.output.config` | `['append' => true]` | Конфиг, передаваемый в метод вывода вторым аргументом |
+
+> **Почему `error.level` и `shutdown.level` не пересекаются:**  
+> Фатальные ошибки (`E_ERROR`, `E_PARSE` и т.д.) завершают скрипт до вызова `set_error_handler` — `onError` их никогда не получает. `onShutdown` ловит их через `error_get_last()` после завершения.
 
 ```php
 // В bootstrap.php — один раз:
@@ -191,11 +211,20 @@ Debug::handleError([
     'display' => false,
     'dir'     => __DIR__ . '/logs',
     'file'    => 'errors.log',
-    'onException' => function(\Throwable $th): void {
-        // кастомная обработка; если задан — дефолтный вывод не срабатывает
-        header('Content-Type: application/json');
-        echo json_encode(['error' => $th->getMessage()]);
-    },
+]);
+
+// Исключить E_DEPRECATED и E_WARNING из лога:
+Debug::setConfig([
+    'handle_error.error.level' => [
+        E_NOTICE,
+        E_USER_ERROR, E_USER_WARNING, E_USER_NOTICE,
+        E_RECOVERABLE_ERROR, E_USER_DEPRECATED,
+    ],
+]);
+
+// Логировать только исключения класса \RuntimeException и его потомков:
+Debug::setConfig([
+    'handle_error.exception.level' => [\RuntimeException::class],
 ]);
 ```
 
@@ -236,16 +265,16 @@ Debug::toSlack($someVar, ['webhook' => 'https://hooks.slack.com/...']);
 |--------|----------|
 | `here` | Выводит `<pre>` в текущий ответ |
 | `throw` | Бросает `Exception` со значением в сообщении |
-| `to_file` | Записывает в файл |
-| `to_email` | Отправляет email |
-| `to_console` | Выводит через `console.log` |
+| `toFile` | Записывает в файл |
+| `toEmail` | Отправляет email |
+| `toConsole` | Выводит через `console.log` |
 
 ```php
 // Дамп в HTML:
 Debug::here($data);
 
 // Дамп в файл с настройкой:
-Debug::to_file($data, [
+Debug::toFile($data, [
     'dir'    => '~/logs',
     'file'   => 'debug.html',
     'merge'  => true,    // дописывать в рамках одного запроса
@@ -257,5 +286,5 @@ Debug::to_file($data, [
 Debug::throw($data);
 
 // Отправить email:
-Debug::to_email($data, ['to' => 'admin@example.com', 'subject' => 'error']);
+Debug::toEmail($data, ['to' => 'admin@example.com', 'subject' => 'error']);
 ```
