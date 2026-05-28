@@ -41,12 +41,23 @@ final class Debug {
                 'reporting' => [
                     'level' => E_ALL,
                 ],
+                'error' => [
+                    'level' => [
+                        E_WARNING, E_NOTICE,
+                        E_USER_ERROR, E_USER_WARNING, E_USER_NOTICE,
+                        E_RECOVERABLE_ERROR, E_DEPRECATED, E_USER_DEPRECATED,
+                    ],
+                ],
+                'exception' => [
+                    'level' => [\Throwable::class],
+                ],
                 'shutdown' => [
                     'level' => [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR],
                 ],
                 'output' => [
                     'method' => 'toFile',
-                    'display' => false
+                    'display' => false,
+                    'config'  => ['append' => true],
                 ],
             ],
             'dump_methods' => [
@@ -324,15 +335,30 @@ final class Debug {
     }
 
     private static function onError(int $severity, string $message, string $file, int $line): void {
+        if (!in_array($severity, static::config('handle_error.error.level'), true)) return;
+
         $error = compact('severity', 'message', 'file', 'line');
 
-        if (static::getInstance()->fire('on_error', $error) === false)
-            call_user_func([static::class, static::config('handle_error.output.method')], $error);
+        if (static::getInstance()->fire('on_error', $error) === false) {
+            $method = static::config('handle_error.output.method');
+            static::getInstance()->$method($error, static::config('handle_error.output.config'));
+        }
     }
 
     private static function onException(\Throwable $th): void {
-        if (static::getInstance()->fire('on_exception', $th) === false)
-            call_user_func([static::class, static::config('handle_error.output.method')], $th->getMessage());
+        if (!array_filter(static::config('handle_error.exception.level'), fn($c) => $th instanceof $c)) return;
+
+        if (static::getInstance()->fire('on_exception', $th) === false) {
+            $method = static::config('handle_error.output.method');
+            static::getInstance()->$method([
+                'type'    => get_class($th),
+                'message' => $th->getMessage(),
+                'code'    => $th->getCode(),
+                'file'    => $th->getFile(),
+                'line'    => $th->getLine(),
+                'trace'   => $th->getTrace(),
+            ], static::config('handle_error.output.config'));
+        }
     }
 
     private static function onShutdown(): void {
@@ -340,8 +366,10 @@ final class Debug {
 
         if (!$error || !in_array($error['type'], static::config('handle_error.shutdown.level'), true)) return;
 
-        if (static::getInstance()->fire('on_shutdown', $error) === false)
-            call_user_func([static::class, static::config('handle_error.output.method')], $error);
+        if (static::getInstance()->fire('on_shutdown', $error) === false) {
+            $method = static::config('handle_error.output.method');
+            static::getInstance()->$method($error, static::config('handle_error.output.config'));
+        }
     }
 
     public static function addDumpMethod(string $name, \Closure $fn): void {
