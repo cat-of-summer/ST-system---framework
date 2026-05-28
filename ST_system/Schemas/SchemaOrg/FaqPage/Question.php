@@ -9,8 +9,8 @@ final class Question extends DefaultSchema
     protected static function getFields(): array
     {
         return [
-            'question' => 'required|string',
-            'answer'   => 'required|string',
+            'question' => 'required|string|strip_tags',
+            'answer'   => 'required|string|strip_tags',
         ];
     }
 

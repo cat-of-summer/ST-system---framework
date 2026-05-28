@@ -986,11 +986,27 @@ final class Rule {
 
         (self::create(function(&$v): bool {
             if (is_string($v))
+                $v = html_entity_decode($v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            return true;
+        }))
+        ->order(-2)
+        ->alias('unescape_html');
+
+        (self::create(function(&$v): bool {
+            if (is_string($v))
                 $v = htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             return true;
         }))
         ->order(-2)
         ->alias('escape_html');
+
+        (self::create(function(&$v): bool {
+            if (is_string($v))
+                $v = strip_tags($v);
+            return true;
+        }))
+        ->order(-3)
+        ->alias('strip_tags');
 
 
         self::create([
