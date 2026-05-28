@@ -83,8 +83,8 @@ final class Access {
 
     public static function requestAccess(array $config = []) {
         static::applyConfig($config, [
-            'name'         => 'string|escape_html|@credentials.name',
-            'value'        => 'string|escape_html|@credentials.value',
+            'name'         => 'string|html_decode|@credentials.name',
+            'value'        => 'string|html_decode|@credentials.value',
             'accessMethod' => 'nullable|string|@accessMethod',
             'onFail'       => ['callable', Rule::default(fn() => self::throw(401))],
             'onSuccess'    => 'nullable|callable'
@@ -99,8 +99,8 @@ final class Access {
 
     public static function httpAccess(array $config = []) {
         static::applyConfig($config, [
-            'login'    => 'string|escape_html|@credentials.name',
-            'password' => 'string|escape_html|@credentials.value',
+            'login'    => 'string|html_decode|@credentials.name',
+            'password' => 'string|html_decode|@credentials.value',
         ]);
 
         if (
@@ -115,8 +115,8 @@ final class Access {
 
     public static function call(callable $f, array $config = []) {
         static::applyConfig($config, [
-            'name'         => 'string|escape_html|@credentials.name',
-            'value'        => 'string|escape_html|@credentials.value',
+            'name'         => 'string|html_decode|@credentials.name',
+            'value'        => 'string|html_decode|@credentials.value',
             'accessMethod' => 'nullable|string|@accessMethod',
         ]);
 
@@ -128,8 +128,8 @@ final class Access {
 
     public static function startBlock(array $config = []) {
         static::applyConfig($config, [
-            'name'         => 'string|escape_html|@credentials.name',
-            'value'        => 'string|escape_html|@credentials.value',
+            'name'         => 'string|html_decode|@credentials.name',
+            'value'        => 'string|html_decode|@credentials.value',
             'accessMethod' => 'nullable|string|@accessMethod',
         ]);
 
@@ -359,7 +359,7 @@ final class Access {
             'allowed_origins'   => ['array', Rule::default(['*'], true), Rule::forEach('url')],
             'forbidden_origins' => 'sometimes|array|foreach:url',
             'methods'           => ['array|@CORS.methods', Rule::forEach(['required|string|strtoupper', Rule::in(self::config('CORS.methods'))])],
-            'headers'           => ['array|@CORS.headers', Rule::forEach('required|string|escape_html')],
+            'headers'           => ['array|@CORS.headers', Rule::forEach('required|string|html_decode')],
         ]);
 
         $request_origin = self::getRequestOrigin();

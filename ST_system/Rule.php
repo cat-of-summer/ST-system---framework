@@ -990,7 +990,7 @@ final class Rule {
             return true;
         }))
         ->order(-2)
-        ->alias('unescape_html');
+        ->alias('html_encode');
 
         (self::create(function(&$v): bool {
             if (is_string($v))
@@ -998,7 +998,7 @@ final class Rule {
             return true;
         }))
         ->order(-2)
-        ->alias('escape_html');
+        ->alias('html_decode');
 
         (self::create(function(&$v): bool {
             if (is_string($v))

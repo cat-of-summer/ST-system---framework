@@ -147,8 +147,8 @@ class MyService {
 
     public static function handle(array $config = []) {
         static::applyConfig($config, [
-            'name'   => 'string|escape_html|@credentials.name',
-            'value'  => 'string|escape_html|@credentials.value',
+            'name'   => 'string|html_decode|@credentials.name',
+            'value'  => 'string|html_decode|@credentials.value',
             'method' => 'nullable|string|@method',
             'onFail' => ['callable', Rule::default(fn() => throw new \Exception())],
         ]);

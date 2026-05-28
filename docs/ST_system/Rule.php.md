@@ -51,7 +51,7 @@
 | order | Правила |
 |-------|---------|
 | -3 | `default` |
-| -2 | `trim`, `ltrim`, `rtrim`, `escape_html`, `uppercase`, `lowercase` |
+| -2 | `trim`, `ltrim`, `rtrim`, `html_decode`, `uppercase`, `lowercase` |
 | 0 | `sometimes`, `excludeIf` |
 | 100 | `required`, `nullable`, `present`, `requiredIf`, `prohibitedIf` |
 | 500 | `string`, `int`/`integer`, `float`, `bool`, `email`, `url`, `array`, `foreach`, `date`, `date_format`, `json`, `uuid`, `accepted`, `declined`, `callable`, `closure`, `file` |
@@ -639,13 +639,13 @@ Rule::create('ltrim|required|string')->apply($v);
 // $v === 'hello  '
 ```
 
-#### `escape_html` (order=-2)
+#### `htmlspecialchars` (order=-2)
 
 Применяет htmlspecialchars на строку. Выполняется раньше всех остальных правил.
 
 ```php
 $v = '  hello  ';
-Rule::create('escape_html|required|string')->apply($v);
+Rule::create('html_decode|required|string')->apply($v);
 // $v === 'hello'
 ```
 
