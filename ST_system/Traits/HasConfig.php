@@ -55,7 +55,7 @@ trait HasConfig {
 
         if (empty($schema)) {
             Rule::scope(static::class, function() use (&$config) {
-                Rule::get('defaultConfig')->apply($config);
+                Rule::create('defaultConfig')->apply($config);
             });
             return;
         }
