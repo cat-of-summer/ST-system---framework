@@ -339,26 +339,22 @@ final class Debug {
 
         $error = compact('severity', 'message', 'file', 'line');
 
-        if (static::getInstance()->fire('on_error', $error) === false) {
-            $method = static::config('handle_error.output.method');
-            static::getInstance()->$method($error, static::config('handle_error.output.config'));
-        }
+        if (static::getInstance()->fire('on_error', $error) === false)
+            static::__callStatic(static::config('handle_error.output.method'), [$error, static::config('handle_error.output.config')]);
     }
 
     private static function onException(\Throwable $th): void {
         if (!array_filter(static::config('handle_error.exception.level'), fn($c) => $th instanceof $c)) return;
 
-        if (static::getInstance()->fire('on_exception', $th) === false) {
-            $method = static::config('handle_error.output.method');
-            static::getInstance()->$method([
+        if (static::getInstance()->fire('on_exception', $th) === false)
+            static::__callStatic(static::config('handle_error.output.method'), [[
                 'type'    => get_class($th),
                 'message' => $th->getMessage(),
                 'code'    => $th->getCode(),
                 'file'    => $th->getFile(),
                 'line'    => $th->getLine(),
                 'trace'   => $th->getTrace(),
-            ], static::config('handle_error.output.config'));
-        }
+            ], static::config('handle_error.output.config')]);
     }
 
     private static function onShutdown(): void {
@@ -366,10 +362,8 @@ final class Debug {
 
         if (!$error || !in_array($error['type'], static::config('handle_error.shutdown.level'), true)) return;
 
-        if (static::getInstance()->fire('on_shutdown', $error) === false) {
-            $method = static::config('handle_error.output.method');
-            static::getInstance()->$method($error, static::config('handle_error.output.config'));
-        }
+        if (static::getInstance()->fire('on_shutdown', $error) === false)
+            static::__callStatic(static::config('handle_error.output.method'), [$error, static::config('handle_error.output.config')]);
     }
 
     public static function addDumpMethod(string $name, \Closure $fn): void {
