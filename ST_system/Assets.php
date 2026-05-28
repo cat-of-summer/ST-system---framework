@@ -243,7 +243,7 @@ final class Assets {
         }
     }
 
-    private static function finalize(string &$html): void {
+    private static function finalize(string $html): string {
         foreach (self::$buffers as $name => &$buf) {
             $replacement = $buf['content'] . self::buildAssetsHtml($name);
             $html = str_replace(self::placeholder($name), $replacement, $html);
@@ -251,6 +251,8 @@ final class Assets {
             $buf['content'] = '';
         }
         unset($buf);
+
+        return $html;
     }
 
     private static function addString($string, string $buffer = ''): void {
