@@ -261,7 +261,11 @@ class DefaultSchema
         });
 
         $result = $data;
-        self::withEntityScope($ctx, fn () => Rule::object($ruleSchema)->throwable()->apply($result));
+        self::withEntityScope($ctx, function () use (&$result, $ruleSchema): void {
+            Rule::object($ruleSchema)
+                ->throwable()
+                ->apply($result);
+        });
 
         foreach ($computed as $key => $fn) {
             $result[$key] = $fn($result);
