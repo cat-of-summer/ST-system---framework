@@ -211,6 +211,13 @@ final class Debug {
             'json_encode' => fn($c) => json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
         ];
 
+        static::applyConfig($config, [
+            'output_type'             => 'nullable|string|@format.output',
+            'backtrace'               => ['nullable|bool', Rule::default(false)],
+            'pre'                     => ['nullable|bool', Rule::default(true)],
+            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
+        ]);
+
         $dumper = $dumpers[$config['output_type']] ?? $dumpers['json_encode'];
 
         ob_start();
@@ -231,47 +238,25 @@ final class Debug {
     }
 
     private function exception($content, array $config = []): void {
-        static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@format.output',
-            'backtrace'               => ['nullable|bool', Rule::default(false)],
-            'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
-        ]);
         throw new \Exception($this->getOutput($content, $config));
     }
 
     private function here($content, array $config = []): void {
-        static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@format.output',
-            'backtrace'               => ['nullable|bool', Rule::default(false)],
-            'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
-        ]);
         echo $this->getOutput($content, $config);
     }
 
     private function toConsole($content, array $config = []): void {
-        static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@format.output',
-            'backtrace'               => ['nullable|bool', Rule::default(false)],
-            'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
-        ]);
         echo '<script>console.log(`'.$this->getOutput($content, $config).'`)</script>';
     }
 
     private function toFile($content, array $config = []) {
         static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@format.output',
-            'backtrace'               => ['nullable|bool', Rule::default(false)],
-            'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
-            'dir'                     => 'string|@filesystem.dir',
-            'file'                    => 'string|@filesystem.file',
-            'timestamp'               => ['nullable|bool', Rule::default(false)],
-            'timestamp_format_file'   => 'nullable|string|@format.timestamp.file',
-            'merge'                   => ['nullable|bool', Rule::default(true)],
-            'append'                  => ['nullable|bool', Rule::default(false)],
+            'dir'                   => 'string|@filesystem.dir',
+            'file'                  => 'string|@filesystem.file',
+            'timestamp'             => ['nullable|bool', Rule::default(false)],
+            'timestamp_format_file' => 'nullable|string|@format.timestamp.file',
+            'merge'                 => ['nullable|bool', Rule::default(true)],
+            'append'                => ['nullable|bool', Rule::default(false)],
         ]);
 
         $dir  = Main::preparePath($config['dir'], 3);
@@ -378,17 +363,7 @@ final class Debug {
             return static::getInstance()->$name($arguments[0] ?? null, $arguments[1] ?? []);
 
         if (array_key_exists($name, static::config('dump_methods'))) {
-            $config = $arguments[1] ?? [];
-
-            static::applyConfig($config, [
-                'output_type'             => 'nullable|string|@format.output',
-                'backtrace'               => ['nullable|bool', Rule::default(false)],
-                'pre'                     => ['nullable|bool', Rule::default(true)],
-                'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
-            ]);
-
-            $arguments[0] = static::getInstance()->getOutput($arguments[0] ?? null, $config);
-            $arguments[1] = $config;
+            $arguments[0] = static::getInstance()->getOutput($arguments[0] ?? null, $arguments[1] ?? []);
 
             return static::config('dump_methods')[$name](...$arguments);
         }
