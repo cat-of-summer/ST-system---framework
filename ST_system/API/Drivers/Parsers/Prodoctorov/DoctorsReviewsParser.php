@@ -91,7 +91,7 @@ final class DoctorsReviewsParser extends DefaultParser {
                         '@extract' => fn($n) => $n ? trim(preg_replace(
                             ['/\s*\[(?:…|\.\.\.)\]\s*/u', '/[ \t]+/'],
                             [' ', ' '],
-                            str_replace(["\u{00A0}", "\n"], ' ', $n->nodeValue)
+                            str_replace(["\u{00A0}", "\u{200B}", "\n"], [' ', '', ' '], $n->nodeValue)
                         )) : null,
                     ],
                     'liked' => [
@@ -100,7 +100,7 @@ final class DoctorsReviewsParser extends DefaultParser {
                         '@extract' => fn($n) => $n ? trim(preg_replace(
                             ['/\s*\[(?:…|\.\.\.)\]\s*/u', '/[ \t]+/'],
                             [' ', ' '],
-                            str_replace(["\u{00A0}", "\n"], ' ', $n->nodeValue)
+                            str_replace(["\u{00A0}", "\u{200B}", "\n"], [' ', '', ' '], $n->nodeValue)
                         )) : null,
                     ],
                     'disliked' => [
@@ -109,7 +109,7 @@ final class DoctorsReviewsParser extends DefaultParser {
                         '@extract' => fn($n) => $n ? trim(preg_replace(
                             ['/\s*\[(?:…|\.\.\.)\]\s*/u', '/[ \t]+/'],
                             [' ', ' '],
-                            str_replace(["\u{00A0}", "\n"], ' ', $n->nodeValue)
+                            str_replace(["\u{00A0}", "\u{200B}", "\n"], [' ', '', ' '], $n->nodeValue)
                         )) : null,
                     ],
                     'reply' => [
