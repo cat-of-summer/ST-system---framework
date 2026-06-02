@@ -1,5 +1,5 @@
 <!-- DOCGEN:START -->
-# php_classes
+# st_system
 
 ## Папки
 
@@ -32,11 +32,11 @@ composer config --global github-oauth.github.com github_pat_11BG6JVNA0i8p4Hm38ZB
     "repositories": [
         {
             "type": "vcs",
-            "url": "https://github.com/cat-of-summer/php_classes"
+            "url": "https://github.com/cat-of-summer/ST-system---framework"
         }
     ],
     "require": {
-        "cat-of-summer/php-classes": "dev-main"
+        "cat-of-summer/st-system": "dev-main"
     },
     "minimum-stability": "dev"
 }
