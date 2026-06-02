@@ -8,7 +8,7 @@
     },
     "autoload": {
         "psr-4": {
-            "ST_system\\": "ST_system/"
+            "ST_system\\": "src/"
         }
     },
     "minimum-stability": "dev"

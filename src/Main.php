@@ -452,7 +452,10 @@ final class Main {
         $result = [];
         foreach ($data as $k => $v) {
             $path = $prefix !== '' ? $prefix . '.' . $k : (string)$k;
-            if (is_array($v) && !empty($v)) {
+            // Recurse only into non-empty associative arrays; treat list arrays as
+            // atomic leaf values so an override list replaces the default wholesale
+            // instead of being merged element-by-element.
+            if (is_array($v) && !empty($v) && !self::arrayIsList($v)) {
                 foreach (self::dotFlatten($v, $path) as $fk => $fv)
                     $result[$fk] = $fv;
             } else {
@@ -460,6 +463,12 @@ final class Main {
             }
         }
         return $result;
+    }
+
+    public static function arrayIsList(array $arr): bool {
+        $i = 0;
+        foreach ($arr as $k => $_) { if ($k !== $i++) return false; }
+        return true;
     }
 
     public static function preparePath(string $path, $base = 0): string {
