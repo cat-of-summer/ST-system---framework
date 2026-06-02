@@ -3,7 +3,7 @@
 
 ## Папки
 
-- [ST_system](ST_system/)
+- [src](src/)
 
 <!-- DOCGEN:END -->
 
