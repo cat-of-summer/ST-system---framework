@@ -1,0 +1,1 @@
+# HasXmlResponse.php
