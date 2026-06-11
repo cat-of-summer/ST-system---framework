@@ -85,7 +85,8 @@ final class Mistral extends OpenAICompatibleDriver {
                 'temperature' => 'nullable|temperature',
                 'max_tokens'  => 'nullable|int',
                 'stream'      => 'nullable|bool',
-            ]
+            ],
+            'cache_ttl' => 3600
         ]);
     }
 

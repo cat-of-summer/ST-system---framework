@@ -38,7 +38,8 @@ final class IpInfo extends IntegrationDriver {
             'getDetails' => [
                 'params' => [
                     'ip' => 'string|required|default:me'
-                ]
+                ],
+                'cache_ttl' => -1
             ],
         ]);
 
