@@ -16,7 +16,7 @@ abstract class IntegrationDriver {
             'endpoint'  => '',
             'cache' => [
                 'dir' => '',
-                'ttl' => false,
+                'use' => false,
                 'driver' => 'filesystem'
             ],
         ];
@@ -45,7 +45,7 @@ abstract class IntegrationDriver {
     final public function __construct(...$args) {
         Rule::scope(static::class, fn() => $this->__init());
 
-        if (static::config('cache.ttl'))
+        if (static::config('cache.use'))
             $this->cache = Cache::make([static::class, ...$args], static::config('cache'));
         
         $this->fire('__construct', ...$args);

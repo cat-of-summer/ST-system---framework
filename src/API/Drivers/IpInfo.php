@@ -11,8 +11,7 @@ final class IpInfo extends IntegrationDriver {
         return [
             'endpoint' => 'https://api.ipinfo.io/',
             'cache' => [
-                'dir' => '~/cache/',
-                'ttl' => -1
+                'use' => true
             ]
         ];
     }

@@ -12,8 +12,7 @@ final class Mistral extends OpenAICompatibleDriver {
         return [
             'endpoint' => 'https://api.mistral.ai/v1/chat/',
             'cache' => [
-                'dir' => '~/cache/',
-                'ttl' => 3600
+                'use' => true
             ],
             'models' => [
                 "mistral-small-latest",

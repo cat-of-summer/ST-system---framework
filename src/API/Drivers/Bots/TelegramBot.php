@@ -60,8 +60,7 @@ final class TelegramBot extends IntegrationDriver {
         return [
             'endpoint' => 'https://api.telegram.org/bot',
             'cache' => [
-                'dir' => '~/cache/',
-                'ttl' => 86400
+                'use' => true
             ]
         ];
     }
