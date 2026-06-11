@@ -12,6 +12,7 @@
 
 ## Файлы
 
+- [IpInfo.php](IpInfo.php.md)
 - [Isdayoff.php](Isdayoff.php.md)
 - [Sdek.php](Sdek.php.md)
 - [SmartCaptcha.php](SmartCaptcha.php.md)
