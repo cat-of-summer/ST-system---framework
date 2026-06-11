@@ -12,7 +12,7 @@ final class IpInfo extends IntegrationDriver {
             'endpoint' => 'https://api.ipinfo.io/',
             'cache' => [
                 'dir' => '~/cache/',
-                'ttl' => -1
+                'ttl' => true
             ]
         ];
     }
@@ -39,7 +39,8 @@ final class IpInfo extends IntegrationDriver {
             'getDetails' => [
                 'params' => [
                     'ip' => 'string|required|default:me'
-                ]
+                ],
+                'cache_ttl' => -1,
             ],
         ]);
 
