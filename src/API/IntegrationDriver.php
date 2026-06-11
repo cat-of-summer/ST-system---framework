@@ -277,7 +277,7 @@ abstract class IntegrationDriver {
         $raw_data   = null;
         $cache = null;
 
-        if ($config['cache_ttl'] > 0 && $this->cache !== null) {
+        if (($config['cache_ttl'] > 0 || $config['cache_ttl'] === -1) && $this->cache !== null) {
             $cache = $this->cache->make([$request_url, $params], ['ttl' => $config['cache_ttl']]);
 
             if ($cache->isValid()) {
