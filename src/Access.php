@@ -112,14 +112,18 @@ final class Access {
         $details = $config['driver']::create($config['token'])->getDetails($config['ip']);
 
         foreach ($config['black_list'] as $field => $allowed) {
-            if (isset($details[$field]) && in_array($details[$field], (array)$allowed, true))
+            if (!is_array($allowed)) $allowed = [$allowed];
+
+            if (isset($details[$field]) && in_array($details[$field], $allowed, true))
                 return ($config['onBlackList'])($details);
         }
 
         if (!empty($config['white_list'])) {
             $whiteHit = true;
             foreach ($config['white_list'] as $field => $allowed) {
-                if (!isset($details[$field]) || !in_array($details[$field], (array)$allowed, true)) {
+                if (!is_array($allowed)) $allowed = [$allowed];
+
+                if (!isset($details[$field]) || !in_array($details[$field], $allowed, true)) {
                     $whiteHit = false;
                     break;
                 }
