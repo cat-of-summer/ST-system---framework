@@ -22,7 +22,7 @@ final class IpInfo extends IntegrationDriver {
     protected function __init(): void {
 
         $this->on('__construct', function(string $token, string $service = 'lite') {
-            Rule::create('string|in:lite')->throwable()->check($service);
+            Rule::create('string|in:lite|default:lite')->throwable()->check($service);
 
             $this->token = $token;
             $this->service = $service;

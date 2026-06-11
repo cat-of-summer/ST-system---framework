@@ -97,6 +97,40 @@ final class Access {
             : $config['onSuccess'];
     }
 
+    public static function handleGeo(array $config = []) {
+        static::applyConfig($config, [
+            'token'       => 'string|required',
+            'driver'      => ['string', Rule::default(\ST_system\API\Drivers\IpInfo::class)],
+            'ip'          => ['string', Rule::default(self::getClientIp())],
+            'white_list'  => ['array', Rule::default([])],
+            'black_list'  => ['array', Rule::default([])],
+            'onBlackList' => ['callable', Rule::default(fn() => self::throw(403))],
+            'onWhiteList' => 'nullable|callable',
+            'onPassed'    => 'nullable|callable',
+        ]);
+
+        $details = $config['driver']::create($config['token'])->getDetails($config['ip']);
+
+        foreach ($config['black_list'] as $field => $allowed) {
+            if (isset($details[$field]) && in_array($details[$field], (array)$allowed, true))
+                return ($config['onBlackList'])($details);
+        }
+
+        if (!empty($config['white_list'])) {
+            $whiteHit = true;
+            foreach ($config['white_list'] as $field => $allowed) {
+                if (!isset($details[$field]) || !in_array($details[$field], (array)$allowed, true)) {
+                    $whiteHit = false;
+                    break;
+                }
+            }
+            if ($whiteHit)
+                return isset($config['onWhiteList']) ? ($config['onWhiteList'])($details) : $details;
+        }
+
+        return isset($config['onPassed']) ? ($config['onPassed'])($details) : $details;
+    }
+
     public static function httpAccess(array $config = []) {
         static::applyConfig($config, [
             'login'    => 'string|html_decode|@credentials.name',
