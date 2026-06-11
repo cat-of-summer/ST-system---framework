@@ -36,13 +36,17 @@ final class IpInfo extends IntegrationDriver {
         });
 
         $this->registerMethodsMap([
-            'check' => [
+            'getDetails' => [
                 'params' => [
                     'ip' => 'string|required|default:me'
                 ]
             ],
         ]);
 
+    }
+
+    public function getDetails(string $ip = 'me'): array {
+        return $this->call('getDetails', ['ip' => $ip]);
     }
 
 }
