@@ -107,9 +107,21 @@ final class Access {
             'onBlackList' => ['callable', Rule::default(fn() => self::throw(403))],
             'onWhiteList' => 'nullable|callable',
             'onPassed'    => 'nullable|callable',
+            'onError'     => 'nullable|callable',
         ]);
 
-        $details = $config['driver']::create($config['token'])->getDetails($config['ip']);
+        $details = [];
+
+        try {
+            $details = $config['driver']::create($config['token'])->getDetails($config['ip']);
+        } catch (\Throwable $th) {
+            return isset($config['onError']) 
+                ? ($config['onError'])($th)
+                : (isset($config['onPassed']) 
+                    ? ($config['onPassed'])($details, $th) 
+                    : $details
+                );
+        }
 
         foreach ($config['black_list'] as $field => $allowed) {
             if (!is_array($allowed)) $allowed = [$allowed];
