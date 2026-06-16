@@ -110,16 +110,7 @@ final class SmartCaptcha extends IntegrationDriver {
     public function __call(string $name, array $args): mixed {
         switch ($name) {
             case 'includeCDN':
-                if ($this->jsRegistered) return '';
-                $this->jsRegistered = true;
-
-                $payload = json_encode([
-                    'alias'   => $this->alias,
-                    'sitekey' => $this->clientKey,
-                    'hl'      => $this->config['hl'],
-                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
-                return "<script type=\"text/javascript\">window.STSmartCaptcha&&window.STSmartCaptcha.registerInstance({$payload});</script>";
+                return self::$cdnIncluded ? $this->emitRegistration() : self::emitBootstrap();
         }
         throw new \BadMethodCallException("SmartCaptcha: unknown method '{$name}'");
     }
@@ -127,14 +118,33 @@ final class SmartCaptcha extends IntegrationDriver {
     public static function __callStatic(string $name, array $args): mixed {
         switch ($name) {
             case 'includeCDN':
-                if (self::$cdnIncluded) return '';
-                self::$cdnIncluded = true;
+                return self::emitBootstrap();
+        }
+        throw new \BadMethodCallException("SmartCaptcha: unknown static method '{$name}'");
+    }
 
-                $bootstrap = <<<'JS'
+    private function emitRegistration(): string {
+        if ($this->jsRegistered) return '';
+        $this->jsRegistered = true;
+
+        $payload = json_encode([
+            'alias'   => $this->alias,
+            'sitekey' => $this->clientKey,
+            'hl'      => $this->config['hl'],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return "<script type=\"text/javascript\">window.STSmartCaptcha&&window.STSmartCaptcha.registerInstance({$payload});</script>";
+    }
+
+    private static function emitBootstrap(): string {
+        if (self::$cdnIncluded) return '';
+        self::$cdnIncluded = true;
+
+        $bootstrap = <<<'JS'
                     <script type="text/javascript">
                     (function(){
                         if (window.STSmartCaptcha) return;
-                        var queue = [], widgets = {}, ready = false, instances = {};
+                        var queue = [], widgets = {}, ready = false, instances = {}, globalWidgets = {};
 
                         function emit(container, name, detail) {
                             var alias = container.getAttribute('data-captcha-alias') || '';
@@ -223,6 +233,27 @@ final class SmartCaptcha extends IntegrationDriver {
                                 }, true);
                             },
 
+                            getToken: function(cb, alias) {
+                                var cfg = findInstanceCfg(alias);
+                                if (!cfg) { cb(''); return; }
+
+                                var id = globalWidgets[cfg.alias];
+                                if (!id) {
+                                    id = 'st_global_captcha_' + cfg.alias;
+                                    if (!document.getElementById(id)) {
+                                        var div = document.createElement('div');
+                                        div.id = id;
+                                        div.style.display = 'none';
+                                        div.setAttribute('data-captcha-alias', cfg.alias);
+                                        document.body.appendChild(div);
+                                        window.STSmartCaptcha.mount(id, { sitekey: cfg.sitekey, hl: cfg.hl || 'ru', invisible: true, hideShield: true });
+                                    }
+                                    globalWidgets[cfg.alias] = id;
+                                }
+
+                                window.STSmartCaptcha.executeAndGetToken(id, cb);
+                            },
+
                             mountAndBind: function(form, opts) {
                                 if (!form) return null;
                                 var existing = form.querySelector('.smart-captcha');
@@ -260,11 +291,9 @@ final class SmartCaptcha extends IntegrationDriver {
 
                 $registrations = '';
                 foreach (self::$instances as $inst)
-                    $registrations .= $inst->includeCDN();
+                    $registrations .= $inst->emitRegistration();
 
                 return $bootstrap . $registrations;
-        }
-        throw new \BadMethodCallException("SmartCaptcha: unknown static method '{$name}'");
     }
 
 
