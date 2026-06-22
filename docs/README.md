@@ -5,6 +5,10 @@
 
 - [src](src/)
 
+## Файлы
+
+- [LICENSE](LICENSE.md)
+
 <!-- DOCGEN:END -->
 
 # Подключение библиотеки через Composer
