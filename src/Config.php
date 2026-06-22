@@ -3,7 +3,6 @@
 namespace ST_system;
 
 use ST_system\Main;
-use Dotenv\Dotenv;
 
 final class Config {
 
@@ -30,10 +29,161 @@ final class Config {
         })();
 
         if ($dotenvDir !== null)
-            Dotenv::createImmutable($dotenvDir)->safeLoad();
+            static::loadEnv($dotenvDir);
 
         static::$configPath = $configPath;
         $initialized = true;
+    }
+
+    private static function loadEnv(string $dir): void {
+        $path = rtrim($dir, "/\\") . DIRECTORY_SEPARATOR . '.env';
+        if (!is_file($path) || !is_readable($path))
+            return;
+
+        $content = file_get_contents($path);
+        if ($content === false)
+            return;
+
+        if (strncmp($content, "\xEF\xBB\xBF", 3) === 0)
+            $content = substr($content, 3);
+        $content = str_replace(["\r\n", "\r"], "\n", $content);
+
+        $lines = explode("\n", $content);
+        $count = count($lines);
+        $vars  = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $trimmed = ltrim($lines[$i]);
+
+            if ($trimmed === '' || $trimmed[0] === '#')
+                continue;
+
+            if (strncmp($trimmed, 'export', 6) === 0 && isset($trimmed[6]) && ($trimmed[6] === ' ' || $trimmed[6] === "\t"))
+                $trimmed = ltrim(substr($trimmed, 7));
+
+            $eq = strpos($trimmed, '=');
+            if ($eq === false)
+                continue;
+
+            $name = rtrim(substr($trimmed, 0, $eq));
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_.]*$/', $name))
+                continue;
+
+            $rest = ltrim(substr($trimmed, $eq + 1), " \t");
+
+            if ($rest !== '' && ($rest[0] === '"' || $rest[0] === "'")) {
+                $quote  = $rest[0];
+                $buf    = substr($rest, 1);
+                $value  = '';
+                $closed = false;
+
+                while (true) {
+                    $len = strlen($buf);
+                    $j   = 0;
+                    while ($j < $len) {
+                        $ch = $buf[$j];
+                        if ($quote === '"' && $ch === '\\' && $j + 1 < $len) {
+                            $value .= $ch . $buf[$j + 1];
+                            $j += 2;
+                            continue;
+                        }
+                        if ($ch === $quote) {
+                            $closed = true;
+                            break;
+                        }
+                        $value .= $ch;
+                        $j++;
+                    }
+                    if ($closed)
+                        break;
+                    // Незакрытая кавычка — продолжаем на следующей строке (многострочное значение).
+                    $i++;
+                    if ($i >= $count)
+                        break;
+                    $value .= "\n";
+                    $buf = $lines[$i];
+                }
+
+                if ($quote === '"') {
+                    $value = static::interpolateEnv($value, $vars);
+                    $value = static::unescapeEnv($value);
+                }
+                // Одинарные кавычки: значение литерально, без escape и подстановки.
+            } else {
+                $value = $rest;
+                $vlen  = strlen($value);
+                for ($k = 0; $k < $vlen; $k++) {
+                    if ($value[$k] === '#' && ($k === 0 || $value[$k - 1] === ' ' || $value[$k - 1] === "\t")) {
+                        $value = substr($value, 0, $k);
+                        break;
+                    }
+                }
+                $value = static::interpolateEnv(trim($value), $vars);
+            }
+
+            $vars[$name] = $value;
+        }
+
+        foreach ($vars as $name => $value) {
+            if (array_key_exists($name, $_ENV) || array_key_exists($name, $_SERVER) || getenv($name) !== false)
+                continue;
+            $_ENV[$name]    = $value;
+            $_SERVER[$name] = $value;
+            if (function_exists('putenv'))
+                @putenv($name . '=' . $value);
+        }
+    }
+
+    private static function unescapeEnv(string $value): string {
+        if (strpos($value, '\\') === false)
+            return $value;
+
+        $result = '';
+        $len = strlen($value);
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $value[$i];
+            if ($ch === '\\' && $i + 1 < $len) {
+                $next = $value[$i + 1];
+                switch ($next) {
+                    case 'n':  $result .= "\n";   break;
+                    case 'r':  $result .= "\r";   break;
+                    case 't':  $result .= "\t";   break;
+                    case 'f':  $result .= "\f";   break;
+                    case 'v':  $result .= "\v";   break;
+                    case '"':  $result .= '"';    break;
+                    case '\\': $result .= '\\';   break;
+                    case '$':  $result .= '$';    break;
+                    default:   $result .= '\\' . $next; break;
+                }
+                $i++;
+                continue;
+            }
+            $result .= $ch;
+        }
+        return $result;
+    }
+
+    private static function interpolateEnv(string $value, array $vars): string {
+        if (strpos($value, '$') === false)
+            return $value;
+
+        return preg_replace_callback(
+            '/(?<!\\\\)\$(?:\{([A-Za-z_][A-Za-z0-9_.]*)\}|([A-Za-z_][A-Za-z0-9_.]*))/',
+            static function ($m) use ($vars) {
+                $name = (isset($m[1]) && $m[1] !== '') ? $m[1] : ($m[2] ?? '');
+                if ($name === '')
+                    return $m[0];
+                if (array_key_exists($name, $vars))
+                    return $vars[$name];
+                if (array_key_exists($name, $_ENV))
+                    return (string)$_ENV[$name];
+                if (array_key_exists($name, $_SERVER))
+                    return (string)$_SERVER[$name];
+                $g = getenv($name);
+                return $g !== false ? $g : '';
+            },
+            $value
+        );
     }
 
     public static function reload(): void {
