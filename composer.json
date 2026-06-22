@@ -2,9 +2,14 @@
     "name": "cat-of-summer/st-system",
     "description": "ST_system PHP library",
     "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "cat-of-summer"
+        }
+    ],
     "require": {
-        "php": ">=7.4",
-        "vlucas/phpdotenv": "^5.6"
+        "php": ">=7.4"
     },
     "autoload": {
         "psr-4": {
