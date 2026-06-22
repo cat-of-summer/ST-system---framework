@@ -18,7 +18,7 @@ HTTP, кэш, файловое хранилище, генерация струк
 Яндекс), интеграции с внешними API и консольные команды.
 
 - **PHP:** `>= 7.4`
-- **Зависимости:** нет (рантайм без сторонних пакетов)
+- **Зависимости:** нет
 - **Autoload:** PSR-4, `ST_system\\` → `src/`
 - **Лицензия:** [MIT](LICENSE.md)
 
@@ -26,15 +26,13 @@ HTTP, кэш, файловое хранилище, генерация струк
 
 ## Установка
 
-Репозиторий публичный — токен/авторизация Composer не нужны.
-
-### Вариант A — через Packagist (если пакет опубликован)
+### Через Packagist
 
 ```bash
 composer require cat-of-summer/st-system
 ```
 
-### Вариант B — напрямую из GitHub (VCS)
+### Напрямую из GitHub (VCS)
 
 В `composer.json` проекта:
 
@@ -59,12 +57,6 @@ composer require cat-of-summer/st-system
 composer update cat-of-summer/st-system
 ```
 
-> Для стабильных версий вместо `dev-main` используйте теги:
-> ```bash
-> git tag v1.0.0 && git push origin v1.0.0
-> ```
-> и в проекте `"cat-of-summer/st-system": "^1.0"` (тогда `minimum-stability` не требуется).
-
 ---
 
 ## Использование
@@ -78,9 +70,6 @@ use ST_system\Config;
 use ST_system\HTTP\Request;
 // ...
 ```
-
-В **Laravel** `vendor/autoload.php` подключается фреймворком — достаточно
-`use ST_system\...` в любом месте.
 
 ---
 
@@ -260,8 +249,4 @@ use ST_system\HTTP\Request;
 | `Traits\HasEvents` | События и слушатели | [src/Traits/HasEvents.php.md](src/Traits/HasEvents.php.md) |
 | `Traits\HasAttributes` | Доступ к атрибутам/свойствам | [src/Traits/HasAttributes.php.md](src/Traits/HasAttributes.php.md) |
 
----
 
-> Страницы документации генерируются автоматически (workflow `docgen`) и
-> зеркалят структуру `src/`. Описания дополняются вручную ниже маркера
-> `<!-- DOCGEN:END -->` в соответствующих `.md`-файлах.
