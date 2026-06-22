@@ -1,0 +1,11 @@
+name: docgen
+
+on:
+  push: {}
+  workflow_dispatch: {}
+
+jobs:
+  docgen:
+    permissions:
+      contents: write
+    uses: cat-of-summer/GitHub_workflows/.github/workflows/docgen.yml@main
