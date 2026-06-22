@@ -9,4 +9,5 @@ jobs:
       contents: write
       packages: write
     uses: cat-of-summer/GitHub_workflows/.github/workflows/release.yml@main
-    secrets: inherit
+    secrets:
+      PACKAGIST_API_TOKEN: ${{ secrets.PACKAGIST_API_TOKEN }}
