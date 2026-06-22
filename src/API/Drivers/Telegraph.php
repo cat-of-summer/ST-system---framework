@@ -84,7 +84,8 @@ final class Telegraph extends IntegrationDriver {
             $PARAMS['author_url'] ??= $this->base_url;
             $PARAMS['author_name'] ??= '';
 
-            if ($this->cache()?->isValid()) {
+            $cache = $this->cache();
+            if ($cache !== null && $cache->isValid()) {
                 $this->access_token = (string)$this->cacheGet();
             } else {
                 $data = $this->call('createAccount', [

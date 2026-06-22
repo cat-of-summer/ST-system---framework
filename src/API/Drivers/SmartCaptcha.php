@@ -107,7 +107,8 @@ final class SmartCaptcha extends IntegrationDriver {
         return is_array($response) && ($response['status'] ?? '') === 'ok';
     }
 
-    public function __call(string $name, array $args): mixed {
+    /** @return mixed */
+    public function __call(string $name, array $args) {
         switch ($name) {
             case 'includeCDN':
                 return self::$cdnIncluded ? $this->emitRegistration() : self::emitBootstrap();
@@ -115,7 +116,8 @@ final class SmartCaptcha extends IntegrationDriver {
         throw new \BadMethodCallException("SmartCaptcha: unknown method '{$name}'");
     }
 
-    public static function __callStatic(string $name, array $args): mixed {
+    /** @return mixed */
+    public static function __callStatic(string $name, array $args) {
         switch ($name) {
             case 'includeCDN':
                 return self::emitBootstrap();

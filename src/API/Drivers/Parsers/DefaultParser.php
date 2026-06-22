@@ -118,7 +118,8 @@ class DefaultParser extends IntegrationDriver {
             throw new \RuntimeException("Parser: curl error for '{$url}': {$e->getMessage()}", 0, $e);
         }
 
-        $effective = $file->getOriginal()?->getMeta()['effective_url'] ?? $url;
+        $original  = $file->getOriginal();
+        $effective = $original !== null ? ($original->getMeta()['effective_url'] ?? $url) : $url;
 
         if ($effective !== $url && is_array($input) && $template !== '' && $entrypoint === '') {
             $overrides = [];

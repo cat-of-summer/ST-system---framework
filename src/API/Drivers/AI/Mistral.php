@@ -107,7 +107,9 @@ final class Mistral extends OpenAICompatibleDriver {
                     'content' => 'required|string',
                     'prefix' => 'sometimes|bool'
                 ]))->apply($v);
-            })->handleError(fn($v, $errors) => throw new \Exception(implode(', ', $errors)));
+            })->handleError(function ($v, $errors) {
+                throw new \Exception(implode(', ', $errors));
+            });
 
         $rule->apply($input);
 

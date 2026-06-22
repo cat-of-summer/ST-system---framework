@@ -74,7 +74,7 @@ final class DoctorsReviewsParser extends DefaultParser {
                     'date' => [
                         '@xpath'   => '//*[@itemprop="datePublished"]/@content',
                         '@array'   => false,
-                        '@extract' => fn($n) => $n?->nodeValue,
+                        '@extract' => fn($n) => $n !== null ? $n->nodeValue : null,
                     ],
                     'rating' => [
                         '@xpath'   => '//div[contains(@class,"review-card-tooltips__stars")]/span[contains(@class,"text-subtitle-2")]',

@@ -31,7 +31,11 @@ class DefaultSchema
     private ?\Closure $inlinePrint   = null;
     private ?\Closure $inlineToArray = null;
 
-    public static function create(...$args): static { return new static(...$args); }
+    /** @return static */
+    public static function create(...$args)
+    {
+        return new static(...$args);
+    }
 
     /**
      * Подкласс — обычный `new ChildClass()`.
