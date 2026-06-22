@@ -1,0 +1,12 @@
+name: release
+
+on:
+  create:
+
+jobs:
+  release:
+    permissions:
+      contents: write
+      packages: write
+    uses: cat-of-summer/GitHub_workflows/.github/workflows/release.yml@main
+    secrets: inherit
