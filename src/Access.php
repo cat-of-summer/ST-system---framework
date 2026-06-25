@@ -92,9 +92,11 @@ final class Access {
 
         $val = self::extractCredential($config['name'], $config['accessMethod']);
 
-        return (empty($val) || $val != $config['value'])
+        $callback = (empty($val) || $val != $config['value'])
             ? $config['onFail']
             : $config['onSuccess'];
+
+        return $callback ? $callback() : null;
     }
 
     public static function handleGeo(array $config = []) {
