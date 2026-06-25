@@ -109,8 +109,12 @@ class SvgMime extends Mime {
     }
 
     public function toImg(array $config = []): string {
+        $clear = !empty($config['clear']);
+        unset($config['clear']);
+
         $attrs = array_merge(
             ['alt' => $this->file->getBasename()],
+            $clear ? [] : $this->getSourceAttributes(),
             $config,
             ['src' => $this->file->getRelativePath()]
         );
@@ -119,9 +123,39 @@ class SvgMime extends Mime {
     }
 
     public function toHTML(array $config = []): string {
-        unset($config['src']);
+        $clear = !empty($config['clear']);
+        unset($config['clear'], $config['src']);
 
-        return '<svg '.static::getAttrString($config).'><use href="'.$this->file->getRelativePath().'"></use></svg>';
+        $attrs = array_merge($clear ? [] : $this->getSourceAttributes(), $config);
+
+        return '<svg '.static::getAttrString($attrs).'><use href="'.$this->file->getRelativePath().'"></use></svg>';
+    }
+
+    protected function getSourceAttributes(): array {
+        if (!$this->file->is_uri && !$this->file->exists())
+            return [];
+
+        $content = $this->file->getRaw();
+        $attrs = [];
+
+        if (class_exists('DOMDocument')) {
+            libxml_use_internal_errors(true);
+            $dom = new \DOMDocument();
+            $dom->loadXML($content, LIBXML_NOWARNING | LIBXML_NOERROR);
+            libxml_clear_errors();
+
+            $root = $dom->documentElement;
+
+            if ($root && $root->nodeName === 'svg')
+                foreach ($root->attributes as $attr)
+                    $attrs[$attr->name] = $attr->value;
+        } elseif (preg_match('/<svg\b([^>]*)>/i', $content, $matches)) {
+            if (preg_match_all('/([\w:.-]+)\s*=\s*(["\'])(.*?)\2/', $matches[1], $am, PREG_SET_ORDER))
+                foreach ($am as $a)
+                    $attrs[$a[1]] = html_entity_decode($a[3], ENT_QUOTES);
+        }
+
+        return $attrs;
     }
 
     public function extract(array $config = []): string {
@@ -129,6 +163,9 @@ class SvgMime extends Mime {
             throw new \InvalidArgumentException("File not found: {$this->file->getPathname()}");
 
         static $counter = 0; $counter++;
+
+        $clear = !empty($config['clear']);
+        unset($config['clear']);
 
         $content = $this->file->getRaw();
 
@@ -154,10 +191,14 @@ class SvgMime extends Mime {
                     }
             }
 
+            if ($clear && $dom->documentElement)
+                foreach (iterator_to_array($dom->documentElement->attributes) as $attr)
+                    $dom->documentElement->removeAttribute($attr->name);
+
             if (!empty($config) && $dom->documentElement)
                 foreach ($config as $k => $v)
                     $dom->documentElement->setAttribute($k, $v);
-        
+
             return $dom->saveXML($dom->documentElement);
         } else {
             $content = preg_replace(
@@ -171,6 +212,9 @@ class SvgMime extends Mime {
                 'url(#$1'.'_'.$counter.')',
                 $content
             );
+
+            if ($clear)
+                $content = preg_replace('/<svg\b[^>]*>/i', '<svg>', $content);
 
             if (!empty($config) && preg_match('/<svg\b([^>]*)>/i', $content, $matches)) {
                 $existingAttrs = $matches[1];
