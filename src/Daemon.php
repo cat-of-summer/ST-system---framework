@@ -37,6 +37,7 @@ class Daemon {
     private \Closure $runFn;
 
     private bool    $committed = false;
+    private bool    $failed = false;
     private array   $checkpoints = [];
 
     final private function __construct() {
@@ -53,6 +54,7 @@ class Daemon {
         register_shutdown_function(function () {
             if ($this->committed) return;
             $this->committed = true;
+            if ($this->failed) return;
             $this->fire('commit');
         });
     }
@@ -82,7 +84,12 @@ class Daemon {
 
         if ($name === 'run') {
             if ($fn) $this->runFn = $fn;
-            $this->_init();
+            try {
+                $this->_init();
+            } catch (\Throwable $e) {
+                $this->failed = true;
+                throw $e;
+            }
             $this->loop();
             return $this;
         }
@@ -147,6 +154,7 @@ class Daemon {
                 $retries++;
                 $this->fire('error', $e, $retries);
                 if ($retries >= static::config('retries')) {
+                    $this->failed = true;
                     $this->running = false;
                 }
             }
