@@ -643,7 +643,7 @@ final class File {
         if (function_exists('finfo_open')) {
             $f = finfo_open(FILEINFO_MIME_TYPE);
             if ($f) {
-                $mime_type = finfo_file($f, $path);
+                $mime_type = @finfo_file($f, $path);
                 finfo_close($f);
             }
         }

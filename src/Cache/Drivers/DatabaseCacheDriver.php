@@ -11,6 +11,8 @@ class DatabaseCacheDriver extends CacheDriver {
         'mysql'    => \ST_system\Cache\Drivers\Database\MysqlAdapter::class,
         'mariadb'  => \ST_system\Cache\Drivers\Database\MysqlAdapter::class,
         'postgres' => \ST_system\Cache\Drivers\Database\PostgresAdapter::class,
+        'sqlite'   => \ST_system\Cache\Drivers\Database\SqliteAdapter::class,
+        'sqlite3'  => \ST_system\Cache\Drivers\Database\SqliteAdapter::class,
     ];
 
     private ?DatabaseAdapterInterface $connection = null;
@@ -55,10 +57,14 @@ class DatabaseCacheDriver extends CacheDriver {
             return $cfg['connection'];
 
         if (!is_string($cfg['engine']) || $cfg['engine'] === '') return null;
-        if (!is_string($cfg['host'])   || $cfg['host']   === '') return null;
+
+        $engine   = strtolower($cfg['engine']);
+        $isSqlite = in_array($engine, ['sqlite', 'sqlite3'], true);
+
+        // Для sqlite host нерелевантен; обязателен только database (путь к файлу / :memory:).
+        if (!$isSqlite && (!is_string($cfg['host']) || $cfg['host'] === '')) return null;
         if (!is_string($cfg['database']) || $cfg['database'] === '') return null;
 
-        $engine = strtolower($cfg['engine']);
         $adapterClass = self::ADAPTERS[$engine] ?? $cfg['engine'];
 
         if (!class_exists($adapterClass) || !is_subclass_of($adapterClass, DatabaseAdapterInterface::class))
