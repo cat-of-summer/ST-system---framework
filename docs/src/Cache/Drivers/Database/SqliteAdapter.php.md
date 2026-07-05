@@ -1,0 +1,1 @@
+# SqliteAdapter.php

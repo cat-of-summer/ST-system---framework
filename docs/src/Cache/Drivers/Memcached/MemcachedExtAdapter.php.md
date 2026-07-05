@@ -1,0 +1,1 @@
+# MemcachedExtAdapter.php
