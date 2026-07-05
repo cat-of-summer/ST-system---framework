@@ -1,10 +1,5 @@
 # HasAttributes.php
 
-> Для AI-агентов: этот документ описывает трейт `HasAttributes`.  
-> Трейт живёт в пространстве имён `ST_system\Traits`, файл `Traits/HasAttributes.php`.
-
----
-
 ## 1. Концепция
 
 `HasAttributes` — **трейт динамического доступа к атрибутам** через магические методы `__get` / `__set`.

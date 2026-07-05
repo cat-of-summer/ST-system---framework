@@ -1,7 +1,5 @@
 # SmartCaptcha
 
-> Документация сгенерирована AI-агентом на основе исходного кода (`src\API\Drivers\SmartCaptcha.php`).
-
 ## 1. Концепция
 
 Драйвер [Yandex SmartCaptcha](https://cloud.yandex.ru/services/smartcaptcha). Состоит из двух частей:

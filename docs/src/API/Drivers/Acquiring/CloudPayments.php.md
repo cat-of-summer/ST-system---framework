@@ -1,7 +1,5 @@
 # CloudPayments
 
-> Документация сгенерирована AI-агентом на основе исходного кода.
-
 ## 1. Концепция
 
 Драйвер [CloudPayments API](https://cloudpayments.ru). Автентификация через HTTP Basic (`public_id:api_secret`). Все запросы отправляются методом POST.

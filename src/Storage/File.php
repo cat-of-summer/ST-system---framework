@@ -345,8 +345,13 @@ final class File {
         return is_file($p) ? (int)@filemtime($p) : 0;
     }
 
+    public function setMeta(array $meta, bool $append = true): self {
+        $this->cache->setMeta($meta, 0, $append);
+        return $this;
+    }
+
     public function getMeta(bool $force = false): array {
-        if (!$this->is_uri) return [];
+        if (!$this->is_uri) return $this->cache->getMeta();
 
         $url = $this->getPathname();
         $meta = $this->cache->getMeta();
@@ -397,7 +402,7 @@ final class File {
             if (($meta['http_code'] ?? null) != 200 && is_file($this->cache->file))
                 $meta['expires_in'] = time() + $this->resolveCacheTtl($meta);
 
-            $this->cache->setMeta($meta, 0, false);
+            $this->setMeta($meta, false);
         }
 
         return $meta;
@@ -488,7 +493,7 @@ final class File {
                     ]
                 );
 
-                $this->cache->setMeta($meta, 0, false);
+                $this->setMeta($meta, false);
 
                 return new static($this->cache->file, $this);
             } catch (\Throwable $th) {

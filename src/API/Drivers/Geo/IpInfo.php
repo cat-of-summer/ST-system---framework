@@ -1,19 +1,18 @@
 <?php
 
-namespace ST_system\API\Drivers;
+namespace ST_system\API\Drivers\Geo;
 
-use ST_system\API\IntegrationDriver;
 use ST_system\Rule;
 
-final class IpInfo extends IntegrationDriver {
+final class IpInfo extends GeoDriver {
 
     protected static function getDefaultConfig(): array {
-        return [
+        return array_merge(parent::getDefaultConfig(), [
             'endpoint' => 'https://api.ipinfo.io/',
             'cache' => [
                 'use' => true
             ]
-        ];
+        ]);
     }
 
     private string $token;

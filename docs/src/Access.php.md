@@ -1,11 +1,5 @@
 # Access.php
 
-> Для AI-агентов: этот документ описывает **всю** публичную поверхность класса `Access`.  
-> Класс живёт в пространстве имён `ST_system`, файл `Access.php`.  
-> При генерации кода используй эти примеры как шаблон.
-
----
-
 ## 1. Концепция
 
 `Access` — **статический фасад контроля доступа**. Финальный класс (не наследуется), использует трейты `HasConfig` и `HasEvents`.
@@ -16,9 +10,12 @@
 
 1. **Аутентификация по паролю** — `requestAccess()`, `httpAccess()`, `call()`, `startBlock()` / `endBlock()`.
 2. **HTTP-ответы с событиями** — `throw(int $code)`, `on()`.
-3. **Информация о запросе** — `getRequestOrigin()`, `getClientIp()`.
+3. **Информация о запросе** — `getRequestOrigin()`, `getClientIp()` (с доверенными прокси).
 4. **CORS** — `handleCORS()`.
-5. **IP-фаервол (rate-limit / ban)** — `handleIp()`, `banIp()`, `unbanIp()`.
+5. **IP-фаервол (rate-limit / ban)** — `handleIp()`, `banIp()`, `unbanIp()`, `unbanAll()`.
+6. **Списки allow/deny + антибот-эвристики** — конфиг-driven (`firewall.rules` / `firewall.screen` / `firewall.verifyBots`), применяются внутри `handleIp()`.
+7. **Проверка ботов** — `verifyBot()` (reverse + forward DNS).
+8. **Геолокация по IP** — `handleGeo()` + реестр драйверов (`ipinfo` / `sxgeo` / `geoip2`).
 
 Внутри singleton-инстанса в конструкторе создаётся объект `ST_system\Cache\Manager` (драйвер берётся
 из `config('cache.driver')`), на котором держится состояние IP-фаервола. Поэтому `Access::setConfig(...)`
@@ -38,7 +35,14 @@
 | `salt` | `''` | Секрет: солит ключи кэша по IP и шифрует хранимые данные. Если пустой — данные фаервола хранятся в открытом виде (без шифрования) |
 | `firewall.limits` | `[[60,60],[600,3600]]` | Список `[maxHits, windowSeconds]` или `[maxHits, windowSeconds, banTtl]` — лимит обращений с одного IP в окне; `banTtl` — длительность бана при срабатывании этого лимита (сек.), если не задан — используется `firewall.ttl` |
 | `firewall.ttl` | `3600` | Сколько секунд IP остаётся в бане после превышения лимита (глобальный fallback) |
-| `firewall.banCode` | `429` | HTTP-код, который отдаёт `Access::throw()` забаненному IP |
+| `firewall.exclude` | `[]` | Список IP / подсетей (CIDR / префикс `192.168.1.`), которые фаервол пропускает без учёта |
+| `firewall.proxies` | `[]` | Доверенные прокси `['CIDR' => '$_SERVER-ключ']` для `getClientIp()` (см. §2.2). Пусто → заголовкам доверяют без проверки (легаси) |
+| `firewall.verifyBots` | `false` | В `handleIp()` пропускать проверенных ботов (`verifyBot()`) мимо всех проверок |
+| `firewall.screen` | `[]` | Эвристики для `handleIp()`: `noUserAgent` / `noReferer` / `noLang` / `http2Only` (bool). Срабатывание → `throw(403)` + событие `'screen'` |
+| `firewall.rules` | `[]` | Списки allow/deny: `[[action, type, pattern], ...]`; `type` ∈ `ip`/`cidr`/`country`/`lang`/`referer`/`ua`/`ptr`. `allow` приоритетнее `deny` (см. §2.3) |
+| `bots` | `{Googlebot, yandex.com, Mail.RU_Bot, bingbot}` | Сигнатуры белых ботов для `verifyBot()`: `'подстрока UA' => ['суффикс PTR', ...]`. `'.'` в списке → доверять без forward-confirm |
+| `handleGeo.drivers.default` | `'ipinfo'` | Драйвер геолокации по умолчанию для `handleGeo()` |
+| `handleGeo.drivers.available` | `{ipinfo, sxgeo, geoip2}` | Реестр `короткое имя => класс` (по образцу `Cache\Manager`) |
 
 ---
 
@@ -189,11 +193,49 @@ $origin = Access::getRequestOrigin(); // 'https://example.com'
 
 ### `static getClientIp(): string`
 
-Возвращает IP-адрес клиента. Учитывает заголовки `X-Forwarded-For` и `Client-Ip`. Результат кэшируется.
+Возвращает IP-адрес клиента (IPv6 нормализуется к полной форме). Результат кэшируется на запрос.
+
+Поведение зависит от `firewall.proxies` (см. §2.2):
+- **список пуст** (умолчание) — берётся первый IP из `X-Forwarded-For`, затем `Client-Ip`, затем `REMOTE_ADDR` (легаси, обратная совместимость);
+- **список задан** — строгий режим: заголовку доверяют, только если `REMOTE_ADDR` входит в доверенную подсеть.
 
 ```php
 $ip = Access::getClientIp(); // '192.168.1.1'
 ```
+
+---
+
+## 2.2. Доверенные прокси (защита от подмены IP)
+
+Без настройки `getClientIp()` доверяет `X-Forwarded-For` вслепую — клиент может прислать любой IP
+и обойти фаервол/гео-фильтры. `firewall.proxies` включает строгий режим: реальный IP берётся из
+указанного заголовка **только если** `REMOTE_ADDR` — доверенный прокси.
+
+Формат: `['CIDR или точный IP' => 'имя $_SERVER-ключа с реальным IP']`.
+
+```php
+// За CloudFlare — доверяем CF-Connecting-IP только от подсетей CF:
+Access::setConfig([
+    'firewall' => [
+        'proxies' => [
+            '173.245.48.0/20'  => 'HTTP_CF_CONNECTING_IP',
+            '103.21.244.0/22'  => 'HTTP_CF_CONNECTING_IP',
+            '141.101.64.0/18'  => 'HTTP_CF_CONNECTING_IP',
+            '162.158.0.0/15'   => 'HTTP_CF_CONNECTING_IP',
+            '104.16.0.0/13'    => 'HTTP_CF_CONNECTING_IP',
+            // ... полный список подсетей CloudFlare
+        ],
+    ],
+]);
+
+// За nginx-реверс-прокси на том же хосте:
+Access::setConfig(['firewall' => ['proxies' => ['127.0.0.1' => 'HTTP_X_REAL_IP']]]);
+
+$ip = Access::getClientIp(); // реальный IP клиента, а не адрес прокси
+```
+
+Поддержка CIDR (IPv4 и IPv6) распространяется и на `firewall.exclude`, и на правила типа `ip`/`cidr`
+(см. §4).
 
 ---
 
@@ -228,16 +270,35 @@ Access::handleIp();
 
 ### `static handleIp(): void`
 
-Учитывает текущее обращение клиента (`getClientIp()`):
-1. если IP уже забанен и бан не истёк — `Access::throw(429)`;
-2. иначе инкрементирует счётчики по всем окнам `firewall.limits` (фиксированные окна `floor(time()/window)`);
-3. если хоть один лимит превышен — ставит бан; длительность бана берётся из третьего элемента сработавшего лимита (`[maxHits, windowSeconds, banTtl]`), или из `firewall.ttl` если он не задан; при срабатывании нескольких лимитов одновременно берётся максимальный `banTtl`; поднимает событие `'ban'` и вызывает `Access::throw(429)`.
+**Единая точка входа фаервола на запрос.** Полностью управляется конфигом — никаких отдельных
+методов правил/эвристик (всё в `firewall.*`). Порядок проверок для `getClientIp()`:
 
-Если IP не определён или невалиден (`filter_var(... FILTER_VALIDATE_IP)`), метод ничего не делает
-(чтобы поток мусорных `X-Forwarded-For` не раздувал кэш).
+1. IP не определён/невалиден → выход (мусорный `X-Forwarded-For` не раздувает кэш);
+2. IP в `firewall.exclude` (IP / CIDR / префикс) → выход, без проверок;
+3. `firewall.verifyBots = true` и `verifyBot()` подтвердил бота → выход (проверенные краулеры мимо всего);
+4. `firewall.screen` — эвристики; при срабатывании событие `'screen'` + `throw(403)`;
+5. `firewall.rules` — списки allow/deny (`allow` приоритетнее): `allow` → выход, `deny` → событие `'deny'` + `throw(403)`;
+6. **rate-limit**: инкремент счётчиков по окнам `firewall.limits`; при превышении — бан (`banTtl` из 3-го элемента лимита либо `firewall.ttl`), событие `'ban'`, `throw(429)`.
+
+Состояние IP лежит в одной зашифрованной записи кэша (см. §2.1).
 
 ```php
-Access::handleIp(); // обычно один раз в начале обработки запроса
+Access::setConfig([
+    'salt'     => getenv('APP_SECRET'),
+    'firewall' => [
+        'limits'     => [[120, 60, 300], [2000, 3600]],
+        'verifyBots' => true,                                  // Googlebot и Ко — мимо лимитов
+        'screen'     => ['noUserAgent' => true, 'noLang' => true],
+        'rules'      => [
+            ['allow', 'ip',      '198.51.100.7'],
+            ['deny',  'country', 'CN'],
+            ['deny',  'cidr',    '203.0.113.0/24'],
+            ['deny',  'ua',      'python-requests'],
+        ],
+    ],
+]);
+
+Access::handleIp(); // один вызов в начале обработки запроса делает всё вышеперечисленное
 ```
 
 ---
@@ -293,6 +354,146 @@ Access::handleCORS([
     'methods'           => ['GET', 'POST'],
 ]);
 ```
+
+---
+
+## 2.3. Списки allow/deny и эвристики (config-driven)
+
+Всё это — **не отдельные методы, а конфиг**, который применяет `handleIp()` (по образцу
+`firewall.limits`). Не путать с `banIp()`: тот делает точечные динамические rate-limit баны по IP,
+а `firewall.rules` — статические курируемые списки, проверяемые на каждом запросе.
+
+### `firewall.rules` — allow / deny
+
+Массив правил `[action, type, pattern]`:
+- `action` — `'allow'` (пропустить мимо остальных проверок) или `'deny'` (`throw(403)` + событие `'deny'`);
+- `type` — `ip`, `cidr`, `country`, `lang`, `referer`, `ua`, `ptr`;
+- `pattern` — значение (для `ip`/`cidr` — точный IP, CIDR или префикс `192.168.1.`; для остальных — сравнение/подстрока).
+
+`allow` имеет приоритет над `deny`. Контекст вычисляется автоматически: `country` — из заголовка
+`HTTP_CF_IPCOUNTRY` (CloudFlare); `ptr` — reverse DNS (ленивый lookup, только если есть правило `ptr`).
+
+```php
+Access::setConfig(['firewall' => ['rules' => [
+    ['allow', 'ip',      '198.51.100.7'],     // белый IP — мимо всего
+    ['deny',  'country', 'CN'],               // блок страны
+    ['deny',  'cidr',    '203.0.113.0/24'],   // блок подсети
+    ['deny',  'referer', 'spam-site.example'],// блок по хосту реферера
+    ['deny',  'ua',      'python-requests'],  // блок по подстроке UA
+]]]);
+```
+
+### `firewall.screen` — эвристики «человечности»
+
+Флаги (по умолчанию выключены); при срабатывании `handleIp()` поднимает событие `'screen'`
+(`$reason`, `$ip`) и делает `throw(403)`:
+
+| Флаг | Блокирует если |
+|------|----------------|
+| `noUserAgent` | пустой `User-Agent` |
+| `noReferer` | пустой Origin/Referer |
+| `noLang` | пустой или `*` `Accept-Language` |
+| `http2Only` | `SERVER_PROTOCOL` не `HTTP/2.0` |
+
+```php
+Access::setConfig(['firewall' => ['screen' => [
+    'noUserAgent' => true,
+    'noLang'      => true,
+]]]);
+```
+
+### `firewall.verifyBots`
+
+`true` → в `handleIp()` проверенные поисковые боты (`verifyBot()`) пропускаются мимо эвристик,
+правил и лимитов.
+
+Все три ключа проверяются внутри `handleIp()` — отдельных вызовов не требуется.
+
+---
+
+## 2.4. Проверка ботов
+
+### `static verifyBot(?array $signatures = null): bool`
+
+Проверяет, что клиент — **настоящий** поисковый бот: сигнатура в `User-Agent` + reverse DNS (PTR)
+с суффиксом из белого списка + forward-confirm (PTR резолвится обратно в тот же IP). Отличает
+реального `Googlebot` от подделки с таким же UA. Результат кэшируется по `UA+IP` (1 час).
+`$signatures` — умолчание из конфига `bots` (`'подстрока UA' => ['суффикс PTR', ...]`; `'.'` в
+списке → доверять без forward-confirm). Поднимает событие `'verifiedBot'` (`$ip`, `$ua`) при успехе.
+
+Обычно отдельно вызывать не нужно — включите `firewall.verifyBots = true`, и `handleIp()`
+сам пропустит проверенных ботов. Прямой вызов полезен для собственной логики:
+
+```php
+// отдать ботам «чистую» версию страницы без cookie-баннера/лимитов:
+if (Access::verifyBot()) {
+    renderForCrawler();
+} else {
+    Access::handleIp();
+}
+
+// свой список ботов:
+Access::verifyBot([
+    'Googlebot'    => ['.googlebot.com'],
+    'AhrefsBot'    => ['ahrefs.com'],
+    'MyMonitoring' => ['.'],   // доверять без forward-confirm
+]);
+```
+
+---
+
+## 2.5. Геолокация по IP — `handleGeo()` + реестр драйверов
+
+### `static handleGeo(array $PARAMS = []): mixed`
+
+Определяет гео-данные по IP выбранным драйвером и применяет white/black списки по любому
+нормализованному полю (`country`, `country_code`, `city`, ...).
+
+| Ключ `$PARAMS` | Тип | Описание |
+|----------------|-----|----------|
+| `driver` | `string` | Короткое имя из `handleGeo.drivers.available` или FQCN. Умолч.: `handleGeo.drivers.default` (`ipinfo`) |
+| `token` | `string` | Смысл зависит от драйвера: API-ключ (`ipinfo`, `sxgeo`) / `account_id:license_key` (`geoip2`). Для локальной БД можно опустить |
+| `ip` | `string` | Умолч.: `getClientIp()` |
+| `black_list` | `array` | `['поле' => значение\|[значения]]` → `onBlackList` |
+| `white_list` | `array` | все поля должны совпасть → `onWhiteList` |
+| `onBlackList` | `callable` | Умолч.: `throw(403)` |
+| `onWhiteList` / `onPassed` / `onError` | `callable\|null` | колбэки |
+
+Драйвер резолвится по реестру (по образцу `Cache\Manager`): короткое имя → класс; можно
+передать и полное имя класса. Класс обязан реализовывать `ST_system\API\Drivers\Geo\GeoDriver`.
+
+```php
+// блокировка стран через локальную БД SxGeo (без API-ключа, оффлайн):
+Access::handleGeo([
+    'driver'     => 'sxgeo',
+    'black_list' => ['country' => ['CN', 'KP']],
+    'onBlackList'=> fn($d) => Access::throw(451),
+]);
+
+// пропускать только РФ/РБ через MaxMind GeoIP2 (локальный .mmdb):
+Access::handleGeo([
+    'driver'     => 'geoip2',
+    'white_list' => ['country' => ['RU', 'BY']],
+    'onWhiteList'=> fn($d) => true,
+    'onBlackList'=> fn($d) => Access::throw(403),
+]);
+
+// глобально сменить провайдера по умолчанию:
+Access::setConfig(['handleGeo.drivers.default' => 'geoip2']);
+$details = Access::handleGeo(['token' => 'ACCOUNT:LICENSE']);
+```
+
+**Доступные драйверы** (`handleGeo.drivers.available`) — см. отдельные доки:
+
+| Имя | Класс | Оффлайн-БД | REST API |
+|-----|-------|-----------|----------|
+| `ipinfo` | `Drivers\Geo\IpInfo` | — | ipinfo.io |
+| `sxgeo` | `Drivers\Geo\SxGeo` | `.dat` (Sypex Geo) | api.sypexgeo.net |
+| `geoip2` | `Drivers\Geo\GeoIP2` | `.mmdb` (MaxMind) | geoip.maxmind.com |
+
+Все гео-драйверы наследуют абстрактный `Drivers\Geo\GeoDriver` и поддерживают режимы
+`mode` = `auto` / `local` / `api`, а также `update()` (скачать/обновить локальную БД) и
+`version()` (дата сборки БД). Подробности — в доках драйверов.
 
 ---
 

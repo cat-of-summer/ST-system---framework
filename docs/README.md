@@ -114,7 +114,9 @@ use ST_system\HTTP\Request;
 | `Drivers\SmsRu` | Отправка SMS через sms.ru | [src/API/Drivers/SmsRu.php.md](src/API/Drivers/SmsRu.php.md) |
 | `Drivers\Sdek` | Интеграция службы доставки СДЭК | [src/API/Drivers/Sdek.php.md](src/API/Drivers/Sdek.php.md) |
 | `Drivers\Isdayoff` | Производственный календарь (isdayoff.ru) | [src/API/Drivers/Isdayoff.php.md](src/API/Drivers/Isdayoff.php.md) |
-| `Drivers\IpInfo` | Геоданные по IP-адресу | [src/API/Drivers/IpInfo.php.md](src/API/Drivers/IpInfo.php.md) |
+| `Drivers\Geo\IpInfo` | Геоданные по IP-адресу | [src/API/Drivers/Geo/IpInfo.php.md](src/API/Drivers/Geo/IpInfo.php.md) |
+| `Drivers\Geo\SxGeo` | Геоданные по IP (Sypex Geo: локальная БД + REST API) | [src/API/Drivers/Geo/](src/API/Drivers/Geo/) |
+| `Drivers\Geo\GeoIP2` | Геоданные по IP (MaxMind GeoIP2/GeoLite2: .mmdb + web-service) | [src/API/Drivers/Geo/](src/API/Drivers/Geo/) |
 | `Drivers\SmartCaptcha` | Yandex SmartCaptcha (проверка токена) | [src/API/Drivers/SmartCaptcha.php.md](src/API/Drivers/SmartCaptcha.php.md) |
 | `Drivers\Telegraph` | Публикация статей в Telegra.ph | [src/API/Drivers/Telegraph.php.md](src/API/Drivers/Telegraph.php.md) |
 

@@ -1,8 +1,5 @@
 # DefaultSchema.php
 
-> Для AI-агентов: этот документ описывает **всю** публичную поверхность класса `DefaultSchema`.  
-> Класс живёт в пространстве имён `ST_system\Schemas`, файл `ST_system/Schemas/DefaultSchema.php`.
-
 ---
 
 ## 1. Концепция

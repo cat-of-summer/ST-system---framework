@@ -195,3 +195,7 @@ bower_components/
 *.json
 autoload.php
 .gitattributes
+
+# Assets & license
+assets/
+docs/LICENSE.md

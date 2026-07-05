@@ -1,10 +1,5 @@
 # HasEvents.php
 
-> Для AI-агентов: этот документ описывает трейт `HasEvents`.  
-> Трейт живёт в пространстве имён `ST_system\Traits`, файл `Traits/HasEvents.php`.
-
----
-
 ## 1. Концепция
 
 `HasEvents` — **трейт паттерна Observer** (наблюдатель / event emitter) для PHP-объектов.

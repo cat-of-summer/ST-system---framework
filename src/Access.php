@@ -33,7 +33,27 @@ final class Access {
                 'dir'     => '',
                 'limits'  => [[5, 1, 10], [10, 2, 30], [60, 60], [600, 3600]],
                 'ttl'     => 3600,
-                'exclude' => [],
+                'exclude'    => [],
+                'proxies'    => [],
+                'verifyBots' => true,
+                'screen'     => [],
+                'rules'      => [],
+            ],
+            'bots' => [
+                'Googlebot'   => ['.googlebot.com'],
+                'yandex.com'  => ['yandex.ru', 'yandex.net', 'yandex.com'],
+                'Mail.RU_Bot' => ['mail.ru', 'smailru.net'],
+                'bingbot'     => ['search.msn.com'],
+            ],
+            'handleGeo' => [
+                'drivers' => [
+                    'default'   => 'ipinfo',
+                    'available' => [
+                        'ipinfo' => \ST_system\API\Drivers\Geo\IpInfo::class,
+                        'sxgeo'  => \ST_system\API\Drivers\Geo\SxGeo::class,
+                        'geoip2' => \ST_system\API\Drivers\Geo\GeoIP2::class,
+                    ],
+                ],
             ],
         ];
     }
@@ -101,8 +121,8 @@ final class Access {
 
     public static function handleGeo(array $config = []) {
         static::applyConfig($config, [
-            'token'       => 'string|required',
-            'driver'      => ['string', Rule::default(\ST_system\API\Drivers\IpInfo::class)],
+            'token'       => ['string', Rule::default('')],
+            'driver'      => ['string', Rule::default(self::config('handleGeo.drivers.default'))],
             'ip'          => ['string', Rule::default(self::getClientIp())],
             'white_list'  => ['array', Rule::default([])],
             'black_list'  => ['array', Rule::default([])],
@@ -112,10 +132,18 @@ final class Access {
             'onError'     => 'nullable|callable',
         ]);
 
+        // Резолв драйвера по короткому имени из реестра (полное имя класса тоже принимается).
+        $driver = self::config('handleGeo.drivers.available.'.$config['driver']) ?: $config['driver'];
+
+        if (!is_string($driver) || !is_subclass_of($driver, \ST_system\API\Drivers\Geo\GeoDriver::class))
+            throw new \InvalidArgumentException(
+                "Access::handleGeo(): geo-драйвер '{$config['driver']}' должен реализовывать ".\ST_system\API\Drivers\Geo\GeoDriver::class
+            );
+
         $details = [];
 
         try {
-            $details = $config['driver']::create($config['token'])->getDetails($config['ip']);
+            $details = $driver::create($config['token'])->getDetails($config['ip']);
         } catch (\Throwable $th) {
             return isset($config['onError']) 
                 ? ($config['onError'])($th)
@@ -231,14 +259,74 @@ final class Access {
         static $data = null;
 
         if ($data === null) {
-            $forwarded = Request::headers('X-Forwarded-For');
+            $remote  = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+            $proxies = (array)self::config('firewall.proxies');
 
-            $data = $forwarded
-                ? trim(explode(',', $forwarded)[0])
-                : (string)(Request::headers('Client-Ip') ?: $_SERVER['REMOTE_ADDR'] ?? '');
+            if (!empty($proxies)) {
+                $ip = $remote;
+                foreach ($proxies as $cidr => $serverKey) {
+                    if ($remote === (string)$cidr || self::ipInCidr($remote, (string)$cidr)) {
+                        $candidate = trim((string)($_SERVER[$serverKey] ?? ''));
+                        if ($candidate !== '')
+                            $ip = trim(explode(',', $candidate)[0]);
+                        break;
+                    }
+                }
+            } else {
+                $forwarded = Request::headers('X-Forwarded-For');
+                $ip = $forwarded
+                    ? trim(explode(',', $forwarded)[0])
+                    : (string)(Request::headers('Client-Ip') ?: $remote);
+            }
+
+            $data = self::normalizeIp($ip);
         }
 
         return $data;
+    }
+
+    private static function normalizeIp(string $ip): string {
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            $packed = @inet_pton($ip);
+            if ($packed !== false)
+                return implode(':', str_split(bin2hex($packed), 4));
+        }
+
+        return $ip;
+    }
+
+    private static function ipInCidr(string $ip, string $cidr): bool {
+        if (strpos($cidr, '/') === false) return false;
+
+        [$subnet, $bits] = explode('/', $cidr, 2);
+        $bits = (int)$bits;
+
+        $ipBin     = @inet_pton($ip);
+        $subnetBin = @inet_pton($subnet);
+
+        if ($ipBin === false || $subnetBin === false) return false;
+        if (strlen($ipBin) !== strlen($subnetBin)) return false;
+
+        $maxBits = strlen($ipBin) * 8;
+        if ($bits < 0 || $bits > $maxBits) return false;
+
+        $bytes = intdiv($bits, 8);
+        $rem   = $bits % 8;
+
+        if ($bytes > 0 && strncmp($ipBin, $subnetBin, $bytes) !== 0) return false;
+        if ($rem === 0) return true;
+
+        $mask = chr((0xff << (8 - $rem)) & 0xff);
+
+        return ($ipBin[$bytes] & $mask) === ($subnetBin[$bytes] & $mask);
+    }
+
+    private static function ipMatches(string $ip, string $pattern): bool {
+        if ($pattern === '') return false;
+        if (strpos($pattern, '/') !== false) return self::ipInCidr($ip, $pattern);
+        if (substr($pattern, -1) === '.') return strncmp($ip, $pattern, strlen($pattern)) === 0;
+
+        return self::normalizeIp($ip) === self::normalizeIp($pattern);
     }
 
     private function salt(): string {
@@ -303,7 +391,37 @@ final class Access {
         if (isset($handled)) return;
         $handled = $ip;
 
-        if (in_array($ip, (array)self::config('firewall.exclude'), true)) return;
+        foreach ((array)self::config('firewall.exclude') as $ex)
+            if (self::ipMatches($ip, (string)$ex)) return;
+
+        if (self::config('firewall.verifyBots') && self::verifyBot()) return;
+
+        $screen = (array)self::config('firewall.screen');
+        if ($screen) {
+            $reason = null;
+            if (!empty($screen['noUserAgent']) && (string)Request::headers('User-Agent') === '') $reason = 'no_user_agent';
+            elseif (!empty($screen['noReferer']) && self::getRequestOrigin() === '')              $reason = 'no_referer';
+            elseif (!empty($screen['noLang'])) {
+                $al = (string)Request::headers('Accept-Language');
+                if ($al === '' || $al === '*') $reason = 'no_lang';
+            }
+            if ($reason === null && !empty($screen['http2Only']) && (($_SERVER['SERVER_PROTOCOL'] ?? '') !== 'HTTP/2.0'))
+                $reason = 'no_http2';
+
+            if ($reason !== null) {
+                $self->fire('screen', $reason, $ip);
+                self::throw(403);
+                return;
+            }
+        }
+
+        $verdict = self::matchRules($ip);
+        if ($verdict === 'allow') return;
+        if ($verdict === 'deny') {
+            $self->fire('deny', $ip);
+            self::throw(403);
+            return;
+        }
 
         $now   = time();
         $cache = $self->cache->make(['access:fw', substr(hash('sha256', $self->salt().'|'.$ip), 0, 32)]);
@@ -404,6 +522,97 @@ final class Access {
         $self = self::getInstance();
         $self->cache->purgeBase();
         $self->fire('unbanAll');
+    }
+
+    public static function verifyBot(?array $signatures = null): bool {
+        $ua = (string)Request::headers('User-Agent');
+        if ($ua === '') return false;
+
+        $ip = self::getClientIp();
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) return false;
+
+        $ptrOk = null;
+        foreach ($signatures ?? (array)self::config('bots') as $needle => $suffixes)
+            if (stripos($ua, (string)$needle) !== false) { $ptrOk = (array)$suffixes; break; }
+
+        if ($ptrOk === null) return false;
+
+        $self   = self::getInstance();
+        $cache  = $self->cache->make(['access:bot', substr(hash('sha256', $self->salt().'|'.$ip.'|'.$ua), 0, 32)]);
+        $cached = $self->unseal($cache->get());
+
+        if (isset($cached['v'])) {
+            $verified = (bool)$cached['v'];
+        } elseif (in_array('.', $ptrOk, true)) {
+            $verified = true;
+        } else {
+            $verified = false;
+            $ptr = @gethostbyaddr($ip);
+
+            if ($ptr !== false && $ptr !== $ip) {
+                $hit = false;
+                foreach ($ptrOk as $suffix)
+                    if ($suffix !== '' && stripos($ptr, $suffix) !== false) { $hit = true; break; }
+
+                if ($hit) {
+                    $ipNorm = self::normalizeIp($ip);
+                    foreach ((array)@dns_get_record($ptr, DNS_A + DNS_AAAA) as $r)
+                        if ((isset($r['ip'])   && self::normalizeIp($r['ip'])   === $ipNorm)
+                         || (isset($r['ipv6']) && self::normalizeIp($r['ipv6']) === $ipNorm)) {
+                            $verified = true;
+                            break;
+                        }
+                }
+            }
+        }
+
+        if (!isset($cached['v']))
+            $cache->set($self->seal(['v' => $verified ? 1 : 0]), 3600);
+
+        if ($verified) $self->fire('verifiedBot', $ip, $ua);
+
+        return $verified;
+    }
+
+    private static function matchRules(string $ip): ?string {
+        $rules = (array)self::config('firewall.rules');
+        if (!$rules) return null;
+
+        $ctx = [
+            'ip'      => $ip,
+            'cidr'    => $ip,
+            'ua'      => (string)Request::headers('User-Agent'),
+            'referer' => self::getRequestOrigin(),
+            'lang'    => strtolower(substr(preg_replace('/[^a-zA-Z]/', '', (string)Request::headers('Accept-Language')), 0, 2)),
+            'country' => isset($_SERVER['HTTP_CF_IPCOUNTRY']) ? strtoupper(preg_replace('/[^A-Za-z]/', '', $_SERVER['HTTP_CF_IPCOUNTRY'])) : '',
+            'ptr'     => null,
+        ];
+
+        foreach (['allow', 'deny'] as $action) {
+            foreach ($rules as $rule) {
+                $rule = array_values((array)$rule);
+                if (count($rule) < 3 || strtolower((string)$rule[0]) !== $action) continue;
+
+                $type    = strtolower((string)$rule[1]);
+                $pattern = (string)$rule[2];
+                if ($pattern === '') continue;
+
+                if ($ctx['ptr'] === null && $type === 'ptr') {
+                    $p = @gethostbyaddr($ip);
+                    $ctx['ptr'] = ($p && $p !== $ip) ? strtolower($p) : '';
+                }
+
+                $hit = ($type === 'ip' || $type === 'cidr')
+                    ? self::ipMatches($ip, $pattern)
+                    : (in_array($type, ['country', 'lang'], true)
+                        ? (($ctx[$type] ?? '') !== '' && strcasecmp((string)$ctx[$type], $pattern) === 0)
+                        : (in_array($type, ['referer', 'ua', 'ptr'], true) && ($ctx[$type] ?? '') !== '' && stripos((string)$ctx[$type], $pattern) !== false));
+
+                if ($hit) return $action;
+            }
+        }
+
+        return null;
     }
 
     public static function handleCORS(array $config = []) {
