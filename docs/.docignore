@@ -198,4 +198,4 @@ autoload.php
 
 # Assets & license
 assets/
-docs/LICENSE.md
+LICENSE.md
