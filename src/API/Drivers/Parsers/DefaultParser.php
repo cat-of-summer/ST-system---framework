@@ -4,6 +4,7 @@ namespace ST_system\API\Drivers\Parsers;
 
 use ST_system\API\IntegrationDriver;
 use ST_system\Storage\File;
+use ST_system\Main;
 use ST_system\Rule;
 
 class DefaultParser extends IntegrationDriver {
@@ -63,7 +64,8 @@ class DefaultParser extends IntegrationDriver {
         $this->purgeBase();
     }
 
-    final public function fetch(string|array|null $input = null): array {
+    /** @param string|array|null $input */
+    final public function fetch($input = null): array {
         $entrypoint = $this->getEntrypoint();
         $schema     = $this->getSchema()   ?: $this->schema;
         $template   = $this->getTemplate() ?: $this->template;
@@ -71,7 +73,7 @@ class DefaultParser extends IntegrationDriver {
         $this->fire('before_fetch', $input);
 
         $calls = [$input];
-        if (is_array($input) && $input !== [] && array_is_list($input)) {
+        if (is_array($input) && $input !== [] && Main::arrayIsList($input)) {
             $calls = $input;
             foreach ($input as $item)
                 if (!is_array($item)) { $calls = [$input]; break; }
@@ -79,7 +81,7 @@ class DefaultParser extends IntegrationDriver {
 
         $results = [];
         foreach ($calls as $callInput) {
-            if (is_array($callInput) && !empty($callInput) && !array_is_list($callInput)) {
+            if (is_array($callInput) && !empty($callInput) && !Main::arrayIsList($callInput)) {
                 $expanded_calls = [[]];
                 foreach ($callInput as $key => $value) {
                     $candidates = is_array($value) ? array_values($value) : [$value];
@@ -106,7 +108,8 @@ class DefaultParser extends IntegrationDriver {
         return $results;
     }
 
-    private function fetchOne(string|array|null $input, array $schema, string $template, string $entrypoint): array {
+    /** @param string|array|null $input */
+    private function fetchOne($input, array $schema, string $template, string $entrypoint): array {
         $url  = $this->resolveUrl($input, $template, $entrypoint);
         $data = is_array($input)
             ? array_merge($input, ['url' => $url])
@@ -142,7 +145,8 @@ class DefaultParser extends IntegrationDriver {
         ];
     }
 
-    private function resolveUrl(string|array|null $input, string $template, string $entrypoint): string {
+    /** @param string|array|null $input */
+    private function resolveUrl($input, string $template, string $entrypoint): string {
         if ($entrypoint !== '')
             return $entrypoint;
 

@@ -2,6 +2,8 @@
 
 namespace ST_system\API\Drivers\Traits;
 
+use ST_system\Main;
+
 trait HasXmlResponse {
 
     protected function __init(): void {
@@ -62,7 +64,7 @@ trait HasXmlResponse {
                 continue;
             }
 
-            if (!is_array($result[$name]) || !array_is_list($result[$name]))
+            if (!is_array($result[$name]) || !Main::arrayIsList($result[$name]))
                 $result[$name] = [$result[$name]];
 
             $result[$name][] = $value;

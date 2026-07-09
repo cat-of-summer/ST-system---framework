@@ -14,6 +14,10 @@ abstract class IntegrationDriver {
     protected static function getDefaultConfig(): array {
         return [
             'endpoint'  => '',
+            // Без них зависший эндпоинт вешает вызывающий процесс навсегда.
+            // Секунды; 0 — без ограничения. Имена те же, что в Storage\File.
+            'timeout'         => 30.0,
+            'connect_timeout' => 10.0,
             'cache' => [
                 'dir' => '',
                 'use' => false,
@@ -111,6 +115,11 @@ abstract class IntegrationDriver {
         $config['cache_ttl']    = is_int($config['cache_ttl'] ?? null)      ? $config['cache_ttl']  : 0;
         $config['meta']         = is_array($config['meta'] ?? null)         ? $config['meta']       : [];
 
+        $config['timeout']         = is_numeric($config['timeout'] ?? null)
+            ? (float)$config['timeout']         : (float)static::config('timeout');
+        $config['connect_timeout'] = is_numeric($config['connect_timeout'] ?? null)
+            ? (float)$config['connect_timeout'] : (float)static::config('connect_timeout');
+
         $this->methods_map[$method] = $config;
 
         return $this;
@@ -135,6 +144,13 @@ abstract class IntegrationDriver {
         $this->fire('before_curl_init', $request_url, $method, $params, $config);
 
         $curl = curl_init();
+
+        // Ставим ДО события curl_init, чтобы драйвер мог переопределить. 0 — без ограничения.
+        $timeout         = (float)($config['timeout']         ?? 0);
+        $connect_timeout = (float)($config['connect_timeout'] ?? 0);
+
+        if ($timeout > 0)         curl_setopt($curl, CURLOPT_TIMEOUT_MS,        (int)round($timeout * 1000));
+        if ($connect_timeout > 0) curl_setopt($curl, CURLOPT_CONNECTTIMEOUT_MS, (int)round($connect_timeout * 1000));
 
         $this->fire('curl_init', $curl);
 

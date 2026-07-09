@@ -120,9 +120,12 @@ final class File {
             ARRAY_FILTER_USE_BOTH
         );
 
-        return $matched
-            ? new (reset($matched))($file)
-            : new class($file) extends Mimes\Mime {};
+        if (!$matched) return new class($file) extends Mimes\Mime {};
+
+        // `new (reset($matched))(...)` — синтаксис PHP 8.0; на 7.4 имя класса берётся из переменной.
+        $service = reset($matched);
+
+        return new $service($file);
     }
 
     public function setMime(string $mime): self {

@@ -25,7 +25,7 @@ final class Robokassa extends IntegrationDriver
         $invId,
         string $password1,
         array $shpParams = [],
-        string $algo = 'md5',
+        string $algo = 'md5'
     ): string {
         $base = "{$merchantLogin}:{$outSum}:{$invId}:{$password1}";
 
@@ -40,7 +40,7 @@ final class Robokassa extends IntegrationDriver
         $invId,
         string $password2,
         array $shpParams = [],
-        string $algo = 'md5',
+        string $algo = 'md5'
     ): string {
         $base = "{$outSum}:{$invId}:{$password2}";
 
@@ -74,7 +74,7 @@ final class Robokassa extends IntegrationDriver
         $invId,
         string $password1,
         array $shpParams = [],
-        string $algo = 'md5',
+        string $algo = 'md5'
     ): string {
         $base = "{$outSum}:{$invId}:{$password1}";
 
@@ -96,7 +96,7 @@ final class Robokassa extends IntegrationDriver
         string $merchantLogin,
         $invoiceId,
         string $password2,
-        string $algo = 'md5',
+        string $algo = 'md5'
     ): string {
         return self::hashSignature("{$merchantLogin}:{$invoiceId}:{$password2}", $algo);
     }

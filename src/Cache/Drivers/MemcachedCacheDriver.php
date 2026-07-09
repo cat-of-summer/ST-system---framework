@@ -14,6 +14,18 @@ class MemcachedCacheDriver extends CacheDriver {
 
     private ?MemcachedAdapterInterface $connection = null;
 
+    /** Конфиг соединения, чтобы уметь переподключиться после disconnect(). */
+    private array $connection_config = [];
+
+    /** Соединение внедрено извне — оно не наше, ронять его нельзя. */
+    private bool $connection_injected = false;
+
+    /** Пул соединений, общий на процесс. */
+    private static array $pool = [];
+
+    /** @var \WeakReference[] Живые драйверы — их ссылки на адаптер тоже надо ронять. */
+    private static array $live = [];
+
     protected static function getDefaultConfig(): array {
         return [
             'file'          => 'data',
@@ -30,20 +42,64 @@ class MemcachedCacheDriver extends CacheDriver {
 
     protected function __init(array $config): void {
         $this->attributes['prefix'] = (string)$config['prefix'];
+        $this->connection_config    = $config;
+        $this->connection_injected  = isset($config['connection'])
+                                      && $config['connection'] instanceof MemcachedAdapterInterface;
         $this->connection           = static::getConnection($config);
         $this->attributes['bucket'] = $this->attributes['prefix'].$this->id;
+
+        self::$live[] = \WeakReference::create($this);
+    }
+
+    /** CacheDriver::spawn() клонирует драйвер — клон тоже держит ссылку на адаптер. */
+    public function __clone() {
+        self::$live[] = \WeakReference::create($this);
     }
 
     protected function __rebind(array $override): void {
         if (isset($override['prefix']) && $override['prefix'] !== null)
             $this->attributes['prefix'] = (string)$override['prefix'];
-        if (isset($override['connection']) && $override['connection'] instanceof MemcachedAdapterInterface)
-            $this->connection = $override['connection'];
+        if (isset($override['connection']) && $override['connection'] instanceof MemcachedAdapterInterface) {
+            $this->connection          = $override['connection'];
+            $this->connection_injected = true;
+        }
         $this->attributes['bucket'] = $this->attributes['prefix'].$this->id;
     }
 
     public function isAvailable(): bool {
-        return $this->connection !== null;
+        return $this->connection() !== null;
+    }
+
+    /** Лениво переоткрывает соединение, если его уронил disconnect(). */
+    private function connection(): ?MemcachedAdapterInterface {
+        if ($this->connection === null && !$this->connection_injected && $this->connection_config !== [])
+            $this->connection = static::getConnection($this->connection_config);
+
+        return $this->connection;
+    }
+
+    /**
+     * Роняет все соединения процесса; следующее обращение откроет новые.
+     *
+     * Обязателен вызов в ДОЧЕРНЕМ процессе сразу после pcntl_fork(): унаследованный сокет
+     * нельзя делить с родителем — их байтовые потоки перемешаются.
+     * Для Memcached с persistent_id это особенно важно: такие соединения переживают запрос.
+     *
+     * Соединения, внедрённые извне через ['connection' => $adapter], не трогаются.
+     */
+    public static function disconnect(): void {
+        self::$pool = [];
+
+        foreach (self::$live as $index => $ref) {
+            $driver = $ref->get();
+
+            if ($driver === null)             { unset(self::$live[$index]); continue; }
+            if ($driver->connection_injected) continue;
+
+            $driver->connection = null;
+        }
+
+        self::$live = array_values(self::$live);
     }
 
     private static function getConnection(array $cfg): ?MemcachedAdapterInterface {
@@ -53,7 +109,6 @@ class MemcachedCacheDriver extends CacheDriver {
         $hasServers = is_array($cfg['servers'] ?? null) && $cfg['servers'];
         if (!$hasServers && (!is_string($cfg['host']) || $cfg['host'] === '')) return null;
 
-        static $pool = [];
         $key = md5(serialize([
             $cfg['servers'] ?? null,
             (string)($cfg['host'] ?? ''),
@@ -61,12 +116,12 @@ class MemcachedCacheDriver extends CacheDriver {
             (string)($cfg['auth'] ?? ''),
             (string)($cfg['persistent_id'] ?? ''),
         ]));
-        if (isset($pool[$key])) return $pool[$key];
+        if (isset(self::$pool[$key])) return self::$pool[$key];
 
         foreach (self::ADAPTERS as $adapterClass) {
             if (!$adapterClass::isAvailable()) continue;
             try {
-                return $pool[$key] = $adapterClass::connect($cfg);
+                return self::$pool[$key] = $adapterClass::connect($cfg);
             } catch (\Throwable $e) {
                 continue;
             }
@@ -90,11 +145,11 @@ class MemcachedCacheDriver extends CacheDriver {
     }
 
     protected function writeBlob(string $file, string $payload): void {
-        $this->connection->set($this->key($file), $payload, 0);
+        $this->connection()->set($this->key($file), $payload, 0);
     }
 
     protected function readBlob(string $file): ?string {
-        $r = $this->connection->get($this->key($file));
+        $r = $this->connection()->get($this->key($file));
         return ($r === false) ? null : (string)$r;
     }
 
@@ -103,19 +158,19 @@ class MemcachedCacheDriver extends CacheDriver {
         if ($json === false) throw new \RuntimeException('Failed to encode JSON for Memcached meta');
 
         $expiry = static::expiryFromMeta($meta);
-        $this->connection->set($this->metaKey($file), $json, $expiry);
-        if ($expiry > 0) $this->connection->touch($this->key($file), $expiry);
+        $this->connection()->set($this->metaKey($file), $json, $expiry);
+        if ($expiry > 0) $this->connection()->touch($this->key($file), $expiry);
     }
 
     protected function readMeta(string $file): ?array {
-        $r = $this->connection->get($this->metaKey($file));
+        $r = $this->connection()->get($this->metaKey($file));
         if ($r === false) return null;
         $d = @json_decode($r, true);
         return is_array($d) ? $d : null;
     }
 
     protected function blobExists(string $file): bool {
-        return $this->connection->exists($this->key($file));
+        return $this->connection()->exists($this->key($file));
     }
 
     protected function purgeStorage(): void {
@@ -126,23 +181,23 @@ class MemcachedCacheDriver extends CacheDriver {
             $this->key($file), $this->metaKey($file),
             $this->key('data'), $this->metaKey('data'),
         ];
-        $this->connection->delete(array_values(array_unique($keys)));
+        $this->connection()->delete(array_values(array_unique($keys)));
     }
 
     protected function purgeBaseStorage(): void {
         // Нет prefix-scoped очистки — сбрасываем весь сервер.
-        $this->connection->flush();
+        $this->connection()->flush();
     }
 
     protected function purgeExpiredStorage(): void {
         // Native TTL сам эвиктит истёкшие записи; здесь — немедленное удаление текущего файла.
         $file    = $this->attributes['file'];
-        $raw     = $this->connection->get($this->metaKey($file));
+        $raw     = $this->connection()->get($this->metaKey($file));
         $decoded = is_string($raw) ? @json_decode($raw, true) : null;
         $expires = is_array($decoded) ? ($decoded['expires_in'] ?? 0) : 0;
 
         if ($expires !== -1 && $expires < time())
-            $this->connection->delete([$this->key($file), $this->metaKey($file)]);
+            $this->connection()->delete([$this->key($file), $this->metaKey($file)]);
     }
 
     protected function purgeExpiredBaseStorage(): void {

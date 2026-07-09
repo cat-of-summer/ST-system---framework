@@ -17,6 +17,18 @@ class DatabaseCacheDriver extends CacheDriver {
 
     private ?DatabaseAdapterInterface $connection = null;
 
+    /** Конфиг соединения, чтобы уметь переподключиться после disconnect(). */
+    private array $connection_config = [];
+
+    /** Соединение внедрено извне — оно не наше, ронять его нельзя. */
+    private bool $connection_injected = false;
+
+    /** Пул соединений, общий на процесс. */
+    private static array $pool = [];
+
+    /** @var \WeakReference[] Живые драйверы — их ссылки на адаптер тоже надо ронять. */
+    private static array $live = [];
+
     protected static function getDefaultConfig(): array {
         return [
             'file'       => 'data',
@@ -36,20 +48,63 @@ class DatabaseCacheDriver extends CacheDriver {
 
     protected function __init(array $config): void {
         $this->attributes['prefix'] = (string)$config['prefix'];
+        $this->connection_config    = $config;
+        $this->connection_injected  = isset($config['connection'])
+                                      && $config['connection'] instanceof DatabaseAdapterInterface;
         $this->connection           = static::getConnection($config);
         $this->attributes['bucket'] = $this->attributes['prefix'].$this->id;
+
+        self::$live[] = \WeakReference::create($this);
+    }
+
+    /** CacheDriver::spawn() клонирует драйвер — клон тоже держит ссылку на адаптер. */
+    public function __clone() {
+        self::$live[] = \WeakReference::create($this);
     }
 
     protected function __rebind(array $override): void {
         if (isset($override['prefix']) && $override['prefix'] !== null)
             $this->attributes['prefix'] = (string)$override['prefix'];
-        if (isset($override['connection']) && $override['connection'] instanceof DatabaseAdapterInterface)
-            $this->connection = $override['connection'];
+        if (isset($override['connection']) && $override['connection'] instanceof DatabaseAdapterInterface) {
+            $this->connection          = $override['connection'];
+            $this->connection_injected = true;
+        }
         $this->attributes['bucket'] = $this->attributes['prefix'].$this->id;
     }
 
     public function isAvailable(): bool {
-        return $this->connection !== null;
+        return $this->connection() !== null;
+    }
+
+    /** Лениво переоткрывает соединение, если его уронил disconnect(). */
+    private function connection(): ?DatabaseAdapterInterface {
+        if ($this->connection === null && !$this->connection_injected && $this->connection_config !== [])
+            $this->connection = static::getConnection($this->connection_config);
+
+        return $this->connection;
+    }
+
+    /**
+     * Роняет все соединения процесса; следующее обращение откроет новые.
+     *
+     * Обязателен вызов в ДОЧЕРНЕМ процессе сразу после pcntl_fork(): унаследованный
+     * дескриптор PDO нельзя делить с родителем — их байтовые потоки перемешаются.
+     *
+     * Соединения, внедрённые извне через ['connection' => $adapter], не трогаются.
+     */
+    public static function disconnect(): void {
+        self::$pool = [];
+
+        foreach (self::$live as $index => $ref) {
+            $driver = $ref->get();
+
+            if ($driver === null)             { unset(self::$live[$index]); continue; }
+            if ($driver->connection_injected) continue;
+
+            $driver->connection = null;
+        }
+
+        self::$live = array_values(self::$live);
     }
 
     private static function getConnection(array $cfg): ?DatabaseAdapterInterface {
@@ -71,7 +126,6 @@ class DatabaseCacheDriver extends CacheDriver {
             return null;
         if (!$adapterClass::isAvailable()) return null;
 
-        static $pool = [];
         $key = md5(serialize([
             $engine,
             (string)($cfg['host']     ?? ''),
@@ -80,80 +134,80 @@ class DatabaseCacheDriver extends CacheDriver {
             (string)($cfg['username'] ?? ''),
             (string)($cfg['table']    ?? ''),
         ]));
-        if (isset($pool[$key])) return $pool[$key];
+        if (isset(self::$pool[$key])) return self::$pool[$key];
 
         try {
-            return $pool[$key] = $adapterClass::connect($cfg);
+            return self::$pool[$key] = $adapterClass::connect($cfg);
         } catch (\Throwable $e) {
             return null;
         }
     }
 
     protected function writeBlob(string $file, string $payload): void {
-        $this->connection->write($this->attributes['bucket'], $file, $payload);
+        $this->connection()->write($this->attributes['bucket'], $file, $payload);
     }
 
     protected function readBlob(string $file): ?string {
-        $r = $this->connection->read($this->attributes['bucket'], $file);
+        $r = $this->connection()->read($this->attributes['bucket'], $file);
         return ($r === false) ? null : $r;
     }
 
     protected function writeMeta(string $file, array $meta): void {
         $json = @json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($json === false) throw new \RuntimeException('Failed to encode JSON for Database meta');
-        $this->connection->write($this->attributes['bucket'], $file.'.meta', $json);
+        $this->connection()->write($this->attributes['bucket'], $file.'.meta', $json);
     }
 
     protected function readMeta(string $file): ?array {
-        $r = $this->connection->read($this->attributes['bucket'], $file.'.meta');
+        $r = $this->connection()->read($this->attributes['bucket'], $file.'.meta');
         if ($r === false) return null;
         $d = @json_decode($r, true);
         return is_array($d) ? $d : null;
     }
 
     protected function blobExists(string $file): bool {
-        return $this->connection->exists($this->attributes['bucket'], $file);
+        return $this->connection()->exists($this->attributes['bucket'], $file);
     }
 
     protected function purgeStorage(): void {
-        $this->connection->delete($this->attributes['bucket']);
+        $this->connection()->delete($this->attributes['bucket']);
     }
 
     protected function purgeBaseStorage(): void {
         $cursor = 0;
         do {
-            $keys = $this->connection->scan($cursor, $this->attributes['prefix'].'*', 500);
-            if (is_array($keys) && $keys) $this->connection->delete($keys);
+            $keys = $this->connection()->scan($cursor, $this->attributes['prefix'].'*', 500);
+            if (is_array($keys) && $keys) $this->connection()->delete($keys);
         } while ($cursor !== 0);
     }
 
     protected function purgeExpiredStorage(): void {
         $meta_field = $this->attributes['file'].'.meta';
-        $raw     = $this->connection->read($this->attributes['bucket'], $meta_field);
+        $raw     = $this->connection()->read($this->attributes['bucket'], $meta_field);
         $decoded = is_string($raw) ? @json_decode($raw, true) : null;
         $expires = is_array($decoded) ? ($decoded['expires_in'] ?? 0) : 0;
 
         if ($expires !== -1 && $expires < time())
-            $this->connection->delete($this->attributes['bucket']);
+            $this->connection()->delete($this->attributes['bucket']);
     }
 
     protected function purgeExpiredBaseStorage(): void {
         $meta_field = $this->attributes['file'].'.meta';
         $cursor = 0;
         do {
-            $keys = $this->connection->scan($cursor, $this->attributes['prefix'].'*', 500);
+            $keys = $this->connection()->scan($cursor, $this->attributes['prefix'].'*', 500);
             if (!is_array($keys) || !$keys) continue;
 
             $now = time();
             $to_delete = [];
             foreach ($keys as $bucket) {
-                $raw     = $this->connection->read($bucket, $meta_field);
+                $raw     = $this->connection()->read($bucket, $meta_field);
                 $decoded = is_string($raw) ? @json_decode($raw, true) : null;
                 $expires = is_array($decoded) ? ($decoded['expires_in'] ?? 0) : 0;
                 if ($expires !== -1 && $expires < $now) $to_delete[] = $bucket;
             }
 
-            if ($to_delete) $this->connection->delete($to_delete);
+            if ($to_delete) $this->connection()->delete($to_delete);
         } while ($cursor !== 0);
     }
 }
