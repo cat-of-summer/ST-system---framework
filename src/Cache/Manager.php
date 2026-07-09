@@ -133,22 +133,19 @@ final class Manager {
                 return new static($this->driver->spawn($key, $override));
 
             case 'remember':
-                $cb   = $args[0] ?? null;
-                $ttl  = $args[1] ?? 0;
-                $file = $args[2] ?? '';
+                $cb    = $args[0] ?? null;
+                $ttl   = (int)($args[1] ?? 0);
+                $file  = (string)($args[2] ?? '');
+                $stamp = $args[3] ?? null;
 
-                $data = $this->driver->get($file);
-                if ($data !== null) return $data;
+                if ($stamp === null || ($this->driver->getMeta($file)['stamp'] ?? null) === $stamp) {
+                    $data = $this->driver->get($file);
+                    if ($data !== null) return $data;
+                }
 
                 $data = $cb();
-                $this->driver->set($data, (int)$ttl, (string)$file);
+                $this->driver->set($data, $ttl, $file, $stamp === null ? [] : ['stamp' => $stamp]);
                 return $data;
-            
-            case 'purge':
-                return ($args[0] ?? true) ? $this->driver->purge() : $this->driver->purgeExpired();
-
-            case 'purgeBase':
-                return ($args[0] ?? true) ? $this->driver->purgeBase() : $this->driver->purgeExpiredBase();
 
             default:
                 return $this->driver->{$name}(...$args);
@@ -157,6 +154,10 @@ final class Manager {
 
     public function __get(string $name) {
         return $this->driver->{$name};
+    }
+
+    public function __isset(string $name): bool {
+        return isset($this->driver->{$name});
     }
 
     

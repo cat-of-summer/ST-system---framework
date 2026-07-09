@@ -45,8 +45,15 @@ $ai->clearHistory();
 ### `getHistory(int $count = 0, int $start = 0): array`
 История диалога. `$count=0` — все сообщения.
 
-### `getHistorySize(string $unit = 'b'): int|float`
-Размер истории в байтах/КБ/МБ.
+### `getHistorySize(string $unit = 'b'): int|float|string`
+Размер истории в байтах. `$unit` передаётся в `Main::formatBytes()`, поэтому доступны все его режимы — включая авторежим и разложение по единицам.
+
+```php
+$ai->getHistorySize();          // 18432 (int)
+$ai->getHistorySize('kb');      // 18.0 (float)
+$ai->getHistorySize('');        // '18 KB'
+$ai->getHistorySize('MB KB');   // '0 MB 18 KB'
+```
 
 ### `clearHistory(int $count = 0, int $start = 0): void`
-Очистка истории (полная или конкретный срез). Обновляет кэш..php
+Очистка истории (полная или конкретный срез). Обновляет кэш.

@@ -14,7 +14,7 @@ trait Minifiable {
         return ['cache_dir' => ''];
     }
 
-    private Cache $cache;
+    protected Cache $cache;
     private bool $is_minified = false;
 
     protected function __init(): void {
@@ -41,8 +41,8 @@ trait Minifiable {
             'file' => $instance->getBasename().'.min.'.$instance->getExtension()
         ]);
 
-        if (($config['force'] ?? false) || !is_file($cache->file) || $cache->getMeta()['modified_at'] < $cache->getMeta($instance->getFilename())['modified_at'])
-            $cache->set($this->__minify($raw = $instance->getRaw(), $config) ?: $raw);
+        if (($config['force'] ?? false) || !is_file($cache->file) || ($cache->getMeta()['stamp'] ?? null) !== $instance->mtime)
+            $cache->set($this->__minify($raw = $instance->getRaw(), $config) ?: $raw, 0, '', ['stamp' => $instance->mtime]);
 
         return $instance->make($cache->file);
     }

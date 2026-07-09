@@ -38,14 +38,14 @@ class FileSystemCacheDriver extends CacheDriver {
         return $this->getFileAttribute().'.meta';
     }
 
-    public function initDir(string $dir = ''): bool {
-        static $initialized = [];
+    private static array $initialized = [];
 
+    public function initDir(string $dir = ''): bool {
         if ($dir === '') $dir = $this->attributes['dir'];
 
-        if (isset($initialized[$dir])) return $initialized[$dir];
+        if (isset(static::$initialized[$dir])) return static::$initialized[$dir];
         if (!is_dir($dir)) @mkdir($dir, 0775, true);
-        return $initialized[$dir] = is_dir($dir) && is_writable($dir);
+        return static::$initialized[$dir] = is_dir($dir) && is_writable($dir);
     }
 
     protected function writeBlob(string $file, string $payload): void {
@@ -130,18 +130,28 @@ class FileSystemCacheDriver extends CacheDriver {
         return is_file($this->attributes['dir'].'/'.$file);
     }
 
+
+    private static function purgeInitialized(string $dir): void {
+        foreach (array_keys(static::$initialized) as $known)
+            if ($known === $dir || strncmp($known, $dir.'/', strlen($dir) + 1) === 0)
+                unset(static::$initialized[$known]);
+    }
+
     protected function purgeStorage(): void {
+        static::purgeInitialized($this->attributes['dir']);
         if (!is_dir($this->attributes['dir'])) return;
         $this->purgeDirectory($this->attributes['dir']);
         @rmdir($this->attributes['dir']);
     }
 
     protected function purgeBaseStorage(): void {
+        static::purgeInitialized($this->attributes['base_dir']);
         if (!is_dir($this->attributes['base_dir'])) return;
         $this->purgeDirectory($this->attributes['base_dir']);
     }
 
     protected function purgeExpiredStorage(): void {
+        static::purgeInitialized($this->attributes['dir']);
         if (!is_dir($this->attributes['dir'])) return;
         $this->dropExpiredIn($this->attributes['dir']);
         @rmdir($this->attributes['dir']);
@@ -149,6 +159,7 @@ class FileSystemCacheDriver extends CacheDriver {
 
     protected function purgeExpiredBaseStorage(): void {
         $base = $this->attributes['base_dir'];
+        static::purgeInitialized($base);
         if (!is_dir($base)) return;
 
         $entries = @scandir($base);

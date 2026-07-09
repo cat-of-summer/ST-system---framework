@@ -169,7 +169,7 @@ class ImageMime extends Mime {
         return $result;
     }
 
-    private Cache $cache;
+    protected Cache $cache;
 
     protected function __init(): void {
         static $is_sorted = false;
@@ -278,10 +278,15 @@ class ImageMime extends Mime {
         if (!$instance->exists())
             throw new \InvalidArgumentException("File not found: {$instance->getPathname()}");
 
-        $cache = $this->cache->make($instance->getOriginal(true)->getPathname());
+        $cache = $this->cache->make($instance->getOriginal(true)->getPathname(), [
+            'file' => $instance->getBasename().'.imagesize'
+        ]);
 
-        if ($result = $cache->getMeta()['imageSize'])
-            return $result;
+        $stamp = $instance->mtime;
+        $meta  = $cache->getMeta();
+
+        if (($meta['stamp'] ?? null) === $stamp)
+            return $meta['size'];
 
         switch (static::$IMAGE_DRIVER) {
             case 'imagick':
@@ -299,23 +304,22 @@ class ImageMime extends Mime {
 
                 if (!$info)
                     throw new \Exception("Couldn't resize the image");
-                
+
                 $width  = (int)$info[0];
                 $height = (int)$info[1];
             break;
         }
 
-        $result = [
+        $size = [
             'width' => $width,
             'height' => $height,
             'side' => $width > $height ? $width : $height
         ];
 
-        $cache->setMeta([
-            'imageSize' => $result
-        ]);
+        // ttl -1 -> expires_in = -1, иначе purgeExpired() снесёт запись без TTL
+        $cache->setMeta(['size' => $size, 'stamp' => $stamp], -1, false);
 
-        return $result;
+        return $size;
     }
 
     public function convert(array $config = []): File {
@@ -449,7 +453,7 @@ class ImageMime extends Mime {
             'file' => $prefix.$instance->getBasename().'.'.$new_extension
         ]);
 
-        if (($config['force'] ?? false) || !is_file($cache->file) || $cache->getMeta()['modified_at'] < $cache->getMeta($instance->getFilename())['modified_at']) {
+        if (($config['force'] ?? false) || !is_file($cache->file) || ($cache->getMeta()['stamp'] ?? null) !== $instance->mtime) {
             $cache->initDir();
 
             switch (static::$IMAGE_DRIVER) {
@@ -491,7 +495,7 @@ class ImageMime extends Mime {
                 break;
             }
 
-            $cache->setMeta([]);
+            $cache->setMeta(['stamp' => $instance->mtime]);
         }
 
         return $instance->make($cache->file);
@@ -511,7 +515,7 @@ class ImageMime extends Mime {
             'file' => $prefix.$instance->getBasename().'.svg',
         ]);
 
-        if (($config['force'] ?? false) || !is_file($cache->file)) {
+        if (($config['force'] ?? false) || !is_file($cache->file) || ($cache->getMeta()['stamp'] ?? null) !== $instance->mtime) {
             $cache->initDir();
 
             $svg = '<?xml version="1.0" encoding="UTF-8"?>'
@@ -520,7 +524,7 @@ class ImageMime extends Mime {
                  .'</svg>';
 
             file_put_contents($cache->file, $svg);
-            $cache->setMeta([]);
+            $cache->setMeta(['stamp' => $instance->mtime]);
         }
 
         return $instance->make($cache->file);

@@ -471,6 +471,88 @@ final class Main {
         return true;
     }
 
+    public const BYTE_UNITS = [
+        'pb' => 1125899906842624,
+        'tb' => 1099511627776,
+        'gb' => 1073741824,
+        'mb' => 1048576,
+        'kb' => 1024,
+        'b'  => 1,
+    ];
+
+
+    public static function formatBytes($bytes, string $format = '', int $precision = 2) {
+        $bytes = (float)$bytes;
+
+        if ($format === '') {
+            foreach (static::BYTE_UNITS as $unit => $factor)
+                if ($bytes >= $factor || $factor === 1)
+                    return round($bytes / $factor, $precision).' '.strtoupper($unit);
+        }
+
+        $parts   = [];
+        $units   = [];
+        $literal = '';
+        $length  = strlen($format);
+
+        for ($i = 0; $i < $length;) {
+            if ($format[$i] === '\\' && $i + 1 < $length) {
+                $literal .= $format[$i + 1];
+                $i += 2;
+                continue;
+            }
+
+            $unit = null;
+            foreach ([3, 2, 1] as $size) {
+                if ($i + $size > $length) continue;
+                $candidate = strtolower(substr($format, $i, $size));
+                if ($size === 3) $candidate = str_replace('ib', 'b', $candidate);
+                if (isset(static::BYTE_UNITS[$candidate])) {
+                    $unit = [$candidate, $size];
+                    break;
+                }
+            }
+
+            if ($unit === null) {
+                $literal .= $format[$i++];
+                continue;
+            }
+
+            if ($literal !== '') {
+                $parts[] = $literal;
+                $literal = '';
+            }
+
+            $parts[] = [$unit[0], substr($format, $i, $unit[1])];
+            $units[] = $unit[0];
+            $i += $unit[1];
+        }
+
+        if ($literal !== '') $parts[] = $literal;
+
+        if (!$units) return (int)$bytes;
+
+        if (count($units) === 1 && count($parts) === 1) {
+            $factor = static::BYTE_UNITS[$units[0]];
+            return $factor === 1 ? (int)$bytes : $bytes / $factor;
+        }
+
+        $out = '';
+        foreach ($parts as $part) {
+            if (is_string($part)) {
+                $out .= $part;
+                continue;
+            }
+
+            $factor = static::BYTE_UNITS[$part[0]];
+            $value  = (int)floor($bytes / $factor);
+            $bytes -= $value * $factor;
+            $out   .= $value.' '.$part[1];
+        }
+
+        return $out;
+    }
+
     public static function preparePath(string $path, $base = 0): string {
         if (strpos($path, '~') === 0) {
             $path = (Config::env('DOCUMENT_ROOT') ?: Config::env('COMPOSER_ROOT')).'/'.trim($path, '/~');

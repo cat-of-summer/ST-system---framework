@@ -13,6 +13,10 @@ class Mime {
     public function get($data) { return $data; }
     public function set($data, int &$flags = 0) { return $data; }
 
+    public function purge(bool $storage = true): void {
+        if (isset($this->cache)) $this->cache->purge($storage);
+    }
+
     final public function __construct(File $file) {
         $this->file = $file;
 

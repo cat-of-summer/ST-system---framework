@@ -63,11 +63,13 @@ final class File {
 
     private static function make(string $path, array $options = []) { return new static($path, null, $options); }
 
+    private const PURE_INFO = ['getPathname', 'getFilename', 'getExtension', 'getBasename', 'getPath'];
+
     private \SplFileInfo $info;
     private array $info_data = [];
-    private Mimes\Mime $mime;
+    private ?Mimes\Mime $mime = null;
     private array $mime_data = [];
-    private Cache $cache;
+    private ?Cache $cache = null;
     private $original = null;
 
     private static array $last_fetch_per_host = [];
@@ -83,26 +85,32 @@ final class File {
             : 2;
 
         $this->info = new \SplFileInfo($is_uri ? $path : Main::preparePath($path, $base));
+    }
 
-        $cache_filename = $this->getFilename();
+    private function cache(): Cache {
+        if ($this->cache !== null) return $this->cache;
+
+        $filename = $this->getFilename();
 
         if ($this->is_uri) {
-            $q     = strpos($cache_filename, '?');
-            $base  = $q !== false ? substr($cache_filename, 0, $q) : $cache_filename;
-            $query = $q !== false ? substr($cache_filename, $q + 1) : '';
+            $q     = strpos($filename, '?');
+            $base  = $q !== false ? substr($filename, 0, $q) : $filename;
+            $query = $q !== false ? substr($filename, $q + 1) : '';
             $dot   = strrpos($base, '.');
 
-            $cache_filename = ($dot !== false ? substr($base, 0, $dot) : $base) . ($query !== '' ? '_' . md5($query) : '') . ($dot !== false ? substr($base, $dot): '');
+            $filename = ($dot !== false ? substr($base, 0, $dot) : $base) . ($query !== '' ? '_' . md5($query) : '') . ($dot !== false ? substr($base, $dot): '');
         }
 
-        $this->cache = Cache::make($this->getPathname(), [
+        return $this->cache = Cache::make($this->getPathname(), [
             'driver' => 'filesystem',
             'dir' => static::config('cache.dir'),
             'ttl' => static::config('cache.ttl'),
-            'file' => $cache_filename
+            'file' => $filename
         ]);
+    }
 
-        $this->mime = static::resolveMimeService($this->getMime(), $this);
+    private function mime(): Mimes\Mime {
+        return $this->mime ??= static::resolveMimeService($this->getMime(), $this);
     }
 
     private static function resolveMimeService(string $mime, self $file): Mimes\Mime {
@@ -119,8 +127,8 @@ final class File {
 
     public function setMime(string $mime): self {
         if (
-            !((new \ReflectionClass($this->mime))->isAnonymous()) && 
-            !$this->is_uri && 
+            !((new \ReflectionClass($this->mime()))->isAnonymous()) &&
+            !$this->is_uri &&
             $this->exists()
         ) return $this;
 
@@ -169,23 +177,26 @@ final class File {
                 break;
             case 'getBasename':
                 if (empty($args)) {
-                    $key = Main::hash(['getBasename', []]);
-                    if (!array_key_exists($key, $this->info_data))
-                        $this->info_data[$key] = $this->info->getBasename('.'.$this->getExtension());
-                    return $this->info_data[$key];
+                    if (!array_key_exists('getBasename', $this->info_data))
+                        $this->info_data['getBasename'] = $this->info->getBasename('.'.$this->getExtension());
+                    return $this->info_data['getBasename'];
                 }
         }
 
+        $key = $args === [] ? $name : $name.'#'.Main::hash($args);
+
         if (is_callable([$this->info, $name])) {
-            $key = Main::hash([$name, $args]);
+
+            if (!in_array($name, self::PURE_INFO, true))
+                return $this->info->{$name}(...$args);
+
             if (!array_key_exists($key, $this->info_data))
                 $this->info_data[$key] = $this->info->{$name}(...$args);
             return $this->info_data[$key];
         }
 
-        $key = Main::hash([$name, $args]);
         if (!array_key_exists($key, $this->mime_data))
-            $this->mime_data[$key] = $this->mime->{$name}(...$args);
+            $this->mime_data[$key] = $this->mime()->{$name}(...$args);
         return $this->mime_data[$key];
     }
 
@@ -339,6 +350,52 @@ final class File {
         return $files;
     }
 
+    protected function attributeMap(): array {
+        return [
+            'relative_path' => ['getRelativePath', true],
+            'pathname'      => ['getPathname', true],
+            'filename'      => ['getFilename', true],
+            'basename'      => ['getBasename', true],
+            'extension'     => ['getExtension', true],
+            'path'          => ['getPath', true],
+            'service_name'  => ['getServiceName', true],
+            'original'      => ['getOriginal', true],
+
+            'real_path'   => ['getRealPath'],
+            'directory'   => ['getDirectory'],
+            'size'        => ['getSize'],
+            'type'        => ['getType'],
+            'exists'      => ['exists'],
+            'ctime'       => ['getCTime'],
+            'atime'       => ['getATime'],
+            'is_dir'      => ['isDir'],
+            'is_file'     => ['isFile'],
+            'is_readable' => ['isReadable'],
+            'is_writable' => ['isWritable'],
+            'is_link'     => ['isLink'],
+        ];
+    }
+
+    public function purge(bool $storage = true): self {
+        $path = $this->info->getPathname();
+
+        $this->info_data = [];
+        $this->mime_data = [];
+        $this->purgeAttributes();
+
+        if (!$this->is_uri) clearstatcache(true, $path);
+
+        if ($storage)                  $this->cache()->purge(true);
+        elseif ($this->cache !== null) $this->cache->purge(false);
+
+        if ($this->mime !== null) $this->mime->purge($storage);
+
+        if ($original = $this->getOriginal())
+            $original->purge($storage);
+
+        return $original ?? $this;
+    }
+
     public function getMtimeAttribute(): int {
         if ($this->is_uri) return 0;
         $p = $this->getPathname();
@@ -346,17 +403,17 @@ final class File {
     }
 
     public function setMeta(array $meta, bool $append = true): self {
-        $this->cache->setMeta($meta, 0, $append);
+        $this->cache()->setMeta($meta, 0, $append);
         return $this;
     }
 
     public function getMeta(bool $force = false): array {
-        if (!$this->is_uri) return $this->cache->getMeta();
+        if (!$this->is_uri) return $this->cache()->getMeta();
 
         $url = $this->getPathname();
-        $meta = $this->cache->getMeta();
+        $meta = $this->cache()->getMeta();
 
-        if (!$this->cache->isExpired('headers_cache_expires_in') && !$force)
+        if (!$this->cache()->isExpired('headers_cache_expires_in') && !$force)
             return $meta;
 
         $curl = curl_init();
@@ -395,11 +452,11 @@ final class File {
                     'headers_cache_expires_in' => time() + $ttl,
                     'content_length' => ($info['download_content_length'] ?? 0) > 0
                         ? $info['download_content_length']
-                        : $headers['content_length'] ?? 0
+                        : $headers['content-length'] ?? 0
                 ]
             );
 
-            if (($meta['http_code'] ?? null) != 200 && is_file($this->cache->file))
+            if (($meta['http_code'] ?? null) != 200 && is_file($this->cache()->file))
                 $meta['expires_in'] = time() + $this->resolveCacheTtl($meta);
 
             $this->setMeta($meta, false);
@@ -410,21 +467,20 @@ final class File {
 
     
     private function fetch(bool $force = false): self {
-        $this->info_data = [];
-        $this->mime_data = [];
+        $this->purge(false);
 
         if (!$this->is_uri) return $this;
 
         $url = $this->getPathname();
 
         if (!$force) {
-            if (is_file($this->cache->file) && !$this->cache->isExpired())
-                return new static($this->cache->file, $this);
+            if (is_file($this->cache()->file) && !$this->cache()->isExpired())
+                return new static($this->cache()->file, $this);
 
             $meta = $this->getMeta();
 
-            if (is_file($this->cache->file) && ($meta['http_code'] ?? null) != 200)
-                return new static($this->cache->file, $this);
+            if (is_file($this->cache()->file) && ($meta['http_code'] ?? null) != 200)
+                return new static($this->cache()->file, $this);
         }
 
         $attempt = 0;
@@ -432,7 +488,7 @@ final class File {
             try {
                 $this->applyHostDelay($url);
 
-                $fopen = fopen($this->cache->file.'.temp', 'w');
+                $fopen = fopen($this->cache()->file.'.temp', 'w');
                 if (!$fopen) throw new \Exception();
 
                 $curl = curl_init();
@@ -468,11 +524,11 @@ final class File {
                 fclose($fopen);
 
                 if ($error) {
-                    @unlink($this->cache->file.'.temp');
+                    @unlink($this->cache()->file.'.temp');
                     throw new \RuntimeException ("cURL request failed for URL {$url} with error #{$error}: ".curl_strerror($error));
                 }
 
-                rename($this->cache->file.'.temp', $this->cache->file);
+                rename($this->cache()->file.'.temp', $this->cache()->file);
 
                 $ttl = $this->resolveCacheTtl($headers);
                 $cache_expires_in = time() + $ttl;
@@ -484,7 +540,7 @@ final class File {
                         'effective_url' => $info['url'] ?? $url,
                         'content_length' => ($info['download_content_length'] ?? 0) > 0
                             ? $info['download_content_length']
-                            : ($headers['content-length'] ?? filesize($this->cache->file)),
+                            : ($headers['content-length'] ?? filesize($this->cache()->file)),
                         'original_url' => $url,
                         'fetched_at' => time(),
                         'cache_ttl' => $ttl,
@@ -495,7 +551,7 @@ final class File {
 
                 $this->setMeta($meta, false);
 
-                return new static($this->cache->file, $this);
+                return new static($this->cache()->file, $this);
             } catch (\Throwable $th) {
                 $attempt++;
             }
@@ -506,13 +562,13 @@ final class File {
 
     
     public function getSize(string $unit = 'b') {
-        $bytes = $this->is_uri
-            ? (int)$this->getMeta()['content-length']
-            : $this->info->getSize();
+        if ($this->is_uri) {
+            $meta  = $this->getMeta();
+            $bytes = (int)($meta['content-length'] ?? $meta['content_length'] ?? 0);
+        } else
+            $bytes = $this->info->getSize();
 
-        return ($divisor = ['kb' => 1024, 'mb' => 1048576, 'gb' => 1073741824][strtolower($unit)] ?? null)
-            ? $bytes / $divisor
-            : $bytes;
+        return Main::formatBytes($bytes, $unit);
     }
 
     protected function getIsUriAttribute(): bool {
@@ -604,20 +660,31 @@ final class File {
         self::$last_fetch_per_host[$host] = microtime(true);
     }
 
-    public static function purgeAllCache(): void {
+    public static function diskFreeSpace(string $path = '~', string $format = 'b') {
+        return Main::formatBytes(static::diskSpace('disk_free_space', $path), $format);
+    }
+
+    public static function diskTotalSpace(string $path = '~', string $format = 'b') {
+        return Main::formatBytes(static::diskSpace('disk_total_space', $path), $format);
+    }
+
+    private static function diskSpace(string $fn, string $path): float {
+        $dir = Main::preparePath($path, 2);
+        if (is_file($dir)) $dir = dirname($dir);
+
+        $bytes = @$fn($dir);
+
+        if ($bytes === false)
+            throw new \RuntimeException("Cannot read disk space for {$dir}");
+
+        return $bytes;
+    }
+
+    public static function purgeAll(): void {
         Cache::make('', [
             'dir' => static::config('cache.dir'),
             'driver' => 'filesystem',
         ])->purgeBase();
-    }
-
-    public function purgeCache(): self {
-        $this->cache->purge();
-
-        if ($original = $this->getOriginal())
-            $original->purgeCache();
-                
-        return $original ?? $this;
     }
 
     public function getMime(): string {
@@ -641,13 +708,14 @@ final class File {
         $mime_type = '';
 
         if (function_exists('finfo_open')) {
-            $f = finfo_open(FILEINFO_MIME_TYPE);
-            if ($f) {
-                $mime_type = @finfo_file($f, $path);
-                finfo_close($f);
-            }
+
+            static $finfo = null;
+            if ($finfo === null) $finfo = finfo_open(FILEINFO_MIME_TYPE) ?: false;
+
+            if ($finfo !== false)
+                $mime_type = @finfo_file($finfo, $path);
         }
-        
+
         if ($mime_type == '')
             $mime_type = @mime_content_type($path) ?: '';
 
@@ -655,9 +723,9 @@ final class File {
     }
 
     public function getServiceName(): string {
-        return (new \ReflectionClass($this->mime))->isAnonymous()
+        return (new \ReflectionClass($this->mime()))->isAnonymous()
             ? 'Default'
-            : get_class($this->mime);
+            : get_class($this->mime());
     }
 
     public function getRelativePath(string $root = ''): string {
@@ -695,7 +763,7 @@ final class File {
     public function getContents() {
         $raw = $this->getRaw();
 
-        return $this->mime->get($raw);
+        return $this->mime()->get($raw);
     }
 
     public function putContents($raw, int $flags = 0) {
@@ -703,7 +771,7 @@ final class File {
             ? $this->fetch()
             : $this;
 
-        $data = $instance->mime->set($raw, $flags);
+        $data = $instance->mime()->set($raw, $flags);
         
         $dir = $instance->getDirectory();
 

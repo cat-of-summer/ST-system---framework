@@ -33,9 +33,7 @@ abstract class CacheDriver {
         $clone = clone $this;
         $clone->attributes['raw_key'] = $key;
         $clone->id = Main::hash($key);
-        $clone->data_cache   = [];
-        $clone->meta_cache   = [];
-        $clone->exists_cache = [];
+        $clone->purge(false);
 
         if (isset($override['file']) && $override['file'] !== '' && $override['file'] !== null)
             $clone->attributes['file'] = (string)$override['file'];
@@ -62,14 +60,14 @@ abstract class CacheDriver {
     abstract protected function purgeExpiredStorage(): void;
     abstract protected function purgeExpiredBaseStorage(): void;
 
-    final public function set($data, int $ttl = 0, string $file = ''): void {
+    final public function set($data, int $ttl = 0, string $file = '', array $meta = []): void {
         if ($file === '') $file = $this->attributes['file'];
         if ($ttl  === 0)  $ttl  = $this->attributes['ttl'];
 
         [$type, $payload] = $this->encode($data);
 
         $this->writeBlob($file, $payload);
-        $this->setMeta(['type' => $type], $ttl, true, $file);
+        $this->setMeta(['type' => $type] + $meta, $ttl, true, $file);
 
         $modified_at = $this->meta_cache[$file]['modified_at'] ?? time();
         $this->data_cache[$file]   = ['modified_at' => $modified_at, 'data' => $data];
@@ -116,15 +114,10 @@ abstract class CacheDriver {
     final public function getMeta(string $file = ''): array {
         if ($file === '') $file = $this->attributes['file'];
 
-        if (isset($this->meta_cache[$file])) {
-            $expires = $this->meta_cache[$file]['expires_in'] ?? 0;
-            if ($expires === -1 || $expires > time())
-                return $this->meta_cache[$file];
-        }
+        if (array_key_exists($file, $this->meta_cache))
+            return $this->meta_cache[$file];
 
-        $meta = $this->readMeta($file) ?? [];
-        $this->meta_cache[$file] = $meta;
-        return $meta;
+        return $this->meta_cache[$file] = $this->readMeta($file) ?? [];
     }
 
     final public function exists(string $file = ''): bool {
@@ -143,23 +136,26 @@ abstract class CacheDriver {
         return $this->exists($file);
     }
 
-    final public function purge(): void {
+    final public function purge(bool $storage = true): void {
         $this->data_cache = $this->meta_cache = $this->exists_cache = [];
-        $this->purgeStorage();
+        $this->purgeAttributes();
+
+        if ($storage) $this->purgeStorage();
     }
 
-    final public function purgeBase(): void {
-        $this->data_cache = $this->meta_cache = $this->exists_cache = [];
-        $this->purgeBaseStorage();
+    final public function purgeBase(bool $storage = true): void {
+        $this->purge(false);
+
+        if ($storage) $this->purgeBaseStorage();
     }
 
     final public function purgeExpired(): void {
-        $this->data_cache = $this->meta_cache = $this->exists_cache = [];
+        $this->purge(false);
         $this->purgeExpiredStorage();
     }
 
     final public function purgeExpiredBase(): void {
-        $this->data_cache = $this->meta_cache = $this->exists_cache = [];
+        $this->purge(false);
         $this->purgeExpiredBaseStorage();
     }
 

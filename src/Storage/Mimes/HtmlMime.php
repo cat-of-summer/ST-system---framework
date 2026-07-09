@@ -20,7 +20,12 @@ class HtmlMime extends Mime {
 
     private ?\DOMDocument $dom = null;
     private ?\DOMXPath    $xpath = null;
-    private Cache $cache;
+    protected Cache $cache;
+
+    public function purge(bool $storage = true): void {
+        $this->dom = $this->xpath = null;
+        parent::purge($storage);
+    }
 
     protected function __init(): void {
         $this->cache = Cache::make($this->file->getPathname(), [
@@ -44,7 +49,9 @@ class HtmlMime extends Mime {
     }
 
     public function extract(array $schema, array $data = []): array {
-        $instance = $this->file;
+        $instance = $this->file->is_uri
+            ? $this->file->fetch()
+            : $this->file;
 
         if (!$instance->is_uri && !$instance->exists())
             throw new \InvalidArgumentException("File not found: {$instance->getPathname()}");
@@ -55,19 +62,12 @@ class HtmlMime extends Mime {
             'file' => Main::hash([$schema, $data]) . '.json'
         ]);
 
-        if (
-            is_file($cache->file)
-            && ($cache->getMeta()['modified_at'] ?? 0) >= ($cache->getMeta($instance->getFilename())['modified_at'] ?? 0)
-        ) {
-            $cached = $cache->get();
-            if ($cached !== null) return $cached;
-        }
-
-        $result = $this->applySchema($schema, $this->getDom(), $this->getXPath(), $data);
-
-        $cache->set($result);
-
-        return $result;
+        return $cache->remember(
+            fn() => $this->applySchema($schema, $this->getDom(), $this->getXPath(), $data),
+            -1,
+            '',
+            $instance->mtime
+        );
     }
 
     private function loadDom(string $html): \DOMDocument {

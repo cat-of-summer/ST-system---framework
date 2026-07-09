@@ -3,6 +3,7 @@
 namespace ST_system\API\Drivers\AI;
 
 use ST_system\Rule;
+use ST_system\Main;
 
 final class Mistral extends OpenAICompatibleDriver {
 
@@ -142,11 +143,7 @@ final class Mistral extends OpenAICompatibleDriver {
 
     
     public function getHistorySize(string $unit = 'b') {
-        $bytes = mb_strlen(json_encode($this->conversation), '8bit');
-
-        return ($divisor = ['kb' => 1024, 'mb' => 1048576][strtolower($unit)] ?? null)
-            ? $bytes / $divisor
-            : $bytes;
+        return Main::formatBytes(mb_strlen(json_encode($this->conversation), '8bit'), $unit);
     }
 
     public function clearHistory(int $count = 0, int $start = 0): void {
