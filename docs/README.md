@@ -5,10 +5,6 @@
 
 - [src](src/)
 
-## Файлы
-
-- [LICENSE](LICENSE.md)
-
 <!-- DOCGEN:END -->
 
 # ST_system

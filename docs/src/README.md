@@ -22,5 +22,6 @@
 - [Main.php](Main.php.md)
 - [Menu.php](Menu.php.md)
 - [Rule.php](Rule.php.md)
+- [View.php](View.php.md)
 
 <!-- DOCGEN:END -->
