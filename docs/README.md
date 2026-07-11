@@ -83,8 +83,8 @@ use ST_system\HTTP\Request;
 | `Rule` | Конструктор правил/middleware: callback, `before`/`after`, порядок, обработка ошибок | [src/Rule.php.md](src/Rule.php.md) |
 | `Access` | Контроль доступа: авторизация, учётные данные, CORS | [src/Access.php.md](src/Access.php.md) |
 | `Debug` | Обработчик ошибок/исключений/shutdown, форматирование и линтинг | [src/Debug.php.md](src/Debug.php.md) |
-| `Daemon` | Базовый класс долгоживущих фоновых процессов (интервал, повторы, события) | [src/Daemon.php.md](src/Daemon.php.md) |
 | `Menu` | Построение HTML-меню из массива или файла | [src/Menu.php.md](src/Menu.php.md) |
+| `View` | Шаблонизатор: рендер PHP-вьюх, слоты/дети, каскадный конфиг, кэш скелета с "дырками" для динамических частей | [src/View.php.md](src/View.php.md) |
 | `Assets` | Менеджер ассетов: сборка/минификация через `Mimes` и кэш | [src/Assets.php.md](src/Assets.php.md) |
 | `CensorText` | Цензурирование текста (стоп-слова) | [src/CensorText/CensorText.php.md](src/CensorText/CensorText.php.md) |
 
@@ -110,6 +110,7 @@ use ST_system\HTTP\Request;
 | `Drivers\SmsRu` | Отправка SMS через sms.ru | [src/API/Drivers/SmsRu.php.md](src/API/Drivers/SmsRu.php.md) |
 | `Drivers\Sdek` | Интеграция службы доставки СДЭК | [src/API/Drivers/Sdek.php.md](src/API/Drivers/Sdek.php.md) |
 | `Drivers\Isdayoff` | Производственный календарь (isdayoff.ru) | [src/API/Drivers/Isdayoff.php.md](src/API/Drivers/Isdayoff.php.md) |
+| `Drivers\Geo\GeoDriver` | Абстрактная база гео-драйверов: локальная БД (скачивание/обновление/lookup) + fallback на API | [src/API/Drivers/Geo/GeoDriver.php.md](src/API/Drivers/Geo/GeoDriver.php.md) |
 | `Drivers\Geo\IpInfo` | Геоданные по IP-адресу | [src/API/Drivers/Geo/IpInfo.php.md](src/API/Drivers/Geo/IpInfo.php.md) |
 | `Drivers\Geo\SxGeo` | Геоданные по IP (Sypex Geo: локальная БД + REST API) | [src/API/Drivers/Geo/](src/API/Drivers/Geo/) |
 | `Drivers\Geo\GeoIP2` | Геоданные по IP (MaxMind GeoIP2/GeoLite2: .mmdb + web-service) | [src/API/Drivers/Geo/](src/API/Drivers/Geo/) |
@@ -170,6 +171,7 @@ use ST_system\HTTP\Request;
 | `Drivers\FileSystemCacheDriver` | Кэш в файловой системе | [src/Cache/Drivers/FileSystemCacheDriver.php.md](src/Cache/Drivers/FileSystemCacheDriver.php.md) |
 | `Drivers\RedisCacheDriver` | Кэш в Redis | [src/Cache/Drivers/RedisCacheDriver.php.md](src/Cache/Drivers/RedisCacheDriver.php.md) |
 | `Drivers\DatabaseCacheDriver` | Кэш в БД | [src/Cache/Drivers/DatabaseCacheDriver.php.md](src/Cache/Drivers/DatabaseCacheDriver.php.md) |
+| `Drivers\MemcachedCacheDriver` | Кэш в Memcached (пул соединений, автовыбор адаптера) | [src/Cache/Drivers/MemcachedCacheDriver.php.md](src/Cache/Drivers/MemcachedCacheDriver.php.md) |
 | `Drivers\SessionCacheDriver` | Кэш в сессии | [src/Cache/Drivers/SessionCacheDriver.php.md](src/Cache/Drivers/SessionCacheDriver.php.md) |
 | `Drivers\Redis\RedisAdapterInterface` | Контракт Redis-адаптера | [src/Cache/Drivers/Redis/RedisAdapterInterface.php.md](src/Cache/Drivers/Redis/RedisAdapterInterface.php.md) |
 | `Drivers\Redis\PhpRedisAdapter` | Адаптер расширения phpredis | [src/Cache/Drivers/Redis/PhpRedisAdapter.php.md](src/Cache/Drivers/Redis/PhpRedisAdapter.php.md) |
@@ -177,6 +179,10 @@ use ST_system\HTTP\Request;
 | `Drivers\Database\DatabaseAdapterInterface` | Контракт адаптера БД | [src/Cache/Drivers/Database/DatabaseAdapterInterface.php.md](src/Cache/Drivers/Database/DatabaseAdapterInterface.php.md) |
 | `Drivers\Database\MysqlAdapter` | Адаптер MySQL | [src/Cache/Drivers/Database/MysqlAdapter.php.md](src/Cache/Drivers/Database/MysqlAdapter.php.md) |
 | `Drivers\Database\PostgresAdapter` | Адаптер PostgreSQL | [src/Cache/Drivers/Database/PostgresAdapter.php.md](src/Cache/Drivers/Database/PostgresAdapter.php.md) |
+| `Drivers\Database\SqliteAdapter` | Адаптер SQLite (PDO) | [src/Cache/Drivers/Database/SqliteAdapter.php.md](src/Cache/Drivers/Database/SqliteAdapter.php.md) |
+| `Drivers\Memcached\MemcachedAdapterInterface` | Контракт Memcached-адаптера | [src/Cache/Drivers/Memcached/MemcachedAdapterInterface.php.md](src/Cache/Drivers/Memcached/MemcachedAdapterInterface.php.md) |
+| `Drivers\Memcached\MemcachedExtAdapter` | Адаптер расширения `Memcached` (libmemcached) | [src/Cache/Drivers/Memcached/MemcachedExtAdapter.php.md](src/Cache/Drivers/Memcached/MemcachedExtAdapter.php.md) |
+| `Drivers\Memcached\MemcacheExtAdapter` | Адаптер легаси-расширения `Memcache` | [src/Cache/Drivers/Memcached/MemcacheExtAdapter.php.md](src/Cache/Drivers/Memcached/MemcacheExtAdapter.php.md) |
 
 ### Storage
 
