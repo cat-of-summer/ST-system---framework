@@ -1,4 +1,5 @@
 <?php
+
 namespace ST_system\Storage\Mimes\Traits;
 
 use ST_system\Storage\File;

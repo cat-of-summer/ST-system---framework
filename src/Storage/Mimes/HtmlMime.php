@@ -7,6 +7,7 @@ use ST_system\Main;
 use ST_system\Storage\File;
 use ST_system\Cache\Manager as Cache;
 use ST_system\Traits\HasConfig;
+use ST_system\Storage\Mimes\Traits\Parsable;
 
 class HtmlMime extends Mime {
 
@@ -17,6 +18,8 @@ class HtmlMime extends Mime {
             'cache_dir' => '',
         ];
     }
+
+    use Parsable;
 
     private ?\DOMDocument $dom = null;
     private ?\DOMXPath    $xpath = null;
