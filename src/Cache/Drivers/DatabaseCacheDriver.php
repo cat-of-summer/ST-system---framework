@@ -126,14 +126,14 @@ class DatabaseCacheDriver extends CacheDriver {
             return null;
         if (!$adapterClass::isAvailable()) return null;
 
-        $key = md5(serialize([
-            $engine,
-            (string)($cfg['host']     ?? ''),
-            (int)   ($cfg['port']     ?? 0),
-            (string)($cfg['database'] ?? ''),
-            (string)($cfg['username'] ?? ''),
-            (string)($cfg['table']    ?? ''),
-        ]));
+        $key = \ST_system\Main::hash([
+            'engine'   => $engine,
+            'host'     => (string)($cfg['host']     ?? ''),
+            'port'     => (int)   ($cfg['port']     ?? 0),
+            'database' => (string)($cfg['database'] ?? ''),
+            'username' => (string)($cfg['username'] ?? ''),
+            'table'    => (string)($cfg['table']    ?? ''),
+        ]);
         if (isset(self::$pool[$key])) return self::$pool[$key];
 
         try {

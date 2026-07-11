@@ -8,7 +8,7 @@
 - **Время и дата** — `timestamp()`, `pluralForm()`
 - **Форматирование** — `formatBytes()`
 - **Коллекции** — `merge()`, `dotGet()`, `dotSet()`, `dotFlatten()`
-- **Сериализация** — `serialize()`, `deserialize()`, `hash()`
+- **Хеширование** — `hash()` (для round-trip значений используйте нативные `serialize()`/`unserialize()`)
 - **Идентификация** — `uuid()`
 - **Пути** — `preparePath()`
 
@@ -119,52 +119,21 @@ Main::merge($a, $b);
 
 ---
 
-### `static serialize(mixed $value): string`
-
-Сериализация значения в строку с **полным сохранением структуры и порядка** — пригодна для round-trip через `deserialize()`.
-
-Поддерживает `string`, `int`, `float`, `bool`, `null`, `array`, `object`, `Closure`. Для `object` вызывает `jsonSerialize()` если реализован `\JsonSerializable`, иначе `(array)$obj`. Циклические ссылки в графе объектов поддерживаются (тег `r:N`). Замыкания кодируются маркером `c` — тело замыкания не сохраняется.
-
-Строки кодируются с префиксом длины в байтах: `s:<len>:<bytes>`.
-
-```php
-Main::serialize(null);                       // 'n'
-Main::serialize(42);                         // 'i:42'
-Main::serialize('hello');                    // 's:5:hello'
-Main::serialize(['b' => 2, 'a' => 1]);       // 'a:{ks:1:b=i:2,ks:1:a=i:1}' — порядок сохранён
-```
-
----
-
-### `static deserialize(string $s): mixed`
-
-Обратная операция к `serialize()`. Восстанавливает значение по сериализованной строке.
-
-Семантика — round-trip по значениям, типам и порядку:
-- Скаляры (`int`, `float`, `bool`, `null`, `string`) и циклические ссылки восстанавливаются точно.
-- Порядок элементов списков и ключей ассоц. массивов сохраняется.
-- Замыкания восстанавливаются как пустышка `fn() => null` — тело потеряно при сериализации.
-- Объекты восстанавливаются через `ReflectionClass::newInstanceWithoutConstructor()` (без вызова `__construct`); private/protected свойства заполняются через рефлексию. Если класса нет в текущем процессе — fallback на `stdClass` с исходными именами свойств (включая NUL-префиксы).
-
-**Бросает:** `RuntimeException` при синтаксических ошибках формата или ссылке на неизвестный объект.
-
-```php
-$s = Main::serialize(['user' => 'ivan', 'roles' => ['admin', 'editor']]);
-$v = Main::deserialize($s);
-// $v === ['user' => 'ivan', 'roles' => ['admin', 'editor']]
-```
-
----
+> **Round-trip значений.** Отдельного `Main::serialize()`/`deserialize()` больше нет — они
+> дублировали нативный `serialize()`, но хуже (теряли точность float, ссылки, магию
+> `__serialize`/`__wakeup`, enum, DateTime). Для сериализации значений используйте нативные
+> `\serialize()` / `\unserialize($s, ['allowed_classes' => …])` напрямую. `Main::hash()` (ниже)
+> остаётся — это отдельный инструмент канонических ключей, не round-trip.
 
 ### `static hash(mixed $value): string`
 
-Канонизированная строка для построения **детерминированных идентификаторов** (например, кэш-ключей через `md5()`). В отличие от `serialize()`:
+Канонизированная строка для построения **детерминированных идентификаторов** (например, кэш-ключей через `md5()`). В отличие от нативного `serialize()`:
 
 - **Списки и ключи ассоц. массивов сортируются** — `['a'=>1,'b'=>2]` и `['b'=>2,'a'=>1]` дают одинаковый результат.
 - **Замыкания кодируются как `c:<lenFile>:<file>:<startLine>:<endLine>:<staticVars>`** — одно и то же замыкание (по позиции в исходниках и захваченным `use`-переменным) даёт одинаковый хеш между запусками.
 - Объекты — по `get_class` и содержимому свойств; идентичные по содержимому объекты разных экземпляров дают одинаковый хеш.
 
-**Операция необратимая** — `deserialize()` к выводу `hash()` неприменим.
+**Операция необратимая** — по выводу `hash()` восстановить значение нельзя (это не сериализация).
 
 ```php
 md5(Main::hash($cacheKey)); // стабильный кэш-ключ между запусками
@@ -237,22 +206,25 @@ Main::dotFlatten(['x' => 1, 'y' => 2], 'prefix');
 
 ---
 
-### `static preparePath(string $path, int $depth = 0): string`
+### `static preparePath(string $path, int $depth = 0, bool $strict = false): string`
 
 Нормализует путь до файла:
 - `~/logs` → заменяет `~` на `DOCUMENT_ROOT` или `COMPOSER_ROOT`
 - `logs/app` → относительный путь относительно вызывающего файла
-- Разрешает `..` в пути
+- Схлопывает `..` в пути (в обычном режиме)
 
 | Параметр | Тип | Описание |
 |----------|-----|----------|
 | `$path` | `string` | Исходный путь |
 | `$depth` | `int` | Глубина в стеке вызовов для определения базовой директории. `0` = файл, откуда вызывается `preparePath`, `1` = его вызыватель и т.д. |
+| `$strict` | `bool` | Если `true`, сегмент `..` бросает `InvalidArgumentException` вместо тихого схлопывания. Для резолва путей из недоверенного ввода (например, имя вида в `View`), чтобы `../../` не вышел за пределы базовой директории. |
 
 **Возвращает:** `string` — абсолютный путь без трейлинг слэша.
 
 ```php
-Main::preparePath('~/logs');  // '/var/www/html/logs'
-Main::preparePath('/abs/path'); // '/abs/path'
-Main::preparePath('relative/dir', 0); // dirname(__FILE_OF_CALLED_FROM__) . '/relative/dir'
+Main::preparePath('~/logs');           // '/var/www/html/logs'
+Main::preparePath('/abs/path');        // '/abs/path'
+Main::preparePath('relative/dir', 0);  // dirname(__FILE_OF_CALLED_FROM__) . '/relative/dir'
+Main::preparePath('/a/b/../c');         // '/a/c'  (схлопывает)
+Main::preparePath('/a/b/../c', 0, true); // бросает InvalidArgumentException
 ```

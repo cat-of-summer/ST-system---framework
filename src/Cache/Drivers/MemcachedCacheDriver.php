@@ -109,13 +109,13 @@ class MemcachedCacheDriver extends CacheDriver {
         $hasServers = is_array($cfg['servers'] ?? null) && $cfg['servers'];
         if (!$hasServers && (!is_string($cfg['host']) || $cfg['host'] === '')) return null;
 
-        $key = md5(serialize([
-            $cfg['servers'] ?? null,
-            (string)($cfg['host'] ?? ''),
-            (int)   ($cfg['port'] ?? 0),
-            (string)($cfg['auth'] ?? ''),
-            (string)($cfg['persistent_id'] ?? ''),
-        ]));
+        $key = \ST_system\Main::hash([
+            'servers'       => $cfg['servers'] ?? null,
+            'host'          => (string)($cfg['host'] ?? ''),
+            'port'          => (int)   ($cfg['port'] ?? 0),
+            'auth'          => (string)($cfg['auth'] ?? ''),
+            'persistent_id' => (string)($cfg['persistent_id'] ?? ''),
+        ]);
         if (isset(self::$pool[$key])) return self::$pool[$key];
 
         foreach (self::ADAPTERS as $adapterClass) {

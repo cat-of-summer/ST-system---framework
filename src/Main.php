@@ -82,68 +82,6 @@ final class Main {
         return $array1;
     }
 
-    public static function serialize($value): string {
-        $visited = [];
-        $refs    = ['next' => 0, 'map' => []];
-        return static::_serialize($value, $visited, $refs);
-    }
-
-    private static function _serialize($value, array &$visited, array &$refs): string {
-        switch (true) {
-            case is_string($value):
-                return 's:'.strlen($value).':'.$value;
-            break;
-            case is_int($value):
-                return 'i:'.(string)$value;
-            break;
-            case is_float($value):
-                return 'd:'.sprintf('%.14G', $value);
-            break;
-            case is_bool($value):
-                return 'b:'.($value ? '1' : '0');
-            break;
-            case $value === null:
-                return 'n';
-            break;
-            case is_array($value):
-                $is_list = true; $i = 0;
-                foreach ($value as $key => $_)
-                    if ($key !== $i++) {
-                        $is_list = false;
-                        break;
-                    }
-
-                if ($is_list) {
-                    $parts = array_map(function($v) use (&$visited, &$refs) { return static::_serialize($v, $visited, $refs); }, $value);
-                    return 'l:['.implode(',', $parts).']';
-                } else {
-                    return 'a:{'.implode(',', array_map(function($k) use (&$visited, &$refs, $value) { return (is_int($k) ? 'ki:'.$k : 'ks:'.strlen($k).':'.$k).'='.static::_serialize($value[$k], $visited, $refs); }, array_keys($value))).'}';
-                }
-            break;
-            case $value instanceof \Closure:
-                return 'c';
-            break;
-            case is_object($value):
-                $id = spl_object_hash($value);
-
-                if (isset($visited[$id]))
-                    return 'r:'.$refs['map'][$id];
-
-                $refs['map'][$id] = $refs['next']++;
-                $visited[$id]     = true;
-
-                return 'o:'.get_class($value).':'.static::_serialize($value instanceof \JsonSerializable
-                        ? $value->jsonSerialize()
-                        : (array)$value,
-                    $visited,
-                    $refs
-                );
-            break;
-            default:
-                throw new \RuntimeException('Unsupported type in serialize');
-        }
-    }
-
     public static function hash($value): string {
         $visited = [];
         $refs    = ['next' => 0, 'map' => []];
@@ -214,194 +152,6 @@ final class Main {
             break;
             default:
                 throw new \RuntimeException('Unsupported type in hash');
-        }
-    }
-
-    public static function deserialize(string $s) {
-        $pos   = 0;
-        $refs  = [];
-        $value = static::_deserialize($s, $pos, $refs);
-
-        if ($pos !== strlen($s))
-            throw new \RuntimeException('Trailing data in deserialize at offset '.$pos);
-
-        return $value;
-    }
-
-    private static function _deserialize(string $s, int &$pos, array &$refs) {
-        if (!isset($s[$pos]))
-            throw new \RuntimeException('Unexpected end of input at '.$pos);
-
-        $tag = $s[$pos];
-
-        switch ($tag) {
-            case 'n':
-                $pos++;
-                return null;
-
-            case 'c':
-                $pos++;
-                return fn() => null;
-
-            case 'b':
-                $pos += 2;
-                $v = $s[$pos] === '1';
-                $pos++;
-                return $v;
-
-            case 'i': {
-                $pos += 2;
-                $end = self::_scanScalarEnd($s, $pos);
-                $v   = (int)substr($s, $pos, $end - $pos);
-                $pos = $end;
-                return $v;
-            }
-
-            case 'd': {
-                $pos += 2;
-                $end = self::_scanScalarEnd($s, $pos);
-                $raw = substr($s, $pos, $end - $pos);
-                $pos = $end;
-                if ($raw === 'INF')  return INF;
-                if ($raw === '-INF') return -INF;
-                if ($raw === 'NAN')  return NAN;
-                return (float)$raw;
-            }
-
-            case 's': {
-                $pos  += 2;
-                $colon = strpos($s, ':', $pos);
-                if ($colon === false) throw new \RuntimeException('Malformed string at '.$pos);
-                $len   = (int)substr($s, $pos, $colon - $pos);
-                $pos   = $colon + 1;
-                $v     = substr($s, $pos, $len);
-                $pos  += $len;
-                return $v;
-            }
-
-            case 'l': {
-                $pos += 3;
-                $result = [];
-                if (($s[$pos] ?? '') !== ']') {
-                    while (true) {
-                        $result[] = static::_deserialize($s, $pos, $refs);
-                        if (($s[$pos] ?? '') === ',') { $pos++; continue; }
-                        break;
-                    }
-                }
-                $pos++;
-                return $result;
-            }
-
-            case 'a': {
-                $pos += 3;
-                $result = [];
-                if (($s[$pos] ?? '') !== '}') {
-                    while (true) {
-                        if ($s[$pos] === 'k' && ($s[$pos + 1] ?? '') === 'i') {
-                            $pos += 3;
-                            $end  = self::_scanKeyEnd($s, $pos);
-                            $key  = (int)substr($s, $pos, $end - $pos);
-                            $pos  = $end;
-                        } else {
-                            $pos += 3;
-                            $colon = strpos($s, ':', $pos);
-                            if ($colon === false) throw new \RuntimeException('Malformed key at '.$pos);
-                            $klen  = (int)substr($s, $pos, $colon - $pos);
-                            $pos   = $colon + 1;
-                            $key   = substr($s, $pos, $klen);
-                            $pos  += $klen;
-                        }
-                        $pos++;
-                        $result[$key] = static::_deserialize($s, $pos, $refs);
-                        if (($s[$pos] ?? '') === ',') { $pos++; continue; }
-                        break;
-                    }
-                }
-                $pos++;
-                return $result;
-            }
-
-            case 'o': {
-                $pos  += 2;
-                $colon = strpos($s, ':', $pos);
-                if ($colon === false) throw new \RuntimeException('Malformed object header at '.$pos);
-                $class = substr($s, $pos, $colon - $pos);
-                $pos   = $colon + 1;
-
-                $missing = !class_exists($class);
-                if ($missing) {
-                    $obj = new \stdClass();
-                } else {
-                    try {
-                        $obj = (new \ReflectionClass($class))->newInstanceWithoutConstructor();
-                    } catch (\Throwable $e) {
-                        $obj     = new \stdClass();
-                        $missing = true;
-                    }
-                }
-
-                $refs[] = $obj;
-
-                $data = static::_deserialize($s, $pos, $refs);
-                if (!is_array($data))
-                    throw new \RuntimeException('Object body must be array for class '.$class);
-
-                self::_populateObject($obj, $class, $missing, $data);
-                return $obj;
-            }
-
-            case 'r': {
-                $pos += 2;
-                $end  = self::_scanScalarEnd($s, $pos);
-                $idx  = (int)substr($s, $pos, $end - $pos);
-                $pos  = $end;
-                if (!array_key_exists($idx, $refs))
-                    throw new \RuntimeException('Unknown ref '.$idx);
-                return $refs[$idx];
-            }
-
-            default:
-                throw new \RuntimeException('Unknown tag "'.$tag.'" at '.$pos);
-        }
-    }
-
-    private static function _scanScalarEnd(string $s, int $pos): int {
-        $len = strlen($s);
-        while ($pos < $len) {
-            $c = $s[$pos];
-            if ($c === ',' || $c === ']' || $c === '}' || $c === '=') break;
-            $pos++;
-        }
-        return $pos;
-    }
-
-    private static function _scanKeyEnd(string $s, int $pos): int {
-        $len = strlen($s);
-        while ($pos < $len && $s[$pos] !== '=') $pos++;
-        return $pos;
-    }
-
-    private static function _populateObject($obj, string $class, bool $classMissing, array $data): void {
-        foreach ($data as $key => $value) {
-            if ($classMissing || !is_string($key) || $key === '' || $key[0] !== "\0") {
-                $obj->{$key} = $value;
-                continue;
-            }
-
-            $parts    = explode("\0", $key);
-            $propName = $parts[2] ?? '';
-            if ($propName === '') { $obj->{$key} = $value; continue; }
-
-            $owner = ($parts[1] === '*') ? $class : $parts[1];
-
-            try {
-                $rp = new \ReflectionProperty($owner, $propName);
-                $rp->setAccessible(true);
-                $rp->setValue($obj, $value);
-            } catch (\Throwable $e) {
-                $obj->{$propName} = $value;
-            }
         }
     }
 
@@ -553,7 +303,7 @@ final class Main {
         return $out;
     }
 
-    public static function preparePath(string $path, $base = 0): string {
+    public static function preparePath(string $path, $base = 0, bool $strict = false): string {
         if (strpos($path, '~') === 0) {
             $path = (Config::env('DOCUMENT_ROOT') ?: Config::env('COMPOSER_ROOT')).'/'.trim($path, '/~');
         } elseif (strpos($path, '/') !== 0) {
@@ -569,6 +319,8 @@ final class Main {
             if ($segment === '' || $segment === '.') continue;
 
             if ($segment === '..') {
+                if ($strict)
+                    throw new \InvalidArgumentException("Main::preparePath(): illegal '..' segment in strict path '{$path}'");
                 array_pop($stack);
                 continue;
             }
