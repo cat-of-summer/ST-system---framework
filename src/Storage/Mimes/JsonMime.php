@@ -3,8 +3,11 @@
 namespace ST_system\Storage\Mimes;
 
 use ST_system\Storage\Mimes\Mime;
+use ST_system\Storage\Mimes\Traits\Parsable;
 
 class JsonMime extends Mime {
+
+    use Parsable;
 
     public function get($data) { return @json_decode($data, true); }
     public function set($data, int &$flags = 0) { return @json_encode($data); }

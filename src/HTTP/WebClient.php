@@ -7,6 +7,9 @@ use ST_system\Rule;
 use ST_system\Cache\Manager as Cache;
 use ST_system\Traits\HasEvents;
 use ST_system\Traits\HasConfig;
+use ST_system\Storage\File;
+use ST_system\Storage\Mimes\Mime;
+use ST_system\Storage\Mimes\XmlMime;
 
 /**
  * Единый HTTP-механизм поверх curl_multi.
@@ -24,19 +27,22 @@ use ST_system\Traits\HasConfig;
  * переключают отправку на multipart/form-data.
  *
  * Результат — массив: ['status','headers','body','data','type','url','effective_url',
- * 'errno','error','aborted','cached','info']. Заголовки — assoc, ключи в lowercase.
+ * 'errno','error','aborted','cached','info']. 'type' — MIME, по которому разобрано тело.
+ * Заголовки — assoc, ключи в lowercase.
  *
  * verify (default false) задаёт и SSL-проверки curl, и схему URL: без схемы подставляется
  * https:// (verify=true) или http:// (verify=false); http:// при verify=true — исключение;
  * https:// при verify=false валидно, но SSL-проверки не включаются.
  *
+ * Разбор тела делегирован Mime-сервисам (Storage\Mimes) без построения File: Content-Type
+ * (или явный response_type) -> Mime-класс через File::config('mimes.services') -> ->get($body).
+ *
  * События (HasEvents): 'prepare'(&$spec) — до ключа кеша и настройки хендла;
  * 'prepare_response'($spec,&$result); 'decode_response'($spec,&$result) — нет слушателей
- * или никто не заполнил data -> дефолтный разбор по type; 'error'($spec,&$result) — нет
- * слушателей + config('exception') -> исключение; 'response'($spec,&$result) — всегда
- * последним, единственное событие для кеш-хитов. Все события per-request, к пачкам не
- * привязаны. ->parse(['xml' => fn($body, $result) => ...]) — сахар над decode_response
- * c фильтром по типу ответа.
+ * или никто не заполнил data -> разбор через Mime-сервис по 'type'; слушателю доступен
+ * fill/get-контекст в $spec['params']; 'error'($spec,&$result) — нет слушателей +
+ * config('exception') -> исключение; 'response'($spec,&$result) — всегда последним,
+ * единственное событие для кеш-хитов. Все события per-request, к пачкам не привязаны.
  *
  * Кеш (Cache\Manager, только GET/HEAD, выключен по умолчанию): ключ = чистый URL + все
  * параметры (вытащенные из query string + fill). Свежий кеш отдаётся без запроса;
@@ -60,7 +66,7 @@ final class WebClient {
             'max_redirects'    => 10,
             'verify'           => false,
             'headers'          => [],
-            'response_type'    => '',      // '' = автоопределение по Content-Type
+            'response_type'    => '',      // '' = автоопределение по Content-Type; иначе явный MIME
             'batch'            => 10,      // размер окна параллельных запросов
             'delay'            => 0,       // пауза между пачками, мс
             'method'           => 'get',
@@ -70,13 +76,6 @@ final class WebClient {
                 'ttl'    => 3600,
                 'dir'    => '',
                 'driver' => 'filesystem',
-            ],
-            'mime_aliases' => [
-                'json' => ['application/json'],
-                'xml'  => ['text/xml', 'application/xml'],
-                'html' => ['text/html'],
-                'text' => ['text/plain'],
-                'raw'  => [],
             ],
         ];
     }
@@ -101,7 +100,7 @@ final class WebClient {
             'max_redirects'    => 'int|min:0|@max_redirects',
             'verify'           => 'bool|@verify',
             'headers'          => 'array|@headers',
-            'response_type'    => ['string|lowercase|@response_type', Rule::in(['', 'json', 'xml', 'html', 'text', 'raw'])],
+            'response_type'    => 'string|lowercase|@response_type',
             'batch'            => 'int|min:1|@batch',
             'delay'            => 'int|min:0|@delay',
             'method'           => ['string|lowercase|@method', Rule::in(['get', 'post', 'put', 'patch', 'delete', 'head', 'options'])],
@@ -110,7 +109,6 @@ final class WebClient {
             'cache.ttl'        => 'int|@cache.ttl',
             'cache.dir'        => 'string|@cache.dir',
             'cache.driver'     => 'string|@cache.driver',
-            'mime_aliases'     => 'array|@mime_aliases',
         ]);
         $this->config   = $config;
         $this->template = trim($url);
@@ -171,24 +169,6 @@ final class WebClient {
         $this->multipart = self::detectFiles($params);
         $this->body      = $params;
         $this->resetPipeline();
-        return $this;
-    }
-
-    /** Обработчики decode_response по типам ответа: ['xml' => fn($body, $result) => ...]. */
-    public function parse(array $map): self {
-        $allowed = array_keys((array)$this->config['mime_aliases']);
-
-        foreach ($map as $type => $fn) {
-            if (!in_array($type, $allowed, true))
-                throw new \InvalidArgumentException("WebClient: неизвестный тип ответа '{$type}'");
-            if (!is_callable($fn))
-                throw new \InvalidArgumentException("WebClient: обработчик для '{$type}' должен быть callable");
-
-            $this->on('decode_response', function($spec, &$result) use ($type, $fn) {
-                if (($result['type'] ?? null) === $type)
-                    $result['data'] = $fn($result['body'], $result);
-            });
-        }
         return $this;
     }
 
@@ -522,7 +502,7 @@ final class WebClient {
 
         foreach (self::normalizeRequestHeaders($spec['headers']) as $line)
             if (stripos($line, 'content-type:') === 0 && stripos($line, 'application/json') !== false)
-                return json_encode($body);
+                return static::spawnMime('application/json')->set($body);
 
         return http_build_query($body);
     }
@@ -573,10 +553,10 @@ final class WebClient {
 
         $this->fire('prepare_response', $spec, $result);
 
-        $result['type'] = $this->resolveType($spec, $result);
+        $result['type'] = $this->resolveMime($spec, $result);
         $handled = $this->fire('decode_response', $spec, $result);
         if ($handled === false || !array_key_exists('data', $result))
-            $this->decodeDefault($result);
+            $this->decodeBody($result);
 
         if ($result['errno'] !== 0 || $result['status'] >= 400) {
             if ($this->fire('error', $spec, $result) === false && $this->config['exception'])
@@ -589,60 +569,61 @@ final class WebClient {
 
         $this->fire('response', $spec, $result);
 
+        // data (DOMDocument для html) несериализуема — кэшируем облегчённую копию,
+        // тело реконструируется в data при чтении (cacheRead)
         if ($cache !== null && !$result['aborted'] && $result['errno'] === 0
-                && $result['status'] >= 200 && $result['status'] < 300)
-            $cache->set(json_encode($result), -1, '', [
+                && $result['status'] >= 200 && $result['status'] < 300) {
+            $lean = $result;
+            unset($lean['data']);
+            $cache->set(json_encode($lean), -1, '', [
                 'etag'          => $result['headers']['etag'] ?? '',
                 'last-modified' => $result['headers']['last-modified'] ?? '',
                 'fresh_until'   => time() + $this->resolveTtl($result['headers']),
             ]);
+        }
     }
 
-    /** Тип ответа: явный response_type или Content-Type через mime_aliases; fallback raw. */
-    private function resolveType(array $spec, array $result): string {
-        if ($spec['response_type'] !== '') return $spec['response_type'];
+    /** MIME для разбора: явный response_type (MIME) или Content-Type ответа. */
+    private function resolveMime(array $spec, array $result): string {
+        if ($spec['response_type'] !== '')
+            return (string)$spec['response_type'];
 
-        $ct = strtolower(trim(explode(';', (string)($result['headers']['content-type'] ?? ''))[0]));
-        if ($ct !== '')
-            foreach ((array)$this->config['mime_aliases'] as $alias => $mimes)
-                foreach ((array)$mimes as $mime)
-                    if ($mime !== '' && strpos($ct, $mime) === 0)
-                        return (string)$alias;
-
-        return 'raw';
+        return strtolower(trim(explode(';', (string)($result['headers']['content-type'] ?? ''))[0]));
     }
 
-    /** Дефолтный разбор тела: ошибки декодирования деградируют в data=null, без исключений. */
-    private function decodeDefault(array &$result): void {
+    /** Разбор тела через Mime-сервис по $result['type']; ошибки деградируют в data=null. */
+    private function decodeBody(array &$result): void {
         if (!is_string($result['body']) || $result['body'] === '') {
             $result['data'] = null;
             return;
         }
 
-        switch ($result['type']) {
-            case 'json':
-                $data = json_decode($result['body'], true);
-                if (json_last_error() !== JSON_ERROR_NONE) {
-                    $result['data']  = null;
-                    $result['error'] = 'Ошибка декодирования JSON: '.json_last_error_msg();
-                } else {
-                    $result['data'] = $data;
-                }
-                break;
-
-            case 'xml':
-                try {
-                    $result['data'] = self::xmlToArray($result['body']);
-                } catch (\Throwable $th) {
-                    $result['data']  = null;
-                    $result['error'] = $th->getMessage();
-                }
-                break;
-
-            default: // html | text | raw
-                $result['data'] = $result['body'];
-                break;
+        try {
+            $result['data'] = static::spawnMime((string)$result['type'])->get($result['body']);
+        } catch (\Throwable $th) {
+            $result['data']  = null;
+            $result['error'] = $th->getMessage();
         }
+    }
+
+    /**
+     * Mime-сервис по MIME без File (только get/set над строкой). Маппинг берётся из
+     * File::config('mimes.services') + локальный XML; без совпадения — анонимный Mime.
+     */
+    private static function spawnMime(string $mime): Mime {
+        static $services = null;
+        if ($services === null)
+            $services = File::config('mimes.services') + [
+                'text/xml'        => XmlMime::class,
+                'application/xml' => XmlMime::class,
+            ];
+
+        if ($mime !== '')
+            foreach ($services as $needle => $service)
+                if ($needle !== '' && strpos($mime, $needle) !== false)
+                    return new $service();
+
+        return new class extends Mime {};
     }
 
     // --- кеш ---
@@ -677,7 +658,10 @@ final class WebClient {
         if (!is_string($raw)) return null;
 
         $arr = json_decode($raw, true);
-        return is_array($arr) ? $arr : null;
+        if (!is_array($arr)) return null;
+
+        $this->decodeBody($arr); // data не кэшируется — восстанавливаем из body по type
+        return $arr;
     }
 
     /** Условные заголовки + вердикт-обрыв тела на основе сохранённых валидаторов. */
@@ -715,74 +699,5 @@ final class WebClient {
             $ttl = max($ttl, $e - time());
 
         return $ttl;
-    }
-
-    // --- XML (копия из API\Drivers\Traits\HasXmlResponse: трейт вешает несовместимый decode_response) ---
-
-    private static function xmlToArray(string $xml): array {
-        libxml_use_internal_errors(true);
-
-        $doc = new \DOMDocument('1.0', 'UTF-8');
-        $doc->preserveWhiteSpace = false;
-
-        if (!$doc->loadXML($xml, LIBXML_NOCDATA | LIBXML_NONET) || $doc->documentElement === null) {
-            $errors = array_map(fn(\LibXMLError $e) => trim($e->message), libxml_get_errors());
-            libxml_clear_errors();
-            throw new \Exception("Ошибка при декодировании XML-ответа: '".(implode('; ', $errors) ?: 'некорректный XML')."'");
-        }
-
-        libxml_clear_errors();
-
-        $root = $doc->documentElement;
-        return [$root->nodeName => self::domNodeToArray($root)];
-    }
-
-    private static function domNodeToArray(\DOMNode $node) {
-        $result = [];
-
-        if ($node->hasAttributes())
-            foreach ($node->attributes as $attr)
-                $result['@attributes'][$attr->nodeName] = $attr->nodeValue;
-
-        $children = [];
-        $text     = '';
-
-        foreach ($node->childNodes as $child) {
-            switch ($child->nodeType) {
-                case XML_ELEMENT_NODE:
-                    $children[] = $child;
-                    break;
-                case XML_TEXT_NODE:
-                case XML_CDATA_SECTION_NODE:
-                    $text .= $child->nodeValue;
-                    break;
-            }
-        }
-
-        foreach ($children as $child) {
-            $name  = $child->nodeName;
-            $value = self::domNodeToArray($child);
-
-            if (!array_key_exists($name, $result)) {
-                $result[$name] = $value;
-                continue;
-            }
-
-            if (!is_array($result[$name]) || !Main::arrayIsList($result[$name]))
-                $result[$name] = [$result[$name]];
-
-            $result[$name][] = $value;
-        }
-
-        $text = trim($text);
-
-        if ($text === '')
-            return $result === [] ? '' : $result;
-
-        if ($result === [])
-            return $text;
-
-        $result['@text'] = $text;
-        return $result;
     }
 }

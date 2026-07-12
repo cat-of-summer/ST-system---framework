@@ -187,13 +187,15 @@ class ImageMime extends Mime {
             $is_sorted = true;
         }
 
+        if ($this->file === null) return;
+
         $this->cache = Cache::make($this->file->getPathname(), [
             'driver' => 'filesystem',
             'dir' => static::config('cache_dir') ?: File::config('cache.dir'),
             'file' => $this->file->getFilename(),
             'ttl' => -1,
         ]);
-        
+
         if (static::getImageDriver() == '')
             throw new \Exception("No Imagick or GD");
     }

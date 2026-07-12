@@ -6,7 +6,7 @@ use ST_system\Storage\File;
 
 class Mime {
 
-    protected File $file;
+    protected ?File $file = null;
 
     protected function __init(): void {}
 
@@ -17,7 +17,7 @@ class Mime {
         if (isset($this->cache)) $this->cache->purge($storage);
     }
 
-    final public function __construct(File $file) {
+    final public function __construct(?File $file = null) {
         $this->file = $file;
 
         $this->__init();
