@@ -31,16 +31,21 @@ final class File {
                     'otf' => 'font/otf',
                     'svg' => 'image/svg+xml',
                     'html' => 'text/html',
-                    'htm' => 'text/html'
+                    'htm' => 'text/html',
+                    'xml' => 'application/xml',
+                    'txt' => 'text/plain',
                 ],
                 'services' => [
-                    'image/svg+xml' => Mimes\SvgMime::class,
                     'text/html' => Mimes\HtmlMime::class,
                     'text/plain' => Mimes\TextPlainMime::class,
                     'text/css' => Mimes\CssMime::class,
+                    'text/javascript' => Mimes\JsMime::class,
+                    'text/xml' => Mimes\XmlMime::class,
                     'application/javascript' => Mimes\JsMime::class,
                     'application/json' => Mimes\JsonMime::class,
+                    'application/xml' => Mimes\XmlMime::class,
                     'font/' => Mimes\FontMime::class,
+                    'image/svg+xml' => Mimes\SvgMime::class,
                     'image/' => Mimes\ImageMime::class,
                 ]
             ],

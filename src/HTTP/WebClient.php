@@ -613,10 +613,7 @@ final class WebClient {
     private static function spawnMime(string $mime): Mime {
         static $services = null;
         if ($services === null)
-            $services = File::config('mimes.services') + [
-                'text/xml'        => XmlMime::class,
-                'application/xml' => XmlMime::class,
-            ];
+            $services = File::config('mimes.services');
 
         if ($mime !== '')
             foreach ($services as $needle => $service)
