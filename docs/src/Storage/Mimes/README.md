@@ -16,5 +16,6 @@
 - [Mime.php](Mime.php.md)
 - [SvgMime.php](SvgMime.php.md)
 - [TextPlainMime.php](TextPlainMime.php.md)
+- [XmlMime.php](XmlMime.php.md)
 
 <!-- DOCGEN:END -->
