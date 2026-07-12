@@ -2,11 +2,11 @@
 
 namespace ST_system\Storage\Mimes;
 
-use ST_system\Storage\File;
+use ST_system\Storage\Resource;
 
 class Mime {
 
-    protected ?File $file = null;
+    protected Resource $file;
 
     protected function __init(): void {}
 
@@ -17,7 +17,7 @@ class Mime {
         if (isset($this->cache)) $this->cache->purge($storage);
     }
 
-    final public function __construct(?File $file = null) {
+    final public function __construct(Resource $file) {
         $this->file = $file;
 
         $this->__init();

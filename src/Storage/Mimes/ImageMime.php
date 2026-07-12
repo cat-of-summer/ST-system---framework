@@ -187,8 +187,6 @@ class ImageMime extends Mime {
             $is_sorted = true;
         }
 
-        if ($this->file === null) return;
-
         $this->cache = Cache::make($this->file->getPathname(), [
             'driver' => 'filesystem',
             'dir' => static::config('cache_dir') ?: File::config('cache.dir'),

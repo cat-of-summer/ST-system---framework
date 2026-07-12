@@ -7,9 +7,7 @@ use ST_system\Rule;
 use ST_system\Cache\Manager as Cache;
 use ST_system\Traits\HasEvents;
 use ST_system\Traits\HasConfig;
-use ST_system\Storage\File;
-use ST_system\Storage\Mimes\Mime;
-use ST_system\Storage\Mimes\XmlMime;
+use ST_system\Storage\Resource;
 
 /**
  * Единый HTTP-механизм поверх curl_multi.
@@ -27,19 +25,20 @@ use ST_system\Storage\Mimes\XmlMime;
  * переключают отправку на multipart/form-data.
  *
  * Результат — массив: ['status','headers','body','data','type','url','effective_url',
- * 'errno','error','aborted','cached','info']. 'type' — MIME, по которому разобрано тело.
+ * 'errno','error','aborted','cached','info']. 'data' — Storage\Resource над телом (ленивый
+ * декод: ->get()/->extract()/->getDom()); 'type' — MIME этого ресурса. Пустое тело -> data=null.
  * Заголовки — assoc, ключи в lowercase.
  *
  * verify (default false) задаёт и SSL-проверки curl, и схему URL: без схемы подставляется
  * https:// (verify=true) или http:// (verify=false); http:// при verify=true — исключение;
  * https:// при verify=false валидно, но SSL-проверки не включаются.
  *
- * Разбор тела делегирован Mime-сервисам (Storage\Mimes) без построения File: Content-Type
- * (или явный response_type) -> Mime-класс через File::config('mimes.services') -> ->get($body).
+ * Тело оборачивается в in-memory Storage\Resource (без диска/сети): Content-Type (или явный
+ * response_type) -> 'type' -> new Resource(['body'=>$body,'mime'=>$type]); декод по требованию.
  *
  * События (HasEvents): 'prepare'(&$spec) — до ключа кеша и настройки хендла;
  * 'prepare_response'($spec,&$result); 'decode_response'($spec,&$result) — нет слушателей
- * или никто не заполнил data -> разбор через Mime-сервис по 'type'; слушателю доступен
+ * или никто не заполнил data -> data = Resource над телом по 'type'; слушателю доступен
  * fill/get-контекст в $spec['params']; 'error'($spec,&$result) — нет слушателей +
  * config('exception') -> исключение; 'response'($spec,&$result) — всегда последним,
  * единственное событие для кеш-хитов. Все события per-request, к пачкам не привязаны.
@@ -502,7 +501,7 @@ final class WebClient {
 
         foreach (self::normalizeRequestHeaders($spec['headers']) as $line)
             if (stripos($line, 'content-type:') === 0 && stripos($line, 'application/json') !== false)
-                return static::spawnMime('application/json')->set($body);
+                return Resource::make(['mime' => 'application/json'])->set($body);
 
         return http_build_query($body);
     }
@@ -591,36 +590,19 @@ final class WebClient {
         return strtolower(trim(explode(';', (string)($result['headers']['content-type'] ?? ''))[0]));
     }
 
-    /** Разбор тела через Mime-сервис по $result['type']; ошибки деградируют в data=null. */
-    private function decodeBody(array &$result): void {
-        if (!is_string($result['body']) || $result['body'] === '') {
-            $result['data'] = null;
-            return;
-        }
-
-        try {
-            $result['data'] = static::spawnMime((string)$result['type'])->get($result['body']);
-        } catch (\Throwable $th) {
-            $result['data']  = null;
-            $result['error'] = $th->getMessage();
-        }
-    }
-
     /**
-     * Mime-сервис по MIME без File (только get/set над строкой). Маппинг берётся из
-     * File::config('mimes.services') + локальный XML; без совпадения — анонимный Mime.
+     * 'data' -> in-memory Storage\Resource над телом по $result['type']. Декодирование ленивое:
+     * ->get() (json->массив, html/xml->текст), ->extract($schema)/->getDom()/->toArray().
+     * Пустое тело (HEAD/оборванное) -> data = null.
      */
-    private static function spawnMime(string $mime): Mime {
-        static $services = null;
-        if ($services === null)
-            $services = File::config('mimes.services');
-
-        if ($mime !== '')
-            foreach ($services as $needle => $service)
-                if ($needle !== '' && strpos($mime, $needle) !== false)
-                    return new $service();
-
-        return new class extends Mime {};
+    private function decodeBody(array &$result): void {
+        $result['data'] = (is_string($result['body']) && $result['body'] !== '')
+            ? Resource::make([
+                'body' => $result['body'],
+                'mime' => (string)$result['type'],
+                'id'   => (string)($result['effective_url'] ?? $result['url'] ?? ''),
+            ])
+            : null;
     }
 
     // --- кеш ---

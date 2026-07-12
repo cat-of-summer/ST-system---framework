@@ -4,18 +4,18 @@ namespace ST_system\Storage\Mimes;
 
 use ST_system\Storage\Mimes\Mime;
 use ST_system\Main;
-use ST_system\Storage\Mimes\Traits\Parsable;
+use ST_system\Storage\Mimes\Traits\Extractable;
 
 class XmlMime extends Mime {
 
-    use Parsable;
+    use Extractable;
 
-    /** Сырой XML -> вложенный массив. Некорректный XML -> \Throwable. */
+    /** get() отдаёт текст; массив/выборка — через toArray()/extract(). */
     public function get($data) {
-        return self::xmlToArray((string)$data);
+        return (string)$data;
     }
 
-    private static function xmlToArray(string $xml): array {
+    protected function loadDom(string $xml): \DOMDocument {
         libxml_use_internal_errors(true);
 
         $doc = new \DOMDocument('1.0', 'UTF-8');
@@ -24,12 +24,17 @@ class XmlMime extends Mime {
         if (!$doc->loadXML($xml, LIBXML_NOCDATA | LIBXML_NONET) || $doc->documentElement === null) {
             $errors = array_map(fn(\LibXMLError $e) => trim($e->message), libxml_get_errors());
             libxml_clear_errors();
-            throw new \Exception("Ошибка при декодировании XML-ответа: '".(implode('; ', $errors) ?: 'некорректный XML')."'");
+            throw new \Exception("Ошибка при декодировании XML: '".(implode('; ', $errors) ?: 'некорректный XML')."'");
         }
 
         libxml_clear_errors();
 
-        $root = $doc->documentElement;
+        return $doc;
+    }
+
+    /** Полный разбор XML во вложенный массив (@attributes/@text). */
+    public function toArray(): array {
+        $root = $this->getDom()->documentElement;
         return [$root->nodeName => self::domNodeToArray($root)];
     }
 

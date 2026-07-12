@@ -18,8 +18,6 @@ trait Minifiable {
     private bool $is_minified = false;
 
     protected function __init(): void {
-        if ($this->file === null) return;
-
         $this->cache = Cache::make($this->file->getPathname(), [
             'driver' => 'filesystem',
             'dir' => static::config('cache_dir') ?: File::config('cache.dir'),
