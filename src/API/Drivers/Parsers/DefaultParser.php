@@ -3,6 +3,7 @@
 namespace ST_system\API\Drivers\Parsers;
 
 use ST_system\API\IntegrationDriver;
+use ST_system\HTTP\WebClient;
 use ST_system\Storage\File;
 use ST_system\Main;
 use ST_system\Rule;
@@ -43,7 +44,9 @@ class DefaultParser extends IntegrationDriver {
                 'sec-ch-ua-platform'        => '"Windows"',
             ],
             'follow_redirects' => true,
-            'delay'            => 1000,
+            'delay'            => 1000,   // пауза между окнами batch, мс (WebClient)
+            'batch'            => 1,      // размер окна параллельных запросов (1 — вежливо-последовательно)
+            'requeue'          => 3,      // повторов транзиентного сбоя на запрос
         ];
     }
 
@@ -79,7 +82,10 @@ class DefaultParser extends IntegrationDriver {
                 if (!is_array($item)) { $calls = [$input]; break; }
         }
 
-        $results = [];
+        // разворачиваем всё в плоский упорядоченный список заданий (URL резолвится сразу:
+        // after_redirect-оверрайды в кодовой базе никто не слушает, каскад между вызовами
+        // фактически не работает — можно резолвить заранее и качать пачкой)
+        $jobs = [];
         foreach ($calls as $callInput) {
             if (is_array($callInput) && !empty($callInput) && !Main::arrayIsList($callInput)) {
                 $expanded_calls = [[]];
@@ -97,10 +103,19 @@ class DefaultParser extends IntegrationDriver {
 
             foreach ($expanded_calls as $expanded) {
                 $this->fire('before_fetch_one', $expanded);
-                $one = $this->fetchOne($expanded, $schema, $template, $entrypoint);
-                $this->fire('after_fetch_one', $one);
-                $results[] = $one;
+                $url  = $this->resolveUrl($expanded, $template, $entrypoint);
+                $data = is_array($expanded) ? array_merge($expanded, ['url' => $url]) : ['url' => $url];
+                $jobs[] = ['input' => $expanded, 'url' => $url, 'data' => $data];
             }
+        }
+
+        $responses = $this->fetchAll(array_column($jobs, 'url'));
+
+        $results = [];
+        foreach ($jobs as $i => $job) {
+            $one = $this->assembleOne($job, $responses[$i] ?? null, $schema, $template, $entrypoint);
+            $this->fire('after_fetch_one', $one);
+            $results[] = $one;
         }
 
         $this->fire('after_fetch', $results);
@@ -108,21 +123,68 @@ class DefaultParser extends IntegrationDriver {
         return $results;
     }
 
-    /** @param string|array|null $input */
-    private function fetchOne($input, array $schema, string $template, string $entrypoint): array {
-        $url  = $this->resolveUrl($input, $template, $entrypoint);
-        $data = is_array($input)
-            ? array_merge($input, ['url' => $url])
-            : ['url' => $url];
+    /**
+     * Пачечная загрузка URL через общий конвейер WebClient::group() (окна batch с паузой
+     * delay, повторы транзиентных сбоев по requeue). Результаты — по индексам входа.
+     *
+     * @param string[] $urls
+     * @return array<int, ?array>  WebClient-результат ('data' — Resource) на каждый URL
+     */
+    private function fetchAll(array $urls): array {
+        $out = array_fill(0, count($urls), null);
+        if (!$urls) return $out;
 
-        try {
-            $file = File::make($url, static::config())->fetch();
-        } catch (\Throwable $e) {
-            throw new \RuntimeException("Parser: curl error for '{$url}': {$e->getMessage()}", 0, $e);
-        }
+        $cfg = [
+            'method'           => 'get',
+            'headers'          => (array)static::config('headers'),
+            'follow_redirects' => (bool)static::config('follow_redirects'),
+            'exception'        => false,
+            'requeue'          => (int)static::config('requeue'),
+            'cache'            => [
+                'use'    => true,
+                'ttl'    => (int)File::config('cache.ttl'),
+                'dir'    => File::config('cache.dir'),
+                'driver' => 'filesystem',
+            ],
+        ];
 
-        $original  = $file->getOriginal();
-        $effective = $original !== null ? ($original->getMeta()['effective_url'] ?? $url) : $url;
+        WebClient::group(function () use ($urls, $cfg, &$out) {
+            foreach ($urls as $i => $url) {
+                // https проверяем (как прежний File-download), http пропускаем
+                $client = WebClient::create($url, ['verify' => stripos($url, 'https://') === 0] + $cfg);
+
+                $client->on('error', function ($spec, array &$r) {
+                    if (($r['errno'] ?? 0) !== 0 || ($r['status'] ?? 0) >= 500)
+                        $r['requeue'] = true;
+                });
+
+                $client->on('response', function ($spec, array &$r) use (&$out, $i) {
+                    $out[$i] = $r;
+                });
+            }
+        }, [
+            'batch' => max(1, (int)static::config('batch')),
+            'delay' => (int)static::config('delay'),
+        ])->send();
+
+        return $out;
+    }
+
+    /** Сборка одного результата из WebClient-ответа: редирект-хук + извлечение по схеме. */
+    private function assembleOne(array $job, ?array $response, array $schema, string $template, string $entrypoint): array {
+        $input = $job['input'];
+        $url   = $job['url'];
+        $data  = $job['data'];
+
+        // бросаем только на реальном транспортном сбое (нет тела); HTTP 4xx/5xx с телом
+        // извлекаем как раньше (File-загрузка их не роняла) — один плохой URL не рушит пачку
+        if ($response === null || ($response['errno'] ?? 0) !== 0)
+            throw new \RuntimeException(
+                "Parser: не удалось загрузить '{$url}'"
+                .($response ? " (".($response['error'] ?: 'HTTP '.($response['status'] ?? 0)).")" : '')
+            );
+
+        $effective = (string)($response['effective_url'] ?? $url);
 
         if ($effective !== $url && is_array($input) && $template !== '' && $entrypoint === '') {
             $overrides = [];
@@ -133,15 +195,15 @@ class DefaultParser extends IntegrationDriver {
                     $this->paramOverrides[$key][(string)$orig] = $canon;
 
             $newUrl = $this->resolveUrl($input, $template, $entrypoint);
-            if ($newUrl !== $url) {
-                $url = $newUrl;
-                $data['url'] = $url;
-            }
+            if ($newUrl !== $url)
+                $data['url'] = $newUrl;
         }
+
+        $resource = $response['data'] ?? null;
 
         return [
             'input' => $data,
-            'data'  => $file->extract($schema, $data),
+            'data'  => $resource !== null ? $resource->extract($schema, $data) : [],
         ];
     }
 

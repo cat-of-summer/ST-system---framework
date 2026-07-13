@@ -160,7 +160,6 @@ use ST_system\HTTP\Request;
 | Трейт | Назначение | Документация |
 |-------|------------|--------------|
 | `Drivers\Traits\HasHTMLRules` | Правила извлечения данных из HTML | [src/API/Drivers/Traits/HasHTMLRules.php.md](src/API/Drivers/Traits/HasHTMLRules.php.md) |
-| `Drivers\Traits\HasXmlResponse` | Разбор XML-ответов | [src/API/Drivers/Traits/HasXmlResponse.php.md](src/API/Drivers/Traits/HasXmlResponse.php.md) |
 
 ### Cache
 
