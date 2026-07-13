@@ -23,13 +23,7 @@ final class CloudPayments extends IntegrationDriver {
 
         $this->on('before_curl_init', function($r, $m, $p, &$config) {
             $config['method'] = 'POST';
-        });
-
-        $this->on('curl_init', function($curl) {
-            curl_setopt_array($curl, [
-                CURLOPT_HTTPAUTH => CURLAUTH_BASIC,
-                CURLOPT_USERPWD  => "{$this->SETTINGS['public_id']}:{$this->SETTINGS['api_secret']}",
-            ]);
+            $config['headers']['Authorization'] = 'Basic '.base64_encode("{$this->SETTINGS['public_id']}:{$this->SETTINGS['api_secret']}");
         });
 
         $this->on('prepare_response', function($method, $params, &$raw_data) {

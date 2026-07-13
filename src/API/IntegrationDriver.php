@@ -3,6 +3,7 @@
 namespace ST_system\API;
 
 use ST_system\Rule;
+use ST_system\HTTP\WebClient;
 use ST_system\Cache\Manager as Cache;
 use ST_system\Traits\HasConfig;
 use ST_system\Traits\HasEvents;
@@ -14,10 +15,12 @@ abstract class IntegrationDriver {
     protected static function getDefaultConfig(): array {
         return [
             'endpoint'  => '',
-            // Без них зависший эндпоинт вешает вызывающий процесс навсегда.
-            // Секунды; 0 — без ограничения. Имена те же, что в Storage\File.
             'timeout'         => 30.0,
             'connect_timeout' => 10.0,
+            'verify'          => true,
+            'requeue'         => 0,
+            'batch'           => 10,
+            'delay'           => 0,
             'cache' => [
                 'dir' => '',
                 'use' => false,
@@ -30,7 +33,7 @@ abstract class IntegrationDriver {
 
     protected static function getReservedEvents(): array {
         return [
-            '__construct', 'before_curl_init', 'curl_init', 'encode_request',
+            '__construct', 'before_curl_init', 'encode_request',
             'before_call', 'call', 'build_url', 'prepare_response',
             'curl_error', 'decode_response', 'response', 'save_cache',
         ];
@@ -51,7 +54,7 @@ abstract class IntegrationDriver {
 
         if (static::config('cache.use'))
             $this->cache = Cache::make([static::class, ...$args], static::config('cache'));
-        
+
         $this->fire('__construct', ...$args);
     }
 
@@ -61,6 +64,11 @@ abstract class IntegrationDriver {
 
     final protected function cache(): ?Cache {
         return $this->cache;
+    }
+
+    final protected function methodConfig(string $method = '') {
+        if ($method === '') return $this->methods_map;
+        return $this->methods_map[$method] ?? [];
     }
 
     public function purge(): void {
@@ -119,6 +127,10 @@ abstract class IntegrationDriver {
             ? (float)$config['timeout']         : (float)static::config('timeout');
         $config['connect_timeout'] = is_numeric($config['connect_timeout'] ?? null)
             ? (float)$config['connect_timeout'] : (float)static::config('connect_timeout');
+        $config['verify']          = array_key_exists('verify', $config)
+            ? (bool)$config['verify']           : (bool)static::config('verify');
+        $config['requeue']         = is_int($config['requeue'] ?? null)
+            ? $config['requeue']                : (int)static::config('requeue');
 
         $this->methods_map[$method] = $config;
 
@@ -140,60 +152,6 @@ abstract class IntegrationDriver {
         return $this;
     }
 
-    final protected function curl_init($request_url = '', $method = '', $params = [], $config = []) {
-        $this->fire('before_curl_init', $request_url, $method, $params, $config);
-
-        $curl = curl_init();
-
-        // Ставим ДО события curl_init, чтобы драйвер мог переопределить. 0 — без ограничения.
-        $timeout         = (float)($config['timeout']         ?? 0);
-        $connect_timeout = (float)($config['connect_timeout'] ?? 0);
-
-        if ($timeout > 0)         curl_setopt($curl, CURLOPT_TIMEOUT_MS,        (int)round($timeout * 1000));
-        if ($connect_timeout > 0) curl_setopt($curl, CURLOPT_CONNECTTIMEOUT_MS, (int)round($connect_timeout * 1000));
-
-        $this->fire('curl_init', $curl);
-
-        if ($this->fire('encode_request', $request_url, $method, $params, $config) === false) {
-            switch ($config['content_type']) {
-                case 'application/x-www-form-urlencoded': $params = http_build_query($params); break;
-                case 'application/json':                  $params = json_encode($params);       break;
-                default:
-                    throw new \Exception("Формат контента запроса '{$config['content_type']}' не поддерживается в ".get_called_class());
-            }
-            $config['headers']['Content-type'] = $config['content_type'];
-        }
-
-        switch ($config['method']) {
-            case 'GET':
-                $request_url .= '?'.$params;
-                break;
-            case 'POST':
-                curl_setopt_array($curl, [
-                    CURLOPT_POST       => true,
-                    CURLOPT_POSTFIELDS => $params,
-                ]);
-                break;
-            default:
-                throw new \Exception("Метод запроса '{$config['method']}' не поддерживается в ".get_called_class());
-        }
-
-        $headers = [];
-        foreach ($config['headers'] as $k => $v) {
-            if (is_int($k) && is_string($v) && strpos($v, ':') !== false)
-                [$k, $v] = array_map('trim', explode(':', $v, 2));
-            $headers[str_replace(' ', '-', ucwords(strtolower(str_replace(['_', '-'], ' ', $k))))] = $v;
-        }
-
-        curl_setopt_array($curl, [
-            CURLOPT_URL            => $request_url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER     => array_map(fn($v, $k) => "$k: $v", $headers, array_keys($headers)),
-        ]);
-
-        return $curl;
-    }
-
     final protected function build_url(string $method, string $endpoint = '') {
         $endpoint = filter_var($endpoint, FILTER_VALIDATE_URL)
             ? $endpoint
@@ -210,18 +168,91 @@ abstract class IntegrationDriver {
         return [$p.preg_replace('#/{2,}#', '/', explode('?', $u, 2)[0]), $endpoint];
     }
 
-    final protected function execute_curl($curl): array {
-        $response_data = [
-            'response'      => curl_exec($curl),
-            'error'         => curl_error($curl),
-            'http_code'     => curl_getinfo($curl, CURLINFO_HTTP_CODE),
-            'effective_url' => curl_getinfo($curl, CURLINFO_EFFECTIVE_URL),
-        ];
-        curl_close($curl);
-        return $response_data;
+    final protected function request(string $url, string $method, array $params, array $config): array {
+        $client = $this->buildClient($url, $method, $params, $config);
+        if ($params) $client->fill($params);
+
+        $results = $client->send();
+        return $this->mapResult($results[0] ?? null, $url);
     }
 
-    final public function call(string $method, array $params = []) {
+    private function buildClient(string $url, string $method, array &$params, array $config): WebClient {
+        $http_method = strtoupper((string)($config['method'] ?? 'GET'));
+        $headers     = is_array($config['headers'] ?? null) ? $config['headers'] : [];
+
+        if ($this->fire('encode_request', $url, $method, $params, $config) === false)
+            $headers['Content-Type'] = $config['content_type'] ?? 'application/x-www-form-urlencoded';
+        elseif (!empty($config['content_type']))
+            $headers['Content-Type'] = $config['content_type'];
+
+        if (is_string($params)) {
+            parse_str($params, $parsed);
+            $params = $parsed;
+        }
+
+        $requeue = is_int($config['requeue'] ?? null) ? $config['requeue'] : (int)static::config('requeue');
+
+        $client = WebClient::create($url, [
+            'method'          => strtolower($http_method),
+            'headers'         => $headers,
+            'timeout'         => (float)($config['timeout']         ?? static::config('timeout')),
+            'connect_timeout' => (float)($config['connect_timeout'] ?? static::config('connect_timeout')),
+            'verify'          => (bool)($config['verify'] ?? static::config('verify')),
+            'exception'       => false,
+            'requeue'         => $requeue,
+        ]);
+
+        $this->attachRetry($client, $requeue);
+
+        return $client;
+    }
+
+    private function attachRetry(WebClient $client, int $requeue): void {
+        if ($requeue === 0) return;
+
+        $client->on('error', function ($spec, array &$result) {
+            if (($result['errno'] ?? 0) !== 0 || ($result['status'] ?? 0) >= 500)
+                $result['requeue'] = true;
+        });
+    }
+
+    private function mapResult(?array $r, string $url): array {
+        if ($r === null)
+            return ['response' => null, 'error' => 'Пустой ответ', 'http_code' => 0, 'effective_url' => $url];
+
+        return [
+            'response'      => $r['body'],
+            'error'         => (string)($r['error'] ?? ''),
+            'http_code'     => (int)($r['status'] ?? 0),
+            'effective_url' => (string)($r['effective_url'] ?? $url),
+        ];
+    }
+
+    final protected function processResponse(string $method, array $params, array &$raw_data) {
+        $this->fire('prepare_response', $method, $params, $raw_data);
+
+        if ($raw_data['error']) {
+            if ($this->fire('curl_error', $method, $params, $raw_data) === false)
+                throw new \Exception("Ошибка при запросе '{$method}' к API: '{$raw_data['error']}' в ".get_called_class());
+
+            return false;
+        }
+
+        if ($this->fire('decode_response', $method, $params, $raw_data) === false) {
+            $response = @json_decode($raw_data['response'], true);
+
+            if (json_last_error() !== JSON_ERROR_NONE)
+                throw new \Exception("Ошибка при декодировании ответа: '".json_last_error_msg()."' в ".get_called_class());
+        } else {
+            $response = $raw_data['response'];
+        }
+
+        $this->fire('response', $method, $params, $response);
+
+        return $response;
+    }
+
+    private function resolveMethodConfig(string &$method, array &$params) {
         if (!isset($this->methods_map[$method])) {
             $method_parts = explode('/', trim($method, '/'));
 
@@ -248,11 +279,10 @@ abstract class IntegrationDriver {
         if (!isset($this->methods_map[$method]))
             throw new \Exception("Метод '{$method}' не зарегистрирован в ".get_called_class());
 
-        $config = $this->methods_map[$method];
+        return $this->methods_map[$method];
+    }
 
-        if ($config instanceof \Closure)
-            return $config($params);
-
+    private function prepareRequest(string $method, array $params, array $config): array {
         $this->fire('before_call', $method, $params);
 
         Rule::scope(static::class, function() use ($config, &$params) {
@@ -287,14 +317,30 @@ abstract class IntegrationDriver {
         if (!filter_var($request_url, FILTER_VALIDATE_URL))
             throw new \Exception("Задан некорректный путь для API: '{$request_url}' в ".get_called_class());
 
-        $curl = $this->curl_init($request_url, $method, $params, $config);
+        $this->fire('before_curl_init', $request_url, $method, $params, $config);
+
+        return [
+            'method' => $method,
+            'url'    => $request_url,
+            'params' => $params,
+            'config' => $config,
+        ];
+    }
+
+    final public function call(string $method, array $params = []) {
+        $config = $this->resolveMethodConfig($method, $params);
+
+        if ($config instanceof \Closure)
+            return $config($params);
+
+        $p = $this->prepareRequest($method, $params, $config);
 
         $from_cache = false;
         $raw_data   = null;
-        $cache = null;
+        $cache      = null;
 
         if (($config['cache_ttl'] > 0 || $config['cache_ttl'] === -1) && $this->cache !== null) {
-            $cache = $this->cache->make([$request_url, $params], ['ttl' => $config['cache_ttl']]);
+            $cache = $this->cache->make([$p['url'], $p['params']], ['ttl' => $config['cache_ttl']]);
 
             if ($cache->isValid()) {
                 $cached = $cache->get();
@@ -306,36 +352,75 @@ abstract class IntegrationDriver {
         }
 
         if ($raw_data === null)
-            $raw_data = $this->execute_curl($curl);
+            $raw_data = $this->request($p['url'], $p['method'], $p['params'], $p['config']);
 
-        $this->fire('prepare_response', $method, $params, $raw_data);
+        $response = $this->processResponse($p['method'], $p['params'], $raw_data);
 
-        if ($raw_data['error']) {
-            if ($this->fire('curl_error', $method, $params, $raw_data) === false)
-                throw new \Exception("Ошибка при запросе '{$method}' к API: '{$raw_data['error']}' в ".get_called_class());
-
+        if ($response === false)
             return false;
-        }
-
-        if ($this->fire('decode_response', $method, $params, $raw_data) === false) {
-            $response = @json_decode($raw_data['response'], true);
-
-            if (json_last_error() !== JSON_ERROR_NONE)
-                throw new \Exception("Ошибка при декодировании ответа: '".json_last_error_msg()."' в ".get_called_class());
-        } else {
-            $response = $raw_data['response'];
-        }
-
-        $this->fire('response', $method, $params, $response);
 
         if ($cache !== null && !$from_cache) {
             $meta = ['ttl' => 0];
-            $this->fire('save_cache', $method, $params, $response, $meta);
+            $this->fire('save_cache', $p['method'], $p['params'], $response, $meta);
             $effective_ttl = !empty($meta['ttl']) ? (int)$meta['ttl'] : $config['cache_ttl'];
             $cache->set(json_encode($raw_data), $effective_ttl);
         }
 
         return $response;
+    }
+
+    final public function callMany(array $calls, array $opts = []): array {
+        $calls   = array_values($calls);
+        $results = array_fill(0, count($calls), null);
+        $plans   = [];
+
+        foreach ($calls as $i => $spec) {
+            [$method, $params] = $this->normalizeCallSpec($spec);
+            $config = $this->resolveMethodConfig($method, $params);
+
+            if ($config instanceof \Closure) {
+                $results[$i] = $config($params);
+                continue;
+            }
+
+            $plans[$i] = $this->prepareRequest($method, $params, $config);
+        }
+
+        if (!$plans) return $results;
+
+        $batch = (int)($opts['batch'] ?? static::config('batch'));
+        $delay = (int)($opts['delay'] ?? static::config('delay'));
+
+        WebClient::group(function () use ($plans, &$results) {
+            foreach ($plans as $i => $p) {
+                $reqParams = $p['params'];
+                $client    = $this->buildClient($p['url'], $p['method'], $reqParams, $p['config']);
+
+                $client->on('response', function ($spec, array &$r) use (&$results, $i, $p) {
+                    $raw = $this->mapResult($r, $p['url']);
+                    $results[$i] = $this->processResponse($p['method'], $p['params'], $raw);
+                });
+
+                if ($reqParams) $client->fill($reqParams);
+            }
+        }, ['batch' => $batch, 'delay' => $delay])->send();
+
+        return $results;
+    }
+
+    private function normalizeCallSpec($spec): array {
+        if (is_string($spec)) return [$spec, []];
+
+        if (is_array($spec)) {
+            if (array_key_exists('method', $spec))
+                return [(string)$spec['method'], (array)($spec['params'] ?? [])];
+
+            return [(string)($spec[0] ?? ''), (array)($spec[1] ?? [])];
+        }
+
+        throw new \InvalidArgumentException(
+            "callMany: некорректная спецификация запроса (".gettype($spec).") в ".get_called_class()
+        );
     }
 
 }

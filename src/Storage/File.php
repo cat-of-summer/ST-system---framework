@@ -3,6 +3,7 @@
 namespace ST_system\Storage;
 
 use ST_system\Main;
+use ST_system\HTTP\WebClient;
 use ST_system\Cache\Manager as Cache;
 
 final class File extends Resource {
@@ -300,43 +301,38 @@ final class File extends Resource {
         if (!$this->cache()->isExpired('headers_cache_expires_in') && !$force)
             return $meta;
 
-        $curl = curl_init();
-        curl_setopt_array($curl, [
-            CURLOPT_URL => $url,
-            CURLOPT_NOBODY => true,
-            CURLOPT_FOLLOWLOCATION => $this->follow_redirects,
-            CURLOPT_MAXREDIRS => 10,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HEADER => true,
-            CURLOPT_CONNECTTIMEOUT => $this->connect_timeout,
-            CURLOPT_TIMEOUT => min(30, $this->timeout),
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 0,
-            CURLOPT_HTTPHEADER => $this->header_list,
-        ]);
+        try {
+            $r = WebClient::create($url, [
+                'method'           => 'head',
+                'headers'          => $this->headers,
+                'follow_redirects' => $this->follow_redirects,
+                'timeout'          => min(30.0, (float)$this->timeout),
+                'connect_timeout'  => (float)$this->connect_timeout,
+                'verify'           => false,
+                'exception'        => false,
+                'cache'            => [
+                    'use'    => true,
+                    'ttl'    => (int)static::config('cache.ttl'),
+                    'dir'    => static::config('cache.dir'),
+                    'driver' => 'filesystem',
+                ],
+            ])->send()[0] ?? null;
+        } catch (\Throwable $e) {
+            $r = null;
+        }
 
-        $response = curl_exec($curl);
-        $error = curl_errno($curl);
-        $info = curl_getinfo($curl);
-
-        curl_close($curl);
-
-        if (!$error) {
-            $headers = is_string($response)
-                ? static::parseHttpHeaders($response)
-                : (is_array($response) ? $response : []);
+        if ($r !== null && ($r['errno'] ?? 0) === 0) {
+            $headers = $r['headers'];
             $ttl = $this->resolveCacheTtl($headers);
 
             $meta = array_merge(
                 $meta,
                 $headers,
                 [
-                    'http_code' => $info['http_code'] ?? null,
-                    'effective_url' => $info['url'] ?? $url,
+                    'http_code' => $r['status'] ?? null,
+                    'effective_url' => $r['effective_url'] ?? $url,
                     'headers_cache_expires_in' => time() + $ttl,
-                    'content_length' => ($info['download_content_length'] ?? 0) > 0
-                        ? $info['download_content_length']
-                        : $headers['content-length'] ?? 0
+                    'content_length' => (int)($headers['content-length'] ?? $meta['content_length'] ?? 0),
                 ]
             );
 
@@ -349,99 +345,80 @@ final class File extends Resource {
         return $meta;
     }
 
-
     private function fetch(bool $force = false): self {
         $this->purge(false);
 
         if (!$this->is_uri) return $this;
 
-        $url = $this->getPathname();
+        $url  = $this->getPathname();
+        $file = $this->cache()->file;
 
-        if (!$force) {
-            if (is_file($this->cache()->file) && !$this->cache()->isExpired())
-                return new static($this->cache()->file, [], $this);
+        $client = WebClient::create($url, [
+            'method'           => 'get',
+            'headers'          => $this->headers,
+            'follow_redirects' => $this->follow_redirects,
+            'timeout'          => (float)$this->timeout,
+            'connect_timeout'  => (float)$this->connect_timeout,
+            'verify'           => stripos($url, 'https://') === 0,
+            'exception'        => false,
+            'requeue'          => max(0, $this->max_attempts - 1),
+            'cache'            => [
+                'use'    => !$force,
+                'ttl'    => (int)static::config('cache.ttl'),
+                'dir'    => static::config('cache.dir'),
+                'driver' => 'filesystem',
+            ],
+        ]);
 
-            $meta = $this->getMeta();
+        $client->on('error', function ($spec, array &$res) {
+            if (($res['errno'] ?? 0) !== 0 || ($res['status'] ?? 0) >= 500)
+                $res['requeue'] = true;
+        });
 
-            if (is_file($this->cache()->file) && ($meta['http_code'] ?? null) != 200)
-                return new static($this->cache()->file, [], $this);
+        try {
+            $this->applyHostDelay($url);
+            $r = $client->send()[0] ?? null;
+        } catch (\Throwable $e) {
+            if (is_file($file)) return new static($file, [], $this);
+            throw new \RuntimeException("cURL request failed for URL {$url}: {$e->getMessage()}", 0, $e);
         }
 
-        $attempt = 0;
-        while ($attempt < $this->max_attempts) {
-            try {
-                $this->applyHostDelay($url);
-
-                $fopen = fopen($this->cache()->file.'.temp', 'w');
-                if (!$fopen) throw new \Exception();
-
-                $curl = curl_init();
-                curl_setopt_array($curl, [
-                    CURLOPT_URL => $url,
-                    CURLOPT_FOLLOWLOCATION => $this->follow_redirects,
-                    CURLOPT_MAXREDIRS => 10,
-                    CURLOPT_RETURNTRANSFER => false,
-                    CURLOPT_HEADER => false,
-                    CURLOPT_CONNECTTIMEOUT => $this->connect_timeout,
-                    CURLOPT_TIMEOUT => $this->timeout,
-                    CURLOPT_FILE => $fopen,
-                    CURLOPT_SSL_VERIFYPEER => true,
-                    CURLOPT_SSL_VERIFYHOST => 2,
-                    CURLOPT_HTTPHEADER => $this->header_list,
-                ]);
-
-                $headers = [];
-                curl_setopt($curl, CURLOPT_HEADERFUNCTION, function ($curl, $header_line) use (&$headers) {
-                    $trim = trim($header_line);
-                    if ($trim === '') return strlen($header_line);
-                    $parts = explode(':', $trim, 2);
-                    if (count($parts) === 2) $headers[strtolower(trim($parts[0]))] = trim($parts[1]);
-                    else $headers['status-line'] = $trim;
-                    return strlen($header_line);
-                });
-
-                $response = curl_exec($curl);
-                $error = curl_errno($curl);
-                $info = curl_getinfo($curl);
-
-                curl_close($curl);
-                fclose($fopen);
-
-                if ($error) {
-                    @unlink($this->cache()->file.'.temp');
-                    throw new \RuntimeException ("cURL request failed for URL {$url} with error #{$error}: ".curl_strerror($error));
-                }
-
-                rename($this->cache()->file.'.temp', $this->cache()->file);
-
-                $ttl = $this->resolveCacheTtl($headers);
-                $cache_expires_in = time() + $ttl;
-
-                $meta = array_merge(
-                    $headers,
-                    [
-                        'http_code' => $info['http_code'] ?? null,
-                        'effective_url' => $info['url'] ?? $url,
-                        'content_length' => ($info['download_content_length'] ?? 0) > 0
-                            ? $info['download_content_length']
-                            : ($headers['content-length'] ?? filesize($this->cache()->file)),
-                        'original_url' => $url,
-                        'fetched_at' => time(),
-                        'cache_ttl' => $ttl,
-                        'expires_in' => $cache_expires_in,
-                        'headers_cache_expires_in' => $cache_expires_in,
-                    ]
-                );
-
-                $this->setMeta($meta, false);
-
-                return new static($this->cache()->file, [], $this);
-            } catch (\Throwable $th) {
-                $attempt++;
-            }
+        if ($r === null || ($r['errno'] ?? 0) !== 0 || ($r['status'] ?? 0) >= 400) {
+            if (is_file($file)) return new static($file, [], $this);
+            throw new \RuntimeException("HTTP request failed for URL {$url} (".($r['error'] ?? 'HTTP '.($r['status'] ?? 0)).")");
         }
 
-        throw $th;
+        $body    = (string)($r['body'] ?? '');
+        $headers = $r['headers'];
+
+        if (empty($r['cached']) || !is_file($file)) {
+            $dir = dirname($file);
+            if (!is_dir($dir)) @mkdir($dir, 0775, true);
+
+            if (@file_put_contents($file.'.temp', $body) === false)
+                throw new \RuntimeException("Cannot write cache file for URL {$url}");
+
+            rename($file.'.temp', $file);
+        }
+
+        $ttl              = $this->resolveCacheTtl($headers);
+        $cache_expires_in = time() + $ttl;
+
+        $this->setMeta(array_merge(
+            $headers,
+            [
+                'http_code' => $r['status'] ?? null,
+                'effective_url' => $r['effective_url'] ?? $url,
+                'content_length' => (int)($headers['content-length'] ?? strlen($body)),
+                'original_url' => $url,
+                'fetched_at' => time(),
+                'cache_ttl' => $ttl,
+                'expires_in' => $cache_expires_in,
+                'headers_cache_expires_in' => $cache_expires_in,
+            ]
+        ), false);
+
+        return new static($file, [], $this);
     }
 
 
@@ -477,31 +454,6 @@ final class File extends Resource {
 
     protected function getMaxAttemptsAttribute(): int {
         return (int)($this->attributes['max_attempts'] ?? static::config('request.max_attempts'));
-    }
-
-    protected function getHeaderListAttribute(): array {
-        $list = [];
-        foreach ($this->headers as $k => $v) {
-            if (is_int($k) && is_string($v) && strpos($v, ':') !== false) {
-                $list[] = $v;
-                continue;
-            }
-            $list[] = "{$k}: {$v}";
-        }
-        return $list;
-    }
-
-    private static function parseHttpHeaders(string $raw): array {
-        $parsed = [];
-        foreach (preg_split('#\r\n#', trim(explode("\r\n\r\n", $raw."\r\n\r\n", 2)[0])) as $line) {
-            if (strpos($line, ':') !== false) {
-                [$k, $v] = explode(':', $line, 2);
-                $parsed[strtolower(trim($k))] = trim($v);
-            } elseif ($line !== '') {
-                $parsed['status-line'] = $line;
-            }
-        }
-        return $parsed;
     }
 
     private function resolveCacheTtl(array $headers): int {

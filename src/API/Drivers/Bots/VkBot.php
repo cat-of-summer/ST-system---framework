@@ -50,7 +50,7 @@ final class VkBot extends IntegrationDriver {
         });
 
         $this->on('call', function($method) {
-            $meta       = $this->methods_map[$method]['meta'] ?? [];
+            $meta       = $this->methodConfig($method)['meta'] ?? [];
             $array_diff = array_diff($meta['scope'] ?? [], $this->scope ?? []);
 
             if (!empty($array_diff))
@@ -100,14 +100,13 @@ final class VkBot extends IntegrationDriver {
                             'code' => Rule::create(fn(&$v) => is_string($v) && $v !== '')->handleError(fn($v) => 'Некорректный код авторизации!')->skip(true),
                         ])->throwable()->apply($params);
 
-                        $curl = $this->curl_init($request_url, 'POST', [
+                        $response_data = $this->request($request_url, 'POST', [
                             'redirect_uri'  => $this->redirect_uri,
                             'client_id'     => $this->client_id,
                             'client_secret' => $this->client_secret,
                             'code'          => $params['code'],
                         ], ['method' => 'POST', 'content_type' => 'application/x-www-form-urlencoded', 'headers' => []]);
 
-                        $response_data = $this->execute_curl($curl);
                         if ($response_data['error'])
                             throw new \Exception("Ошибка при запросе к API: '{$response_data['error']}' в ".get_called_class());
 
