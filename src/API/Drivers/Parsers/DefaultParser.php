@@ -44,9 +44,9 @@ class DefaultParser extends IntegrationDriver {
                 'sec-ch-ua-platform'        => '"Windows"',
             ],
             'follow_redirects' => true,
-            'delay'            => 1000,   // пауза между окнами batch, мс (WebClient)
-            'batch'            => 1,      // размер окна параллельных запросов (1 — вежливо-последовательно)
-            'requeue'          => 3,      // повторов транзиентного сбоя на запрос
+            'delay'            => 1000,
+            'batch'            => 1,
+            'requeue'          => 3,
         ];
     }
 
@@ -82,9 +82,6 @@ class DefaultParser extends IntegrationDriver {
                 if (!is_array($item)) { $calls = [$input]; break; }
         }
 
-        // разворачиваем всё в плоский упорядоченный список заданий (URL резолвится сразу:
-        // after_redirect-оверрайды в кодовой базе никто не слушает, каскад между вызовами
-        // фактически не работает — можно резолвить заранее и качать пачкой)
         $jobs = [];
         foreach ($calls as $callInput) {
             if (is_array($callInput) && !empty($callInput) && !Main::arrayIsList($callInput)) {
@@ -150,7 +147,6 @@ class DefaultParser extends IntegrationDriver {
 
         WebClient::group(function () use ($urls, $cfg, &$out) {
             foreach ($urls as $i => $url) {
-                // https проверяем (как прежний File-download), http пропускаем
                 $client = WebClient::create($url, ['verify' => stripos($url, 'https://') === 0] + $cfg);
 
                 $client->on('error', function ($spec, array &$r) {
@@ -170,14 +166,11 @@ class DefaultParser extends IntegrationDriver {
         return $out;
     }
 
-    /** Сборка одного результата из WebClient-ответа: редирект-хук + извлечение по схеме. */
     private function assembleOne(array $job, ?array $response, array $schema, string $template, string $entrypoint): array {
         $input = $job['input'];
         $url   = $job['url'];
         $data  = $job['data'];
 
-        // бросаем только на реальном транспортном сбое (нет тела); HTTP 4xx/5xx с телом
-        // извлекаем как раньше (File-загрузка их не роняла) — один плохой URL не рушит пачку
         if ($response === null || ($response['errno'] ?? 0) !== 0)
             throw new \RuntimeException(
                 "Parser: не удалось загрузить '{$url}'"

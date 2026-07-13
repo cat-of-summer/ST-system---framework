@@ -317,18 +317,13 @@ abstract class IntegrationDriver {
         if (!filter_var($request_url, FILTER_VALIDATE_URL))
             throw new \Exception("Задан некорректный путь для API: '{$request_url}' в ".get_called_class());
 
-        $req_url    = $request_url;
-        $req_params = $params;
-        $req_config = $config;
-        $this->fire('before_curl_init', $req_url, $method, $req_params, $req_config);
+        $this->fire('before_curl_init', $request_url, $method, $params, $config);
 
         return [
-            'method'     => $method,
-            'url'        => $request_url,
-            'params'     => $params,
-            'req_url'    => $req_url,
-            'req_params' => $req_params,
-            'config'     => $req_config,
+            'method' => $method,
+            'url'    => $request_url,
+            'params' => $params,
+            'config' => $config,
         ];
     }
 
@@ -357,7 +352,7 @@ abstract class IntegrationDriver {
         }
 
         if ($raw_data === null)
-            $raw_data = $this->request($p['req_url'], $p['method'], $p['req_params'], $p['config']);
+            $raw_data = $this->request($p['url'], $p['method'], $p['params'], $p['config']);
 
         $response = $this->processResponse($p['method'], $p['params'], $raw_data);
 
@@ -374,17 +369,6 @@ abstract class IntegrationDriver {
         return $response;
     }
 
-    /**
-     * Параллельный набор произвольных вызовов: массив запросов, каждый со своим методом и
-     * параметрами — как отдельные call(), собранные в одну очередь WebClient::group().
-     * Все запросы идут окнами batch с паузой delay; повторы транзиентных сбоев — по requeue
-     * метода/драйвера. Результаты возвращаются в порядке входного массива. Каждый запрос
-     * проходит те же события, что и call() (кроме response-level кеша — в пакете не применяется).
-     *
-     * Формат элемента $calls: 'method' | ['method', $params] | ['method' => ..., 'params' => ...].
-     *
-     * @param array $opts  batch/delay переопределяют конфиг драйвера.
-     */
     final public function callMany(array $calls, array $opts = []): array {
         $calls   = array_values($calls);
         $results = array_fill(0, count($calls), null);
@@ -395,7 +379,7 @@ abstract class IntegrationDriver {
             $config = $this->resolveMethodConfig($method, $params);
 
             if ($config instanceof \Closure) {
-                $results[$i] = $config($params); // методы-замыкания не параллелятся
+                $results[$i] = $config($params);
                 continue;
             }
 
@@ -409,11 +393,11 @@ abstract class IntegrationDriver {
 
         WebClient::group(function () use ($plans, &$results) {
             foreach ($plans as $i => $p) {
-                $reqParams = $p['req_params'];
-                $client    = $this->buildClient($p['req_url'], $p['method'], $reqParams, $p['config']);
+                $reqParams = $p['params'];
+                $client    = $this->buildClient($p['url'], $p['method'], $reqParams, $p['config']);
 
                 $client->on('response', function ($spec, array &$r) use (&$results, $i, $p) {
-                    $raw = $this->mapResult($r, $p['req_url']);
+                    $raw = $this->mapResult($r, $p['url']);
                     $results[$i] = $this->processResponse($p['method'], $p['params'], $raw);
                 });
 
@@ -424,7 +408,6 @@ abstract class IntegrationDriver {
         return $results;
     }
 
-    /** Нормализует элемент callMany() в [метод, параметры]. */
     private function normalizeCallSpec($spec): array {
         if (is_string($spec)) return [$spec, []];
 
