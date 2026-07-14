@@ -78,9 +78,15 @@ class Resource {
             $this->attributes['mime_override'] = $config['mime'];
     }
 
-    /** Единая фабрика (аргументы форвардятся в конструктор static-типа). */
-    final public static function make(...$args) {
+    final protected static function make(...$args) {
         return new static(...$args);
+    }
+
+    public static function __callStatic(string $name, array $args) {
+        if ($name === 'make')
+            return static::make(...$args);
+
+        throw new \BadMethodCallException("Method ".static::class."::{$name}() not found");
     }
 
     /** Идентификатор содержимого для производных кешей: pathname у File, ключ запроса у WebClient. */

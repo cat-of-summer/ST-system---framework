@@ -77,6 +77,8 @@ final class File extends Resource {
 
     public static function __callStatic(string $name, array $args) {
         switch ($name) {
+            case 'make':
+                return static::make(...$args);
             case 'fetch':
                 return static::make($args[0], $args[2] ?? [])->fetch($args[1] ?? false);
             case 'find':

@@ -23,7 +23,7 @@ final class View {
         ];
     }
 
-    private const RESERVED = ['get', 'set', 'slot', 'capture', 'config', 'setConfig', 'applyConfig', 'sources', 'name', 'path', 'cache', 'cascade'];
+    private const RESERVED = ['template', 'get', 'set', 'slot', 'capture', 'config', 'setConfig', 'applyConfig', 'sources', 'name', 'path', 'cache', 'cascade'];
 
     private const MAX_DEPTH = 50;
 
@@ -70,7 +70,29 @@ final class View {
         if (in_array($name, self::RESERVED, true) || !isset(self::sources()[$name]))
             throw new \BadMethodCallException("Method ".__CLASS__."::{$name}() not found");
 
+        // Алиас-вызов View::<source>($view, ...) — сахар над View::template("<source>/<view>", ...).
         $view = (string)array_shift($args);
+
+        return self::template($name.'/'.$view, ...$args);
+    }
+
+    /**
+     * Базовый резолвер вьюхи по пути «<source>/<view>» (без алиас-магии, только путь).
+     * Первый сегмент — ключ источника из конфигурации, остальное — путь вьюхи внутри него.
+     * View::page('index') эквивалентно View::template('page/index').
+     */
+    public static function template(string $path, ...$args): self {
+        $path  = trim(str_replace('\\', '/', $path), '/');
+        $slash = strpos($path, '/');
+        $key   = $slash === false ? $path : substr($path, 0, $slash);
+        $view  = $slash === false ? ''    : substr($path, $slash + 1);
+
+        $sources = self::sources();
+        if ($key === '' || !isset($sources[$key]))
+            throw new \RuntimeException(__CLASS__.": source '{$key}' not found");
+        if ($view === '')
+            throw new \RuntimeException(__CLASS__.": empty view path in '{$path}'");
+
         if (isset($args[0]) && !is_array($args[0])) {
             $props    = [];
             $children = $args[0];
@@ -80,15 +102,14 @@ final class View {
         }
 
         $normalized = [];
-        foreach (Main::dotFlatten($props) as $key => $value)
-            Main::dotSet($normalized, $key, $value);
+        foreach (Main::dotFlatten($props) as $k => $value)
+            Main::dotSet($normalized, $k, $value);
 
-        $source = self::sources()[$name];
-        $rel    = str_replace('\\', '/', $view);
+        $source = $sources[$key];
         $file   = null;
         foreach ([
-            "{$source['dir']}/{$rel}.{$source['ext']}",
-            "{$source['dir']}/{$rel}/index.{$source['ext']}",
+            "{$source['dir']}/{$view}.{$source['ext']}",
+            "{$source['dir']}/{$view}/index.{$source['ext']}",
         ] as $candidate) {
             $candidate = Main::preparePath($candidate, 0, true);
             if (is_file($candidate) && !self::isExcluded($candidate)) { $file = $candidate; break; }
@@ -96,7 +117,7 @@ final class View {
         if ($file === null)
             throw new \RuntimeException(__CLASS__.": view '{$view}' not found in {$source['dir']}");
 
-        $instance = new self($name.':'.$view, $file, $normalized, $children);
+        $instance = new self($key.':'.$view, $file, $normalized, $children);
         $instance->auto_echo = !empty(self::$frames);
 
         return $instance;
@@ -110,32 +131,26 @@ final class View {
         $defaultExt = (string)(static::config('extension') ?: 'php');
         $map        = [];
 
-        $add = static function (string $name, string $dir, ?string $ext = null) use (&$map, $defaultExt): void {
+        $add = static function (string $name, string $dir) use (&$map, $defaultExt): void {
             if ($name === '' || in_array($name, self::RESERVED, true))
                 throw new \LogicException(__CLASS__.": source '{$name}' collides with a reserved method");
 
             $abs = Main::preparePath($dir);
             if (isset(self::$excludes['names'][$name]) || self::isExcluded($abs)) return;
 
-            $map[$name] = ['dir' => $abs, 'ext' => ($ext !== null && $ext !== '') ? $ext : $defaultExt];
+            $map[$name] = ['dir' => $abs, 'ext' => $defaultExt];
         };
 
         $source = static::config('source');
 
+        // Строка — каталог, чьи подпапки становятся источниками (ключ = имя подпапки).
+        // Массив — «ключ => путь»: ключ и есть алиас источника.
         if (is_string($source) && $source !== '') {
             foreach (glob(Main::preparePath($source).'/*', GLOB_ONLYDIR) ?: [] as $dir)
                 $add(basename($dir), $dir);
         } elseif (is_array($source)) {
-            foreach ($source as $name => $spec) {
-                if (is_array($spec)) {
-                    $dir = (string)($spec['source'] ?? '');
-                    $ext = isset($spec['extension']) ? (string)$spec['extension'] : null;
-                    $add((string)$name, $dir, $ext);
-                    if (!empty($spec['alias'])) $add((string)$spec['alias'], $dir, $ext);
-                } else {
-                    $add((string)$name, (string)$spec);
-                }
-            }
+            foreach ($source as $name => $dir)
+                $add((string)$name, (string)$dir);
         }
 
         return self::$sources = $map;
