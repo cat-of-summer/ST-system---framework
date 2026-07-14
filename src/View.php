@@ -34,6 +34,7 @@ final class View {
     private static ?array $sources    = null;
     private static ?array $excludes   = null;
     private static array  $boundaries = [];
+    private static ?array $compose    = null;
 
     private string $name;
     private string $file;
@@ -59,7 +60,13 @@ final class View {
     }
 
     private function recomputeConfig(): void {
-        $this->config = Main::merge(static::config(), $this->parentBundle, $this->override);
+        // Цепочка приоритетов: глобальный default -> personal_default источника ->
+        // каскад от родителя -> явный override (->cache()/->cascade()). Так для каждого
+        // источника (page/component/…) работают свои дефолты, но точечный override сильнее.
+        $sourceKey    = (($p = strpos($this->name, ':')) !== false) ? substr($this->name, 0, $p) : $this->name;
+        $sourceConfig = self::sources()[$sourceKey]['config'] ?? [];
+
+        $this->config = Main::merge(static::config(), $sourceConfig, $this->parentBundle, $this->override);
 
         $this->bundle = Main::dotGet($this->config, 'cascade', false)
             ? Main::merge($this->parentBundle, $this->override)
@@ -131,26 +138,43 @@ final class View {
         $defaultExt = (string)(static::config('extension') ?: 'php');
         $map        = [];
 
-        $add = static function (string $name, string $dir) use (&$map, $defaultExt): void {
+        // $spec — либо строка-путь, либо массив ['source' => путь, ...per-source overrides],
+        // где overrides (cache/driver/extension/…) становятся дефолтами для этого источника.
+        $add = static function (string $name, $spec) use (&$map, $defaultExt): void {
             if ($name === '' || in_array($name, self::RESERVED, true))
                 throw new \LogicException(__CLASS__.": source '{$name}' collides with a reserved method");
+
+            if (is_array($spec)) {
+                $dir      = (string)($spec['source'] ?? '');
+                $override = $spec;
+                unset($override['source']);
+            } else {
+                $dir      = (string)$spec;
+                $override = [];
+            }
+
+            if ($dir === '') return;
 
             $abs = Main::preparePath($dir);
             if (isset(self::$excludes['names'][$name]) || self::isExcluded($abs)) return;
 
-            $map[$name] = ['dir' => $abs, 'ext' => $defaultExt];
+            $map[$name] = [
+                'dir'    => $abs,
+                'ext'    => (string)($override['extension'] ?? $defaultExt),
+                'config' => $override,
+            ];
         };
 
         $source = static::config('source');
 
         // Строка — каталог, чьи подпапки становятся источниками (ключ = имя подпапки).
-        // Массив — «ключ => путь»: ключ и есть алиас источника.
+        // Массив — «ключ => путь|спека»: ключ и есть алиас источника.
         if (is_string($source) && $source !== '') {
             foreach (glob(Main::preparePath($source).'/*', GLOB_ONLYDIR) ?: [] as $dir)
                 $add(basename($dir), $dir);
         } elseif (is_array($source)) {
-            foreach ($source as $name => $dir)
-                $add((string)$name, (string)$dir);
+            foreach ($source as $name => $spec)
+                $add((string)$name, $spec);
         }
 
         return self::$sources = $map;
@@ -198,12 +222,131 @@ final class View {
     }
 
     private function output(): string {
-        $mode = Main::dotGet($this->config, 'cache.use', false);
-        $html = ($mode === true || $mode === 'full')
-            ? $this->renderCachedSkeleton()
-            : $this->build();
+        // На верхнем уровне рендера включаем оркестрацию Assets: пока работает View,
+        // ассеты идут по пути bufferization=false (плейсхолдер + finalize), даже если
+        // глобально включён bufferization=true. См. Assets::immediate().
+        $top = empty(self::$frames);
+        if ($top) Assets::beginOrchestration();
 
-        return empty(self::$frames) ? Assets::finalize($html) : $html;
+        try {
+            $mode   = Main::dotGet($this->config, 'cache.use', false);
+            $cached = ($mode === true || $mode === 'full');
+
+            if ($top) {
+                // Корень: пытаемся отдать/собрать composed (russian-doll), см. renderComposedRoot().
+                $html = $cached ? $this->renderComposedRoot() : $this->build();
+            } elseif ($cached) {
+                $html = $this->renderCachedSkeleton();
+            } else {
+                // Некешируемый узел внутри поддерева — динамика: composed для этого корня нельзя.
+                if (self::$compose !== null) self::$compose['composable'] = false;
+                $html = $this->build();
+            }
+
+            return $top ? Assets::finalize($html) : $html;
+        } finally {
+            if ($top) Assets::endOrchestration();
+        }
+    }
+
+    private function cacheHandle(): Cache {
+        return Cache::make([__CLASS__, $this->name, $this->props], [
+            'driver' => (string) Main::dotGet($this->config, 'cache.driver', 'filesystem'),
+            'dir'    => (string) Main::dotGet($this->config, 'cache.dir', ''),
+            'ttl'    => -1,
+        ]);
+    }
+
+    /**
+     * Верхнеуровневый composed-кеш (russian-doll): при валидном поддереве отдаёт целиком собранный
+     * HTML одним чтением `data.composed`, не спускаясь в детей; иначе — обычная пересборка
+     * skeleton+holes с параллельным сбором сводки поддерева и перезаписью composed.
+     */
+    private function renderComposedRoot(): string {
+        $cache = $this->cacheHandle();
+
+        // 1. Быстрый путь: собранный HTML валиден по mtime(union deps) + reads всего поддерева.
+        $cmeta = $cache->getMeta('composed');
+        if (is_array($cmeta['deps'] ?? null)
+            && ($cmeta['stamp'] ?? null) === self::depStamp($cmeta['deps'])
+            && $this->composedReadsValid($cmeta)
+        ) {
+            $html = $cache->get('composed');
+            if ($html !== null) {
+                if (is_array($cmeta['assets'] ?? null)) Assets::replay($cmeta['assets']);
+                foreach ((array)($cmeta['sets'] ?? []) as $k => $v)
+                    Main::dotSet(self::$globals, $k, $v);
+                return (string) $html;
+            }
+        }
+
+        // 2. Пересборка под активным collector'ом поддерева.
+        $prev = self::$compose;
+        self::$compose = ['composable' => true, 'descendants' => [], 'deps' => [], 'sets' => [], 'assets' => []];
+        try {
+            $assembled = $this->renderCachedSkeleton();
+            $c = self::$compose;
+        } finally {
+            self::$compose = $prev;
+        }
+
+        // 3. Пишем composed только если ВСЁ поддерево кешируемо (нет динамики/отравления).
+        if (!empty($c['composable'])) {
+            $deps = array_keys($c['deps']);
+            $cache->set($assembled, -1, 'composed', [
+                'stamp'       => self::depStamp($deps),
+                'deps'        => $deps,
+                'descendants' => $c['descendants'],
+                'sets'        => $c['sets'],
+                'assets'      => $c['assets'],
+            ]);
+        }
+
+        return $assembled;
+    }
+
+    /**
+     * Валидирует reads всего поддерева для composed-записи в восстановленном окружении корня:
+     * кадр с props корня + агрегированные sets как globals. Reads из props корня/sets совпадают
+     * детерминированно, reads из внешних globals сверяются с текущими. Любое несовпадение (в т.ч.
+     * reads, резолвящиеся из props промежуточных узлов) → консервативный откат на пересборку.
+     */
+    private function composedReadsValid(array $cmeta): bool {
+        $descendants = $cmeta['descendants'] ?? null;
+        if (!is_array($descendants)) return false;
+
+        $savedGlobals = self::$globals;
+        self::$frames[] = [
+            'props'    => $this->props,
+            'children' => null,
+            'name'     => $this->name,
+            'bundle'   => [],
+            'file'     => $this->file,
+        ];
+        foreach ((array)($cmeta['sets'] ?? []) as $k => $v)
+            Main::dotSet(self::$globals, $k, $v);
+
+        try {
+            foreach ($descendants as $d)
+                if (!self::readsValid((array)($d['reads_keys'] ?? []), (string)($d['reads_stamp'] ?? '')))
+                    return false;
+            return true;
+        } finally {
+            array_pop(self::$frames);
+            self::$globals = $savedGlobals;
+        }
+    }
+
+    private static function composeCollect(array $deps, array $readsKeys, string $readsStamp, array $sets, array $assets): void {
+        if (self::$compose === null) return;
+
+        self::$compose['descendants'][] = [
+            'reads_keys'  => $readsKeys,
+            'reads_stamp' => $readsStamp,
+        ];
+        foreach ($deps as $f)         self::$compose['deps'][$f]  = true;
+        foreach ($sets as $k => $v)   self::$compose['sets'][$k]  = $v;
+        foreach ($assets as $op)      self::$compose['assets'][]  = $op;
     }
 
     private function build(): string {
@@ -243,16 +386,13 @@ final class View {
     }
 
     private function renderCachedSkeleton(): string {
-        $cache = Cache::make([__CLASS__, $this->name, $this->props], [
-            'driver' => (string) Main::dotGet($this->config, 'cache.driver', 'filesystem'),
-            'dir'    => (string) Main::dotGet($this->config, 'cache.dir', ''),
-            'ttl'    => -1,
-        ]);
+        $cache = $this->cacheHandle();
 
-        $meta     = $cache->getMeta();
-        $deps     = $meta['deps'] ?? null;
-        $skeleton = null;
-        $payload  = null;
+        $meta      = $cache->getMeta();
+        $deps      = $meta['deps'] ?? null;
+        $skeleton  = null;
+        $payload   = null;
+        $fromCache = false;
 
         if (is_array($deps)
             && ($meta['stamp'] ?? null) === self::depStamp($deps)
@@ -260,9 +400,16 @@ final class View {
         ) {
             $cached = $cache->get();
             if ($cached !== null) {
-                $skeleton = (string) $cached;
-                $payload  = is_string($meta['payload'] ?? null) ? $meta['payload'] : '';
+                $skeleton  = (string) $cached;
+                $payload   = is_string($meta['payload'] ?? null) ? $meta['payload'] : '';
+                $fromCache = true;
             }
+        }
+
+        if ($fromCache) {
+            $nodeDeps       = is_array($deps) ? $deps : [];
+            $nodeReadsKeys  = (array)($meta['reads_keys'] ?? []);
+            $nodeReadsStamp = (string)($meta['reads_stamp'] ?? '');
         }
 
         if ($skeleton === null) {
@@ -278,9 +425,11 @@ final class View {
                 'poisoned' => false,
             ];
 
+            Assets::record();
             try {
                 $skeleton = $this->build();
             } finally {
+                $assetOps = Assets::stopRecording();
                 $b = array_pop(self::$boundaries);
             }
 
@@ -291,14 +440,17 @@ final class View {
 
             if (!$poisoned) {
                 try {
-                    $payload = base64_encode(\serialize(['holes' => $holes, 'sets' => $sets]));
+                    $payload = base64_encode(\serialize(['holes' => $holes, 'sets' => $sets, 'assets' => $assetOps]));
                 } catch (\Throwable $e) {
                     $poisoned = true;
                 }
             }
 
-            if ($poisoned)
+            if ($poisoned) {
+                // Отравленный узел не кешируется → корень нельзя композировать.
+                if (self::$compose !== null) self::$compose['composable'] = false;
                 return $this->fillHoles($skeleton, $holes, $sets);
+            }
 
             $files = array_keys($b['deps']);
             $cache->set($skeleton, -1, '', [
@@ -308,15 +460,28 @@ final class View {
                 'reads_keys'  => array_keys($reads),
                 'reads_stamp' => Main::hash($reads),
             ]);
+
+            $nodeDeps       = $files;
+            $nodeReadsKeys  = array_keys($reads);
+            $nodeReadsStamp = Main::hash($reads);
         }
 
         if ($payload === null || $payload === '') {
-            $holes = $sets = [];
+            $holes = $sets = $assets = [];
         } else {
-            $data  = \unserialize((string) base64_decode($payload), ['allowed_classes' => true]);
-            $holes = is_array($data['holes'] ?? null) ? $data['holes'] : [];
-            $sets  = is_array($data['sets']  ?? null) ? $data['sets']  : [];
+            $data   = \unserialize((string) base64_decode($payload), ['allowed_classes' => true]);
+            $holes  = is_array($data['holes']  ?? null) ? $data['holes']  : [];
+            $sets   = is_array($data['sets']   ?? null) ? $data['sets']   : [];
+            $assets = is_array($data['assets'] ?? null) ? $data['assets'] : [];
+
+            // На cache-hit build() не выполнялся → регистрация ассетов (addResource/addString/…)
+            // не отработала. Повторяем её из payload, чтобы finalize() снова получил буферы.
+            if ($fromCache)
+                Assets::replay($assets);
         }
+
+        // Сводка этого узла в collector поддерева (для composed-кеша на уровне корня).
+        self::composeCollect($nodeDeps ?? [], $nodeReadsKeys ?? [], $nodeReadsStamp ?? '', $sets, $assets);
 
         return $this->fillHoles($skeleton, $holes, $sets);
     }
@@ -409,6 +574,17 @@ final class View {
                 return $token;
             }
 
+            // Сюда попадаем, когда вьюху нельзя персистить как дыру (что-то несериализуемо).
+            if (self::isSerializable($this->props)) {
+                // Несериализуемы только children (напр. замыкание, переданное в layout()):
+                // они полностью «расходуются» при build(), а сериализуемые потомки внутри
+                // станут дырами текущего boundary. Вывод безопасно запечь в скелет — НЕ отравляем.
+                return $this->build();
+            }
+
+            // Несериализуемые props напрямую влияют на вывод и не поддаются ключеванию —
+            // «живой регион»: строим инлайн, но отравляем ближайший boundary, т.к. его скелет
+            // нельзя безопасно переиспользовать между процессами.
             self::$boundaries[$i]['poisoned'] = true;
             return $this->build();
         }

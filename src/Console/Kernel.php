@@ -43,7 +43,10 @@ final class Kernel {
         self::$commands[$name] = $class;
     }
 
-    public static function handle(array $argv): void {
+    public static function handleCLI(array $argv): void {
+        if (PHP_SAPI !== 'cli')
+            throw new \RuntimeException(__CLASS__.'::handleCLI() is CLI-only, but SAPI is "'.PHP_SAPI.'"');
+
         static $initialized = false;
         if (!$initialized) {
             $config = static::config('default');

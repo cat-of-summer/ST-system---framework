@@ -54,22 +54,22 @@ class FileSystemCacheDriver extends CacheDriver {
     }
 
     protected function readBlob(string $file): ?string {
+        // Читаем под LOCK_SH на самом файле (а не на sidecar .lock): не плодим ФС-записи на
+        // каждое чтение и корректно координируемся с LOCK_EX из writeBlob на том же дескрипторе.
         $path = $this->attributes['dir'].'/'.$file;
-        if (!is_file($path)) return null;
 
-        $lock = fopen($path.'.lock', 'c+');
-        if ($lock === false) throw new \RuntimeException("Cannot open lock file {$path}.lock");
+        $fh = @fopen($path, 'rb');
+        if ($fh === false) return null;
 
         try {
-            if (!flock($lock, LOCK_SH))
-                throw new \RuntimeException("Cannot acquire shared lock on {$path}.lock");
+            if (!flock($fh, LOCK_SH))
+                throw new \RuntimeException("Cannot acquire shared lock on {$path}");
 
-            $content = @file_get_contents($path);
+            $content = stream_get_contents($fh);
             return $content === false ? null : (string)$content;
         } finally {
-            flock($lock, LOCK_UN);
-            fclose($lock);
-            @unlink($path.'.lock');
+            flock($fh, LOCK_UN);
+            fclose($fh);
         }
     }
 
@@ -104,25 +104,25 @@ class FileSystemCacheDriver extends CacheDriver {
     }
 
     protected function readMeta(string $file): ?array {
+        // LOCK_SH на самом .meta без sidecar: writeMeta пишет атомарно (tmp+rename), поэтому
+        // читатель всегда видит целостный старый-или-новый файл.
         $path = $this->attributes['dir'].'/'.$file.'.meta';
-        if (!is_file($path)) return null;
 
-        $lock = fopen($path.'.lock', 'c+');
-        if ($lock === false) throw new \RuntimeException("Cannot open lock file {$path}.lock");
+        $fh = @fopen($path, 'rb');
+        if ($fh === false) return null;
 
         try {
-            if (!flock($lock, LOCK_SH))
-                throw new \RuntimeException("Cannot acquire shared lock on {$path}.lock");
+            if (!flock($fh, LOCK_SH))
+                throw new \RuntimeException("Cannot acquire shared lock on {$path}");
 
-            $content = @file_get_contents($path);
+            $content = stream_get_contents($fh);
             if ($content === false) return null;
 
             $decoded = @json_decode($content, true);
             return is_array($decoded) ? $decoded : null;
         } finally {
-            flock($lock, LOCK_UN);
-            fclose($lock);
-            @unlink($path.'.lock');
+            flock($fh, LOCK_UN);
+            fclose($fh);
         }
     }
 

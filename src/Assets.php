@@ -24,13 +24,18 @@ final class Assets {
     }
 
     private static function placeholder(string $name): string {
-        static $salt;
-        $salt ??= Main::uuid();
-        return '<!-- __ASSETS__:'.$salt.':'.$name.'__ -->';
+        // Детерминированный salt: одинаков во всех процессах, поэтому якорь, «запечённый»
+        // в кешированный скелет вьюхи, всегда совпадает с тем, что ищет finalize()/render()
+        // в новом процессе. Хеш от имени буфера остаётся неугадываемым в обычном контенте.
+        static $salt = [];
+        $salt[$name] ??= Main::hash([__CLASS__, $name]);
+        return '<!-- __ASSETS__:'.$salt[$name].':'.$name.'__ -->';
     }
 
-    private static array $buffers  = [];
-    private static array $stack    = [];
+    private static array $buffers       = [];
+    private static array $stack         = [];
+    private static array $recording     = [];
+    private static int   $orchestration = 0;
 
     private File $file;
     private string $buffer;
@@ -113,6 +118,68 @@ final class Assets {
         return end(self::$stack) ?: static::config('default_buffer');
     }
 
+    // --- Оркестрация из View --------------------------------------------------
+    // Пока страницу рендерит View (она возвращает строку и кешируется), OB/shutdown-модель
+    // bufferization=true неприменима: открытый ob_start() рвёт границы build(), не переживает
+    // cache-hit и заменяется уже после возврата строки. Поэтому на время рендера View мы
+    // принудительно работаем как bufferization=false (плейсхолдер + finalize с replay).
+    // Глобальный bufferization=true при этом остаётся честным для прямого использования Assets
+    // вне View.
+
+    public static function beginOrchestration(): void {
+        self::$orchestration++;
+    }
+
+    public static function endOrchestration(): void {
+        if (self::$orchestration > 0) self::$orchestration--;
+    }
+
+    private static function immediate(): bool {
+        return self::$orchestration > 0 || !static::config('bufferization');
+    }
+
+    // --- Запись/replay регистрации ассетов для кеша View ---------------------
+    // Кеш View «запекает» вывод в скелет и на cache-hit не выполняет build(), а значит
+    // не выполняет и регистрацию ассетов (addResource/addString/…). Пока активна запись
+    // (её открывает View вокруг build() кешируемого boundary), мы логируем низкоуровневые
+    // операции над буферами и умеем повторить их на hit через replay(), чтобы finalize()
+    // снова получил css/js/контент. Пишем аргументы (пути/attrs/строки), не File-объекты.
+
+    public static function record(): void {
+        self::$recording[] = [];
+    }
+
+    public static function stopRecording(): array {
+        return self::$recording ? (array) array_pop(self::$recording) : [];
+    }
+
+    private static function recordOp(array $op): void {
+        if (self::$recording)
+            self::$recording[array_key_last(self::$recording)][] = $op;
+    }
+
+    public static function replay(array $ops): void {
+        foreach ($ops as $op) {
+            $buffer = (string)($op['buffer'] ?? static::config('default_buffer'));
+            $kind   = (string)($op['op'] ?? '');
+
+            if ($kind === 'content') {
+                self::storeAsset((string)($op['html'] ?? ''), $buffer);
+                continue;
+            }
+
+            if ($kind === 'asset') {
+                self::ensureBuffer($buffer);
+                $file  = File::make((string)($op['path'] ?? ''));
+                $attrs = (array)($op['attrs'] ?? []);
+                $key   = Main::hash([$file->getPathname(), $attrs]);
+                if (isset(self::$buffers[$buffer]['seen_assets'][$key])) continue;
+                self::$buffers[$buffer]['seen_assets'][$key] = true;
+                self::$buffers[$buffer]['assets'][(string)($op['type'] ?? '')][] = ['file' => $file, 'attrs' => $attrs];
+            }
+        }
+    }
+
     private static function ensureBuffer(string $name): void {
         if (!isset(self::$buffers[$name]))
             self::$buffers[$name] = [
@@ -139,6 +206,7 @@ final class Assets {
 
         self::$buffers[$buffer]['seen_strings'][$key] = true;
         self::$buffers[$buffer]['content'] .= $html;
+        self::recordOp(['op' => 'content', 'html' => $html, 'buffer' => $buffer]);
     }
 
     private static function mount(string $name): void {
@@ -164,7 +232,7 @@ final class Assets {
 
         self::$buffers[$name]['started'] = true;
 
-        if (static::config('bufferization')) {
+        if (!self::immediate()) {
             self::$stack[] = $name;
             echo self::unpackBuffer($name);
             ob_start();
@@ -175,7 +243,7 @@ final class Assets {
     }
 
     private static function render(string $buffer): void {
-        if (!static::config('bufferization')) {
+        if (self::immediate()) {
             if (isset(self::$buffers[$buffer]))
                 self::$buffers[$buffer]['started'] = false;
             return;
@@ -240,6 +308,7 @@ final class Assets {
 
             self::$buffers[$buffer]['seen_assets'][$key] = true;
             self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs];
+            self::recordOp(['op' => 'asset', 'type' => $type, 'path' => $file->getPathname(), 'attrs' => $attrs, 'buffer' => $buffer]);
         }
     }
 
@@ -385,6 +454,7 @@ final class Assets {
                 if (isset(self::$buffers[$buffer]['seen_assets'][$key])) continue;
                 self::$buffers[$buffer]['seen_assets'][$key] = true;
                 self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs];
+                self::recordOp(['op' => 'asset', 'type' => $type, 'path' => $file->getPathname(), 'attrs' => $attrs, 'buffer' => $buffer]);
                 continue;
             }
 

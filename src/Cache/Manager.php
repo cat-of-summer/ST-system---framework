@@ -97,6 +97,13 @@ final class Manager {
             case 'isExpired':
             case 'isValid':
                 return static::{$name}(...$args);
+
+            // Очистка ВСЕГО базового хранилища — ключ-независима, поэтому имеет смысл статически
+            // (делегируем драйверу по умолчанию). purge()/purgeExpired() работают с конкретной
+            // записью и требуют реального ключа — только через инстанс make($key)->purge().
+            case 'purgeBase':
+            case 'purgeExpiredBase':
+                return static::make('')->{$name}(...$args);
         }
 
         if (!in_array($name, ['get', 'set', 'remember', 'getMeta', 'setMeta'], true))
