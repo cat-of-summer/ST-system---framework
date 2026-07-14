@@ -21,6 +21,10 @@ final class CacheManager {
         ];
 
         return [
+            'default' => [
+                'dir' => '~/cache/',
+                'ttl' => 3600,
+            ],
             'drivers' => [
                 'default' => $drivers['filesystem'],
                 'available' => $drivers

@@ -4,15 +4,15 @@ namespace ST_system\Storage;
 
 use ST_system\Main;
 use ST_system\HTTP\WebClient;
-use ST_system\Cache\CacheManager as Cache;
+use ST_system\Cache\CacheManager;
 
 final class File extends Resource {
 
     protected static function getDefaultConfig(): array {
         return array_merge(parent::getDefaultConfig(), [
             'cache' => [
-                'dir' => '~/cache/',
-                'ttl' => 3600,
+                'dir' => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+                'ttl' => CacheManager::config('default.ttl'),
             ],
             'request' => [
                 'headers' => [],
@@ -31,7 +31,7 @@ final class File extends Resource {
         ]);
     }
 
-    private ?Cache $cache = null;
+    private ?CacheManager $cache = null;
 
     private static array $last_fetch_per_host = [];
 
@@ -53,7 +53,7 @@ final class File extends Resource {
         ]);
     }
 
-    private function cache(): Cache {
+    private function cache(): CacheManager {
         if ($this->cache !== null) return $this->cache;
 
         $filename = $this->getFilename();
@@ -67,7 +67,7 @@ final class File extends Resource {
             $filename = ($dot !== false ? substr($base, 0, $dot) : $base) . ($query !== '' ? '_' . md5($query) : '') . ($dot !== false ? substr($base, $dot): '');
         }
 
-        return $this->cache = Cache::make($this->getPathname(), [
+        return $this->cache = CacheManager::make($this->getPathname(), [
             'driver' => 'filesystem',
             'dir' => static::config('cache.dir'),
             'ttl' => static::config('cache.ttl'),
@@ -513,7 +513,7 @@ final class File extends Resource {
     }
 
     public static function purgeAll(): void {
-        Cache::make('', [
+        CacheManager::make('', [
             'dir' => static::config('cache.dir'),
             'driver' => 'filesystem',
         ])->purgeBase();

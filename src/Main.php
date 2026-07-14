@@ -25,6 +25,15 @@ final class Main {
         return preg_split('/[\s\-_]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/', $name) ?: [];
     }
 
+    public static function basename(string $class): string {
+        return substr(strrchr('\\'.str_replace('/', '\\', $class), '\\'), 1);
+    }
+
+    public static function glue(array $parts, string $separator): string {
+        $parts = array_filter(array_map(fn($p) => trim($p, $separator), $parts), fn($p) => $p !== '');
+        return implode($separator, $parts);
+    }
+
     public static function studlyCase(string $name): string {
         static $cache = [];
         return $cache[$name] ??= implode('', array_map(

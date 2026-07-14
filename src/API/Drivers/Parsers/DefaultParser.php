@@ -4,7 +4,7 @@ namespace ST_system\API\Drivers\Parsers;
 
 use ST_system\API\IntegrationDriver;
 use ST_system\HTTP\WebClient;
-use ST_system\Storage\File;
+use ST_system\Cache\CacheManager;
 use ST_system\Main;
 use ST_system\Rule;
 
@@ -139,8 +139,8 @@ class DefaultParser extends IntegrationDriver {
             'requeue'          => (int)static::config('requeue'),
             'cache'            => [
                 'use'    => true,
-                'ttl'    => (int)File::config('cache.ttl'),
-                'dir'    => File::config('cache.dir'),
+                'ttl'    => (int)CacheManager::config('default.ttl'),
+                'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
                 'driver' => 'filesystem',
             ],
         ];

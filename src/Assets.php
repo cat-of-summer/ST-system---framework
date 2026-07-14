@@ -7,7 +7,7 @@ use ST_system\Storage\File;
 use ST_system\Rule;
 use ST_system\Main;
 use ST_system\Storage\Mimes\ImageMime;
-use ST_system\Cache\CacheManager as Cache;
+use ST_system\Cache\CacheManager;
 
 final class Assets {
 
@@ -342,9 +342,9 @@ final class Assets {
 
         $source = File::make($favicon)->fetch();
 
-        $cache = Cache::make([__CLASS__, 'manifest', $params, $source->getPathname(), $source->mtime], [
+        $cache = CacheManager::make([__CLASS__, 'manifest', $params, $source->getPathname(), $source->mtime], [
             'driver' => 'filesystem',
-            'dir'    => File::config('cache.dir'),
+            'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
             'ttl'    => -1,
         ]);
 
@@ -355,7 +355,7 @@ final class Assets {
         $done = true;
     }
 
-    private static function generateManifest(File $source, array $params, Cache $cache): string {
+    private static function generateManifest(File $source, array $params, CacheManager $cache): string {
         $can_ico = in_array('ico', ImageMime::getAllowedExtension(), true);
 
         $variants = [

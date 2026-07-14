@@ -3,15 +3,16 @@
 namespace ST_system\Cache\Drivers;
 
 use ST_system\Cache\CacheDriver;
+use ST_system\Cache\CacheManager;
 use ST_system\Main;
 
 class FileSystemCacheDriver extends CacheDriver {
 
     protected static function getDefaultConfig(): array {
         return [
-            'dir'  => '~/cache/',
+            'dir'  => CacheManager::config('default.dir'),
             'file' => 'data',
-            'ttl'  => 3600,
+            'ttl'  => CacheManager::config('default.ttl'),
         ];
     }
 

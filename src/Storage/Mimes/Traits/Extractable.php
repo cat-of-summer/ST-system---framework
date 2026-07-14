@@ -2,8 +2,7 @@
 
 namespace ST_system\Storage\Mimes\Traits;
 
-use ST_system\Cache\CacheManager as Cache;
-use ST_system\Storage\File;
+use ST_system\Cache\CacheManager;
 use ST_system\Main;
 
 /**
@@ -40,9 +39,9 @@ trait Extractable {
         $id = $this->file->getId();
         if ($id === '') return $compute();
 
-        return Cache::make($id, [
+        return CacheManager::make($id, [
             'driver' => 'filesystem',
-            'dir'    => File::config('cache.dir'),
+            'dir'    => \ST_system\Storage\File::config('cache.dir'),
             'file'   => Main::hash([$schema, $data]).'.json',
             'ttl'    => -1,
         ])->remember($compute, -1, '', $this->file->mtime ?: Main::hash($this->file->getRaw()));

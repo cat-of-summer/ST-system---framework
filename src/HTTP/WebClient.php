@@ -4,7 +4,7 @@ namespace ST_system\HTTP;
 
 use ST_system\Main;
 use ST_system\Rule;
-use ST_system\Cache\CacheManager as Cache;
+use ST_system\Cache\CacheManager;
 use ST_system\Traits\HasEvents;
 use ST_system\Traits\HasConfig;
 use ST_system\Storage\Resource;
@@ -99,8 +99,8 @@ final class WebClient {
             'requeue'          => 0,       // повторы из 'error': 0 — запрещены, <0 — без лимита, >0 — макс. на запрос
             'cache' => [
                 'use'    => false,
-                'ttl'    => 3600,
-                'dir'    => '',
+                'ttl'    => CacheManager::config('default.ttl'),
+                'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
                 'driver' => 'filesystem',
             ],
         ];
@@ -116,7 +116,7 @@ final class WebClient {
     private bool   $multipart    = false; // в теле есть файлы -> multipart/form-data
     private ?\Generator $pipeline = null; // общий генератор результатов для next()/send()
     private bool   $drained      = false; // пайплайн исчерпан
-    private ?Cache $cacheBase    = null;
+    private ?CacheManager $cacheBase    = null;
 
     private array $bodyParams = [];   // dot-ключ поля схемы => ['name' => query-параметр, 'mods' => спека правил]
     private array $processed  = [];   // hash комбо => true — выданные результаты (one-way очередь)
@@ -766,7 +766,7 @@ final class WebClient {
     // --- события / декодирование / ошибки / запись кеша ---
 
     /** false — результат не выдаётся, задание возвращается в очередь повторов (requeue из 'error'). */
-    private function finalize(array $spec, array &$result, ?Cache $cache, int $attempts = 0): bool {
+    private function finalize(array $spec, array &$result, ?CacheManager $cache, int $attempts = 0): bool {
         $result['config'] = $this->config;
 
         // тело не качали (304/валидаторы) — отдаём сохранённый ответ, продлив ему жизнь
@@ -851,11 +851,11 @@ final class WebClient {
 
     // --- кеш ---
 
-    private function cacheFor(array $spec): ?Cache {
+    private function cacheFor(array $spec): ?CacheManager {
         if (!Main::dotGet($this->config, 'cache.use')) return null;
         if ($spec['method'] !== 'GET' && $spec['method'] !== 'HEAD') return null;
 
-        $this->cacheBase = $this->cacheBase ?? Cache::make('webclient', [
+        $this->cacheBase = $this->cacheBase ?? CacheManager::make('webclient', [
             'driver' => (string)Main::dotGet($this->config, 'cache.driver'),
             'dir'    => (string)Main::dotGet($this->config, 'cache.dir'),
             'ttl'    => (int)Main::dotGet($this->config, 'cache.ttl'),
@@ -869,14 +869,14 @@ final class WebClient {
      * с ttl -1 (всегда читаем через get()), чтобы протухшую запись можно было
      * ревалидировать и отдать её тело при 304.
      */
-    private function isFresh(Cache $cache): bool {
+    private function isFresh(CacheManager $cache): bool {
         if (!$cache->exists()) return false;
         $meta = $cache->getMeta();
         if (!array_key_exists('fresh_until', $meta)) return false;
         return $meta['fresh_until'] === -1 || $meta['fresh_until'] > time();
     }
 
-    private function cacheRead(Cache $cache): ?array {
+    private function cacheRead(CacheManager $cache): ?array {
         $raw = $cache->get();
         if (!is_string($raw)) return null;
 
@@ -888,7 +888,7 @@ final class WebClient {
     }
 
     /** Условные заголовки + вердикт-обрыв тела на основе сохранённых валидаторов. */
-    private function applyRevalidation(array &$spec, Cache $cache): void {
+    private function applyRevalidation(array &$spec, CacheManager $cache): void {
         $meta = $cache->getMeta();
         $etag = (string)($meta['etag'] ?? '');
         $last = (string)($meta['last-modified'] ?? '');
@@ -908,7 +908,7 @@ final class WebClient {
     }
 
     /** Тело не качали (304/валидаторы) — продлеваем свежесть сохранённого ответа. */
-    private function touchCache(Cache $cache, array $result): void {
+    private function touchCache(CacheManager $cache, array $result): void {
         $cache->setMeta(['fresh_until' => time() + $this->resolveTtl($result['headers'])], -1, true);
     }
 

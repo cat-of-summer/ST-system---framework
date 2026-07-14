@@ -3,7 +3,7 @@
 namespace ST_system;
 
 use ST_system\Traits\HasConfig;
-use ST_system\Cache\CacheManager as Cache;
+use ST_system\Cache\CacheManager;
 
 final class View {
 
@@ -17,7 +17,7 @@ final class View {
             'cache' => [
                 'use'    => false,
                 'driver' => 'filesystem',
-                'dir'    => '',
+                'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
             ],
             'cascade' => false,
         ];
@@ -249,8 +249,8 @@ final class View {
         }
     }
 
-    private function cacheHandle(): Cache {
-        return Cache::make([__CLASS__, $this->name, $this->props], [
+    private function cacheHandle(): CacheManager {
+        return CacheManager::make([__CLASS__, $this->name, $this->props], [
             'driver' => (string) Main::dotGet($this->config, 'cache.driver', 'filesystem'),
             'dir'    => (string) Main::dotGet($this->config, 'cache.dir', ''),
             'ttl'    => -1,

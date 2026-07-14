@@ -4,8 +4,9 @@ namespace ST_system\Storage\Mimes;
 
 use ST_system\Storage\Mimes\Mime;
 use ST_system\Traits\HasConfig;
-use ST_system\Cache\CacheManager as Cache;
+use ST_system\Cache\CacheManager;
 use ST_system\Storage\File;
+use ST_system\Main;
 
 class ImageMime extends Mime {
 
@@ -15,7 +16,7 @@ class ImageMime extends Mime {
 
     protected static function getDefaultConfig(): array {
         return [
-            'cache_dir' => '',
+            'cache_dir' => File::config('cache.dir'),
             'convert' => [
                 'config' => [
                     'quality' => 90,
@@ -169,7 +170,7 @@ class ImageMime extends Mime {
         return $result;
     }
 
-    protected Cache $cache;
+    protected CacheManager $cache;
 
     protected function __init(): void {
         static $is_sorted = false;
@@ -187,9 +188,9 @@ class ImageMime extends Mime {
             $is_sorted = true;
         }
 
-        $this->cache = Cache::make($this->file->getPathname(), [
+        $this->cache = CacheManager::make($this->file->getPathname(), [
             'driver' => 'filesystem',
-            'dir' => static::config('cache_dir') ?: File::config('cache.dir'),
+            'dir' => static::config('cache_dir'),
             'file' => $this->file->getFilename(),
             'ttl' => -1,
         ]);

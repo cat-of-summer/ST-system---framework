@@ -3,8 +3,9 @@
 namespace ST_system\API;
 
 use ST_system\Rule;
+use ST_system\Main;
 use ST_system\HTTP\WebClient;
-use ST_system\Cache\CacheManager as Cache;
+use ST_system\Cache\CacheManager;
 use ST_system\Traits\HasConfig;
 use ST_system\Traits\HasEvents;
 
@@ -22,7 +23,7 @@ abstract class IntegrationDriver {
             'batch'           => 10,
             'delay'           => 0,
             'cache' => [
-                'dir' => '',
+                'dir' => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
                 'use' => false,
                 'driver' => 'filesystem'
             ],
@@ -41,7 +42,7 @@ abstract class IntegrationDriver {
 
     private array $methods_map = [];
 
-    protected ?Cache $cache = null;
+    protected ?CacheManager $cache = null;
 
     final public static function create(...$params): self {
         return new static(...$params);
@@ -53,7 +54,7 @@ abstract class IntegrationDriver {
         Rule::scope(static::class, fn() => $this->__init());
 
         if (static::config('cache.use'))
-            $this->cache = Cache::make([static::class, ...$args], static::config('cache'));
+            $this->cache = CacheManager::make([static::class, ...$args], static::config('cache'));
 
         $this->fire('__construct', ...$args);
     }
@@ -62,7 +63,7 @@ abstract class IntegrationDriver {
         return (string)(static::config('endpoint') ?? '');
     }
 
-    final protected function cache(): ?Cache {
+    final protected function cache(): ?CacheManager {
         return $this->cache;
     }
 

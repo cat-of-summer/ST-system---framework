@@ -7,7 +7,7 @@ use ST_system\Traits\HasEvents;
 use ST_system\Traits\HasInstance;
 use ST_system\HTTP\Request;
 use ST_system\HTTP\Response;
-use ST_system\Cache\CacheManager as Cache;
+use ST_system\Cache\CacheManager;
 use ST_system\Rule;
 
 final class Access {
@@ -30,9 +30,9 @@ final class Access {
             'salt' => '',
             'firewall' => [
                 'driver'  => 'filesystem',
-                'dir'     => '',
+                'dir'     => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
                 'limits'  => [[5, 1, 10], [10, 2, 30], [60, 60], [600, 3600]],
-                'ttl'     => 3600,
+                'ttl'     => CacheManager::config('default.ttl'),
                 'exclude'    => [],
                 'proxies'    => [],
                 'verifyBots' => true,
@@ -68,7 +68,7 @@ final class Access {
         'accessMethod' => null,
     ];
 
-    private Cache $cache;
+    private CacheManager $cache;
 
     private function __construct() {
         $config = [
@@ -79,7 +79,7 @@ final class Access {
         if ($config['driver'] === 'filesystem')
             $config['dir'] = static::config('firewall.dir');
 
-        $this->cache = Cache::make(static::config('salt') ?: 'st_access', $config);
+        $this->cache = CacheManager::make(static::config('salt') ?: 'st_access', $config);
     }
 
     public static function on(string $event, callable $listener): void {
