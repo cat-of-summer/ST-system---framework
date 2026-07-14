@@ -94,7 +94,7 @@ final class WebClient {
             'response_type'    => '',      // '' = автоопределение по Content-Type; иначе явный MIME
             'batch'            => 10,      // размер окна параллельных запросов
             'delay'            => 0,       // пауза между пачками, мс
-            'method'           => 'get',
+            'method'           => 'GET',
             'exception'        => true,    // бросать ли исключение на необработанную ошибку
             'requeue'          => 0,       // повторы из 'error': 0 — запрещены, <0 — без лимита, >0 — макс. на запрос
             'cache' => [
@@ -167,7 +167,7 @@ final class WebClient {
             'response_type'    => 'string|lowercase|@response_type',
             'batch'            => 'int|min:1|@batch',
             'delay'            => 'int|min:0|@delay',
-            'method'           => ['string|lowercase|@method', Rule::in(['get', 'post', 'put', 'patch', 'delete', 'head', 'options'])],
+            'method'           => ['string|uppercase|@method', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
             'exception'        => 'bool|@exception',
             'requeue'          => 'int|@requeue',
             'cache.use'        => 'bool|@cache.use',
