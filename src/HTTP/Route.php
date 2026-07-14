@@ -27,7 +27,7 @@ final class Route {
         $this->middlewares = $middlewares;
     }
 
-    public static function entrypoint(?callable $process = null): void {
+    public static function handleRequest(?callable $process = null): void {
         ob_start();
 
         try {
