@@ -1,1 +1,1 @@
-# Manager.php
+# CacheManager.php

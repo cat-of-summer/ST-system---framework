@@ -4,7 +4,7 @@ namespace ST_system\API;
 
 use ST_system\Rule;
 use ST_system\HTTP\WebClient;
-use ST_system\Cache\Manager as Cache;
+use ST_system\Cache\CacheManager as Cache;
 use ST_system\Traits\HasConfig;
 use ST_system\Traits\HasEvents;
 

@@ -4,7 +4,7 @@ namespace ST_system\Storage;
 
 use ST_system\Main;
 use ST_system\HTTP\WebClient;
-use ST_system\Cache\Manager as Cache;
+use ST_system\Cache\CacheManager as Cache;
 
 final class File extends Resource {
 

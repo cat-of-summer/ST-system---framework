@@ -8,6 +8,6 @@
 ## Файлы
 
 - [CacheDriver.php](CacheDriver.php.md)
-- [Manager.php](Manager.php.md)
+- [CacheManager.php](CacheManager.php.md)
 
 <!-- DOCGEN:END -->

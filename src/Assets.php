@@ -7,7 +7,7 @@ use ST_system\Storage\File;
 use ST_system\Rule;
 use ST_system\Main;
 use ST_system\Storage\Mimes\ImageMime;
-use ST_system\Cache\Manager as Cache;
+use ST_system\Cache\CacheManager as Cache;
 
 final class Assets {
 

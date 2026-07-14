@@ -7,7 +7,7 @@ use ST_system\Traits\HasEvents;
 use ST_system\Traits\HasInstance;
 use ST_system\HTTP\Request;
 use ST_system\HTTP\Response;
-use ST_system\Cache\Manager as Cache;
+use ST_system\Cache\CacheManager as Cache;
 use ST_system\Rule;
 
 final class Access {

@@ -165,7 +165,7 @@ use ST_system\HTTP\Request;
 
 | Класс | Назначение | Документация |
 |-------|------------|--------------|
-| `Cache\Manager` | Фасад кэша, выбор и конфигурация драйвера | [src/Cache/Manager.php.md](src/Cache/Manager.php.md) |
+| `Cache\CacheManager` | Фасад кэша, выбор и конфигурация драйвера | [src/Cache/CacheManager.php.md](src/Cache/CacheManager.php.md) |
 | `Cache\CacheDriver` | Абстрактный драйвер кэша | [src/Cache/CacheDriver.php.md](src/Cache/CacheDriver.php.md) |
 | `Drivers\FileSystemCacheDriver` | Кэш в файловой системе | [src/Cache/Drivers/FileSystemCacheDriver.php.md](src/Cache/Drivers/FileSystemCacheDriver.php.md) |
 | `Drivers\RedisCacheDriver` | Кэш в Redis | [src/Cache/Drivers/RedisCacheDriver.php.md](src/Cache/Drivers/RedisCacheDriver.php.md) |

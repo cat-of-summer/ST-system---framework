@@ -5,7 +5,7 @@ namespace ST_system\Cache;
 use ST_system\Traits\HasConfig;
 use ST_system\Cache\CacheDriver;
 
-final class Manager {
+final class CacheManager {
 
     use HasConfig {
         setConfig as private traitSetConfig;

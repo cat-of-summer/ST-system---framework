@@ -2,7 +2,7 @@
 
 namespace ST_system\Storage\Mimes\Traits;
 
-use ST_system\Cache\Manager as Cache;
+use ST_system\Cache\CacheManager as Cache;
 use ST_system\Storage\File;
 use ST_system\Main;
 

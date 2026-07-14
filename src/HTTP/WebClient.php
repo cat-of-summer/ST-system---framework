@@ -4,7 +4,7 @@ namespace ST_system\HTTP;
 
 use ST_system\Main;
 use ST_system\Rule;
-use ST_system\Cache\Manager as Cache;
+use ST_system\Cache\CacheManager as Cache;
 use ST_system\Traits\HasEvents;
 use ST_system\Traits\HasConfig;
 use ST_system\Storage\Resource;
@@ -69,7 +69,7 @@ use ST_system\Storage\Resource;
  * 'response'($spec,&$result) — всегда последним, единственное событие для кеш-хитов.
  * Все события per-request, к пачкам не привязаны.
  *
- * Кеш (Cache\Manager, только GET/HEAD, выключен по умолчанию): ключ = чистый URL + все
+ * Кеш (Cache\CacheManager, только GET/HEAD, выключен по умолчанию): ключ = чистый URL + все
  * параметры (вытащенные из query string + fill). Свежий кеш отдаётся без запроса;
  * протухший ревалидируется через If-None-Match/If-Modified-Since с обрывом тела на 304
  * и продлением TTL до max(конфиг, max-age/Expires сервера).

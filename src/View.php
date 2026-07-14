@@ -3,7 +3,7 @@
 namespace ST_system;
 
 use ST_system\Traits\HasConfig;
-use ST_system\Cache\Manager as Cache;
+use ST_system\Cache\CacheManager as Cache;
 
 final class View {
 
