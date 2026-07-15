@@ -24,9 +24,6 @@ final class Assets {
     }
 
     private static function placeholder(string $name): string {
-        // Детерминированный salt: одинаков во всех процессах, поэтому якорь, «запечённый»
-        // в кешированный скелет вьюхи, всегда совпадает с тем, что ищет finalize()/render()
-        // в новом процессе. Хеш от имени буфера остаётся неугадываемым в обычном контенте.
         static $salt = [];
         $salt[$name] ??= Main::hash([__CLASS__, $name]);
         return '<!-- __ASSETS__:'.$salt[$name].':'.$name.'__ -->';
@@ -118,14 +115,6 @@ final class Assets {
         return end(self::$stack) ?: static::config('default_buffer');
     }
 
-    // --- Оркестрация из View --------------------------------------------------
-    // Пока страницу рендерит View (она возвращает строку и кешируется), OB/shutdown-модель
-    // bufferization=true неприменима: открытый ob_start() рвёт границы build(), не переживает
-    // cache-hit и заменяется уже после возврата строки. Поэтому на время рендера View мы
-    // принудительно работаем как bufferization=false (плейсхолдер + finalize с replay).
-    // Глобальный bufferization=true при этом остаётся честным для прямого использования Assets
-    // вне View.
-
     public static function beginOrchestration(): void {
         self::$orchestration++;
     }
@@ -137,13 +126,6 @@ final class Assets {
     private static function immediate(): bool {
         return self::$orchestration > 0 || !static::config('bufferization');
     }
-
-    // --- Запись/replay регистрации ассетов для кеша View ---------------------
-    // Кеш View «запекает» вывод в скелет и на cache-hit не выполняет build(), а значит
-    // не выполняет и регистрацию ассетов (addResource/addString/…). Пока активна запись
-    // (её открывает View вокруг build() кешируемого boundary), мы логируем низкоуровневые
-    // операции над буферами и умеем повторить их на hit через replay(), чтобы finalize()
-    // снова получил css/js/контент. Пишем аргументы (пути/attrs/строки), не File-объекты.
 
     public static function record(): void {
         self::$recording[] = [];

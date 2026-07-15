@@ -211,9 +211,6 @@ final class Main {
         $result = [];
         foreach ($data as $k => $v) {
             $path = $prefix !== '' ? $prefix . '.' . $k : (string)$k;
-            // Recurse only into non-empty associative arrays; treat list arrays as
-            // atomic leaf values so an override list replaces the default wholesale
-            // instead of being merged element-by-element.
             if (is_array($v) && !empty($v) && !self::arrayIsList($v)) {
                 foreach (self::dotFlatten($v, $path) as $fk => $fv)
                     $result[$fk] = $fv;

@@ -17,16 +17,12 @@ class DatabaseCacheDriver extends CacheDriver {
 
     private ?DatabaseAdapterInterface $connection = null;
 
-    /** Конфиг соединения, чтобы уметь переподключиться после disconnect(). */
     private array $connection_config = [];
 
-    /** Соединение внедрено извне — оно не наше, ронять его нельзя. */
     private bool $connection_injected = false;
 
-    /** Пул соединений, общий на процесс. */
     private static array $pool = [];
 
-    /** @var \WeakReference[] Живые драйверы — их ссылки на адаптер тоже надо ронять. */
     private static array $live = [];
 
     protected static function getDefaultConfig(): array {
@@ -57,7 +53,6 @@ class DatabaseCacheDriver extends CacheDriver {
         self::$live[] = \WeakReference::create($this);
     }
 
-    /** CacheDriver::spawn() клонирует драйвер — клон тоже держит ссылку на адаптер. */
     public function __clone() {
         self::$live[] = \WeakReference::create($this);
     }
@@ -76,7 +71,6 @@ class DatabaseCacheDriver extends CacheDriver {
         return $this->connection() !== null;
     }
 
-    /** Лениво переоткрывает соединение, если его уронил disconnect(). */
     private function connection(): ?DatabaseAdapterInterface {
         if ($this->connection === null && !$this->connection_injected && $this->connection_config !== [])
             $this->connection = static::getConnection($this->connection_config);
@@ -84,14 +78,6 @@ class DatabaseCacheDriver extends CacheDriver {
         return $this->connection;
     }
 
-    /**
-     * Роняет все соединения процесса; следующее обращение откроет новые.
-     *
-     * Обязателен вызов в ДОЧЕРНЕМ процессе сразу после pcntl_fork(): унаследованный
-     * дескриптор PDO нельзя делить с родителем — их байтовые потоки перемешаются.
-     *
-     * Соединения, внедрённые извне через ['connection' => $adapter], не трогаются.
-     */
     public static function disconnect(): void {
         self::$pool = [];
 
@@ -116,7 +102,6 @@ class DatabaseCacheDriver extends CacheDriver {
         $engine   = strtolower($cfg['engine']);
         $isSqlite = in_array($engine, ['sqlite', 'sqlite3'], true);
 
-        // Для sqlite host нерелевантен; обязателен только database (путь к файлу / :memory:).
         if (!$isSqlite && (!is_string($cfg['host']) || $cfg['host'] === '')) return null;
         if (!is_string($cfg['database']) || $cfg['database'] === '') return null;
 

@@ -10,7 +10,6 @@ class XmlMime extends Mime {
 
     use Extractable;
 
-    /** get() отдаёт текст; массив/выборка — через toArray()/extract(). */
     public function get($data) {
         return (string)$data;
     }
@@ -32,7 +31,6 @@ class XmlMime extends Mime {
         return $doc;
     }
 
-    /** Полный разбор XML во вложенный массив (@attributes/@text). */
     public function toArray(): array {
         $root = $this->getDom()->documentElement;
         return [$root->nodeName => self::domNodeToArray($root)];

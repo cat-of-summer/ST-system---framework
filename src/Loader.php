@@ -28,7 +28,6 @@ final class Loader {
         }
     }
 
-    /** @return static */
     public static function create(...$args)
     {
         return new static(...$args);

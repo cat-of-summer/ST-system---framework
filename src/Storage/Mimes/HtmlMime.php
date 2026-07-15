@@ -9,7 +9,6 @@ class HtmlMime extends Mime {
 
     use Extractable;
 
-    /** get() отдаёт текст; DOM/выборка — через getDom()/extract(). */
     public function get($data) {
         return (string)$data;
     }

@@ -107,7 +107,6 @@ final class SmartCaptcha extends IntegrationDriver {
         return is_array($response) && ($response['status'] ?? '') === 'ok';
     }
 
-    /** @return mixed */
     public function __call(string $name, array $args) {
         switch ($name) {
             case 'includeCDN':
@@ -116,7 +115,6 @@ final class SmartCaptcha extends IntegrationDriver {
         throw new \BadMethodCallException("SmartCaptcha: unknown method '{$name}'");
     }
 
-    /** @return mixed */
     public static function __callStatic(string $name, array $args) {
         switch ($name) {
             case 'includeCDN':

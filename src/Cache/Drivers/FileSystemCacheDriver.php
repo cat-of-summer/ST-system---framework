@@ -55,8 +55,6 @@ class FileSystemCacheDriver extends CacheDriver {
     }
 
     protected function readBlob(string $file): ?string {
-        // Читаем под LOCK_SH на самом файле (а не на sidecar .lock): не плодим ФС-записи на
-        // каждое чтение и корректно координируемся с LOCK_EX из writeBlob на том же дескрипторе.
         $path = $this->attributes['dir'].'/'.$file;
 
         $fh = @fopen($path, 'rb');
@@ -105,8 +103,6 @@ class FileSystemCacheDriver extends CacheDriver {
     }
 
     protected function readMeta(string $file): ?array {
-        // LOCK_SH на самом .meta без sidecar: writeMeta пишет атомарно (tmp+rename), поэтому
-        // читатель всегда видит целостный старый-или-новый файл.
         $path = $this->attributes['dir'].'/'.$file.'.meta';
 
         $fh = @fopen($path, 'rb');

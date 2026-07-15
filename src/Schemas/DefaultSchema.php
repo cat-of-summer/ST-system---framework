@@ -31,16 +31,11 @@ class DefaultSchema
     private ?\Closure $inlinePrint   = null;
     private ?\Closure $inlineToArray = null;
 
-    /** @return static */
     public static function create(...$args)
     {
         return new static(...$args);
     }
 
-    /**
-     * Подкласс — обычный `new ChildClass()`.
-     * Inline-схема — `new DefaultSchema(['fields' => [...], 'print' => fn($s)=>..., 'toArray' => fn($s)=>...])`.
-     */
     final public function __construct(?array $inline = null)
     {
         if ($inline !== null) {
@@ -56,8 +51,6 @@ class DefaultSchema
         }
         static::ensureInited();
     }
-
-    // ─── Hooks for subclasses ────────────────────────────────────────────────
 
     protected static function getFields(): array
     {
@@ -75,8 +68,6 @@ class DefaultSchema
     }
 
     protected static function _init(): void {}
-
-    // ─── Derived identity ────────────────────────────────────────────────────
 
     final public static function name(): string
     {
@@ -112,8 +103,6 @@ class DefaultSchema
         return $scope === '' ? static::name() : $scope . '.' . static::name();
     }
 
-    // ─── Lazy init walk-up ───────────────────────────────────────────────────
-
     private static function ensureInited(): void
     {
         $class = static::class;
@@ -144,8 +133,6 @@ class DefaultSchema
         }
     }
 
-    // ─── arrayOf / oneOf markers ─────────────────────────────────────────────
-
     final public static function arrayOf(string $spec): object
     {
         return (object)['__m' => self::M_ARRAY_OF, 'spec' => $spec];
@@ -155,8 +142,6 @@ class DefaultSchema
     {
         return (object)['__m' => self::M_ONE_OF, 'specs' => $specs];
     }
-
-    // ─── Fill ────────────────────────────────────────────────────────────────
 
     final public function fill(array $data, array $fillParams = []): self
     {
@@ -351,8 +336,6 @@ class DefaultSchema
         return $this;
     }
 
-    // ─── Output ──────────────────────────────────────────────────────────────
-
     final public function print(array $params = []): string
     {
         if (!$this->filled) {
@@ -452,8 +435,6 @@ class DefaultSchema
         return $this->parent;
     }
 
-    // ─── Internal helpers ────────────────────────────────────────────────────
-
     private static function linkParent($value, self $parent): void
     {
         if ($value instanceof self) {
@@ -501,8 +482,6 @@ class DefaultSchema
         $invoke();
     }
 
-    // ─── Ref resolution ──────────────────────────────────────────────────────
-
     private static function resolveRef(string $ref, string $ctxClass): string
     {
         if (self::looksLikeClass($ref)) {
@@ -543,8 +522,6 @@ class DefaultSchema
     {
         return strpos($s, '\\') !== false && class_exists($s);
     }
-
-    // ─── Ref-rule helpers ────────────────────────────────────────────────────
 
     private static function makeEntityRefRule(string $ref, string $ctxClass): Rule
     {

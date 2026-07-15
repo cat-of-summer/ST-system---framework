@@ -14,16 +14,12 @@ class MemcachedCacheDriver extends CacheDriver {
 
     private ?MemcachedAdapterInterface $connection = null;
 
-    /** Конфиг соединения, чтобы уметь переподключиться после disconnect(). */
     private array $connection_config = [];
 
-    /** Соединение внедрено извне — оно не наше, ронять его нельзя. */
     private bool $connection_injected = false;
 
-    /** Пул соединений, общий на процесс. */
     private static array $pool = [];
 
-    /** @var \WeakReference[] Живые драйверы — их ссылки на адаптер тоже надо ронять. */
     private static array $live = [];
 
     protected static function getDefaultConfig(): array {
@@ -51,7 +47,6 @@ class MemcachedCacheDriver extends CacheDriver {
         self::$live[] = \WeakReference::create($this);
     }
 
-    /** CacheDriver::spawn() клонирует драйвер — клон тоже держит ссылку на адаптер. */
     public function __clone() {
         self::$live[] = \WeakReference::create($this);
     }
@@ -70,7 +65,6 @@ class MemcachedCacheDriver extends CacheDriver {
         return $this->connection() !== null;
     }
 
-    /** Лениво переоткрывает соединение, если его уронил disconnect(). */
     private function connection(): ?MemcachedAdapterInterface {
         if ($this->connection === null && !$this->connection_injected && $this->connection_config !== [])
             $this->connection = static::getConnection($this->connection_config);
@@ -78,15 +72,6 @@ class MemcachedCacheDriver extends CacheDriver {
         return $this->connection;
     }
 
-    /**
-     * Роняет все соединения процесса; следующее обращение откроет новые.
-     *
-     * Обязателен вызов в ДОЧЕРНЕМ процессе сразу после pcntl_fork(): унаследованный сокет
-     * нельзя делить с родителем — их байтовые потоки перемешаются.
-     * Для Memcached с persistent_id это особенно важно: такие соединения переживают запрос.
-     *
-     * Соединения, внедрённые извне через ['connection' => $adapter], не трогаются.
-     */
     public static function disconnect(): void {
         self::$pool = [];
 
@@ -137,7 +122,6 @@ class MemcachedCacheDriver extends CacheDriver {
         return $this->attributes['bucket'].':'.$file.'.meta';
     }
 
-    // expires_in из меты → native TTL memcached (большой unix ts). -1 (вечно) → 0.
     private static function expiryFromMeta(array $meta): int {
         $expires = $meta['expires_in'] ?? 0;
         if ($expires === -1) return 0;
@@ -174,8 +158,6 @@ class MemcachedCacheDriver extends CacheDriver {
     }
 
     protected function purgeStorage(): void {
-        // Memcached не перечисляет ключи — удаляем известные поля текущего bucket'а.
-        // Полная очистка по префиксу невозможна, только flush через purgeBase().
         $file = $this->attributes['file'];
         $keys = [
             $this->key($file), $this->metaKey($file),
@@ -185,12 +167,10 @@ class MemcachedCacheDriver extends CacheDriver {
     }
 
     protected function purgeBaseStorage(): void {
-        // Нет prefix-scoped очистки — сбрасываем весь сервер.
         $this->connection()->flush();
     }
 
     protected function purgeExpiredStorage(): void {
-        // Native TTL сам эвиктит истёкшие записи; здесь — немедленное удаление текущего файла.
         $file    = $this->attributes['file'];
         $raw     = $this->connection()->get($this->metaKey($file));
         $decoded = is_string($raw) ? @json_decode($raw, true) : null;
@@ -201,6 +181,5 @@ class MemcachedCacheDriver extends CacheDriver {
     }
 
     protected function purgeExpiredBaseStorage(): void {
-        // No-op: перечисление ключей недоступно, эвикцию истёкших делает native TTL memcached.
     }
 }

@@ -9,71 +9,6 @@ use ST_system\Traits\HasEvents;
 use ST_system\Traits\HasConfig;
 use ST_system\Storage\Resource;
 
-/**
- * Единый HTTP-механизм поверх curl_multi.
- *
- * Один объект = один URL: простой ("https://api/status") или шаблонизированный ("{url}",
- * "http://t.ru/{p}/get"). Шаблон раскрывается через ->query([...]) в декартово произведение
- * комбинаций — пачка из 1..n запросов, отправляемых окнами по config('batch') с паузой
- * config('delay') мс между окнами.
- *
- *   WebClient::create('{url}', ['batch' => 10])->query(['url' => ['a.com', 'b.com']])->send();
- *   while ($r = $client->next()) { ... }   // результаты по одному, по мере готовности
- *
- * Очередь «в одну сторону»: выданные комбинации помечаются обработанными и повторно не
- * отправляются — после полного прохода send() возвращает [], next() — null. Полный
- * перезапуск пачки — reset(); query()/schema()/fill() тоже сбрасывают обработанное.
- * Исключение посреди пачки не помечает недоставленные комбо: повторный send()/next()
- * дошлёт только их.
- *
- * Тело запроса: ->schema([...]) задаёт валидацию (Rule::object, throwable), ->fill([...])
- * заполняет — одно тело на все запросы пачки. Значения-файлы (\CURLFile или '@/путь')
- * переключают отправку на multipart/form-data.
- *
- * Параметризация тела: маркер WebClient::param('имя') в спеке поля schema() — сам по себе
- * или в массиве с правилами: ['param' => [WebClient::param('p2'), 'string|email']] — делает
- * поле участником декартова произведения. Значения подаются через query(['p2' => [...]]),
- * валидируются правилами-модификаторами один раз при query() и подставляются в тело
- * per-request. schema() обязан быть вызван ДО query() с маркерными именами.
- *
- * Группа: WebClient::group(fn() => ..., $config) собирает созданные внутри замыкания
- * клиенты (вложенные group() сливаются в одну плоскую группу) в общий конвейер: задания
- * идут в порядке создания клиентов, окна batch могут смешивать запросы разных клиентов
- * на границах. batch/delay — из конфига группы; per-request настройки и события — от
- * клиента-владельца. Каскад конфига при создании клиента: явный конфиг клиента <- конфиг
- * внутренней группы <- ... <- внешней <- дефолты. Группа иммутабельна: query()/schema()/
- * fill() на ней бросают LogicException; события регистрируются на клиентах-участниках;
- * next()/send()/reset() группы действуют на всех участников.
- *
- * Результат — массив: ['status','headers','body','data','type','url','effective_url',
- * 'errno','error','aborted','cached','config','info']. 'data' — Storage\Resource над телом
- * (ленивый декод: ->get()/->extract()/->getDom()); 'type' — MIME этого ресурса; 'config' —
- * действующий конфиг клиента-владельца (различение запросов в общем обработчике группы).
- * Пустое тело -> data=null. Заголовки — assoc, ключи в lowercase.
- *
- * verify (default false) задаёт и SSL-проверки curl, и схему URL: без схемы подставляется
- * https:// (verify=true) или http:// (verify=false); http:// при verify=true — исключение;
- * https:// при verify=false валидно, но SSL-проверки не включаются.
- *
- * Тело оборачивается в in-memory Storage\Resource (без диска/сети): Content-Type (или явный
- * response_type) -> 'type' -> new Resource(['body'=>$body,'mime'=>$type]); декод по требованию.
- *
- * События (HasEvents): 'prepare'(&$spec) — до ключа кеша и настройки хендла;
- * 'prepare_response'($spec,&$result); 'decode_response'($spec,&$result) — нет слушателей
- * или никто не заполнил data -> data = Resource над телом по 'type'; слушателю доступен
- * fill/get-контекст в $spec['params']; 'error'($spec,&$result) — нет слушателей +
- * config('exception') -> исключение; слушатель может вернуть запрос в очередь повторов
- * через $result['requeue'] = true (лимит — config('requeue'): 0 — запрещено, <0 — без
- * лимита, >0 — макс. повторов на запрос; повторы дожёвываются тем же конвейером после
- * основного потока, поэтому работают и while ($r = $client->next()), и цикл по send());
- * 'response'($spec,&$result) — всегда последним, единственное событие для кеш-хитов.
- * Все события per-request, к пачкам не привязаны.
- *
- * Кеш (Cache\CacheManager, только GET/HEAD, выключен по умолчанию): ключ = чистый URL + все
- * параметры (вытащенные из query string + fill). Свежий кеш отдаётся без запроса;
- * протухший ревалидируется через If-None-Match/If-Modified-Since с обрывом тела на 304
- * и продлением TTL до max(конфиг, max-age/Expires сервера).
- */
 final class WebClient {
 
     use HasEvents;
@@ -91,12 +26,12 @@ final class WebClient {
             'max_redirects'    => 10,
             'verify'           => false,
             'headers'          => [],
-            'response_type'    => '',      // '' = автоопределение по Content-Type; иначе явный MIME
-            'batch'            => 10,      // размер окна параллельных запросов
-            'delay'            => 0,       // пауза между пачками, мс
+            'response_type'    => '',
+            'batch'            => 10,
+            'delay'            => 0,
             'method'           => 'GET',
-            'exception'        => true,    // бросать ли исключение на необработанную ошибку
-            'requeue'          => 0,       // повторы из 'error': 0 — запрещены, <0 — без лимита, >0 — макс. на запрос
+            'exception'        => true,
+            'requeue'          => 0,
             'cache' => [
                 'use'    => false,
                 'ttl'    => CacheManager::config('default.ttl'),
@@ -106,24 +41,24 @@ final class WebClient {
         ];
     }
 
-    private string $template;             // исходная строка URL (может содержать {param})
-    private array  $config;               // конфиг экземпляра (после applyConfig)
-    private array  $placeholders = [];    // имена {param} шаблона (уникальные)
-    private ?Rule  $queryRule    = null;  // валидация параметров query() (для шаблона)
-    private array  $queryParams  = [];    // name => list<string>
-    private ?Rule  $bodyRule     = null;  // валидация fill() (задаётся schema())
-    private ?array $body         = null;  // заполненное тело (null = не заполнено)
-    private bool   $multipart    = false; // в теле есть файлы -> multipart/form-data
-    private ?\Generator $pipeline = null; // общий генератор результатов для next()/send()
-    private bool   $drained      = false; // пайплайн исчерпан
+    private string $template;
+    private array  $config;
+    private array  $placeholders = [];
+    private ?Rule  $queryRule    = null;
+    private array  $queryParams  = [];
+    private ?Rule  $bodyRule     = null;
+    private ?array $body         = null;
+    private bool   $multipart    = false;
+    private ?\Generator $pipeline = null;
+    private bool   $drained      = false;
     private ?CacheManager $cacheBase    = null;
 
-    private array $bodyParams = [];   // dot-ключ поля схемы => ['name' => query-параметр, 'mods' => спека правил]
-    private array $processed  = [];   // hash комбо => true — выданные результаты (one-way очередь)
+    private array $bodyParams = [];
+    private array $processed  = [];
     private bool  $isGroup    = false;
-    private array $members    = [];   // клиенты группы в порядке создания (только для группы)
+    private array $members    = [];
 
-    private static array $groupStack        = []; // фреймы активных group(): ['group' => self, 'config' => array]
+    private static array $groupStack        = [];
     private static bool  $constructingGroup = false;
 
     public function __construct(string $url, array $config = []) {
@@ -132,11 +67,9 @@ final class WebClient {
             $this->config   = $config;
             $this->template = '';
             $this->isGroup  = true;
-            return; // группа: без разбора URL и регистрации в стеке
+            return;
         }
 
-        // каскад конфигов активных групп под явный конфиг клиента: ключи клиента выигрывают,
-        // внутренняя группа приоритетнее внешней, дефолты дозаполнит @-механизм applyConfig
         foreach (array_reverse(self::$groupStack) as $frame)
             foreach (Main::dotFlatten($frame['config']) as $k => $v)
                 if (Main::dotGet($config, $k) === null) Main::dotSet($config, $k, $v);
@@ -148,7 +81,7 @@ final class WebClient {
         if (preg_match_all('/\{(\w+)\}/', $this->template, $m))
             $this->placeholders = array_values(array_unique($m[1]));
         else
-            $this->template = $this->applyScheme($this->template); // ранняя проверка verify-политики
+            $this->template = $this->applyScheme($this->template);
 
         $this->rebuildQueryRule();
 
@@ -181,11 +114,6 @@ final class WebClient {
         return new self($url, $config);
     }
 
-    /**
-     * Общий конвейер нескольких клиентов: все WebClient, созданные внутри $fn (включая
-     * вложенные group() — они сливаются в одну плоскую группу), образуют одну очередь.
-     * $config группы: batch/delay движка + каскадные значения для клиентов внутри.
-     */
     public static function group(callable $fn, array $config = []): self {
         $group = self::$groupStack ? self::$groupStack[0]['group'] : self::makeGroup($config);
 
@@ -193,7 +121,7 @@ final class WebClient {
         try     { $fn(); }
         finally { array_pop(self::$groupStack); }
 
-        return $group; // вложенные вызовы возвращают тот же внешний экземпляр
+        return $group;
     }
 
     private static function makeGroup(array $config): self {
@@ -202,7 +130,6 @@ final class WebClient {
         finally { self::$constructingGroup = false; }
     }
 
-    /** Маркер параметризуемого поля тела для schema(): значения подставляются из query(). */
     public static function param(string $name): object {
         return (object)['__wc' => 'param', 'name' => $name];
     }
@@ -211,9 +138,6 @@ final class WebClient {
         return $v instanceof \stdClass && ($v->__wc ?? null) === 'param';
     }
 
-    // --- наполнение запроса ---
-
-    /** Параметры шаблона/маркеров тела: строка или массив; массивы декартово размножают запросы. */
     public function query(array $params): self {
         $this->guardGroup('query');
 
@@ -236,11 +160,6 @@ final class WebClient {
         return $this;
     }
 
-    /**
-     * Схема тела запроса; смена схемы обнуляет заполненные параметры.
-     * Поле со значением-маркером WebClient::param('имя') (или массивом [маркер, ...правила])
-     * параметризуется через query() и участвует в декартовом произведении.
-     */
     public function schema(array $schema): self {
         $this->guardGroup('schema');
 
@@ -256,7 +175,7 @@ final class WebClient {
                 throw new \InvalidArgumentException("WebClient: параметр тела '{$marker->name}' привязан более чем к одному полю");
 
             $this->bodyParams[$field] = ['name' => $marker->name, 'mods' => $mods];
-            $clean[$field] = array_merge(['sometimes'], $mods); // fill() маркерных полей не требует
+            $clean[$field] = array_merge(['sometimes'], $mods);
         }
 
         $this->bodyRule  = Rule::object($clean)->throwable();
@@ -270,7 +189,6 @@ final class WebClient {
         return $this;
     }
 
-    /** Одно тело на все запросы пачки; \CURLFile или строки '@/путь' включают multipart. */
     public function fill(array $params): self {
         $this->guardGroup('fill');
 
@@ -283,7 +201,6 @@ final class WebClient {
         return $this;
     }
 
-    /** [маркер|null, правила-модификаторы] из спеки поля: маркер сам по себе или среди элементов массива. */
     private static function extractMarker($spec): array {
         if (self::isParamMarker($spec)) return [$spec, []];
         if (!is_array($spec)) return [null, []];
@@ -299,15 +216,10 @@ final class WebClient {
         return $marker === null ? [null, []] : [$marker, $mods];
     }
 
-    /** Допустимые имена для query(): placeholder'ы URL + маркерные параметры тела. */
     private function paramNames(): array {
         return array_values(array_unique(array_merge($this->placeholders, array_column($this->bodyParams, 'name'))));
     }
 
-    /**
-     * Правило валидации query(). Значения маркерных параметров проверяются правилами-
-     * модификаторами один раз здесь, а не per-combo; строковость не навязывается.
-     */
     private function rebuildQueryRule(): void {
         $schema = [];
 
@@ -319,7 +231,7 @@ final class WebClient {
 
         foreach ($this->bodyParams as $param) {
             $name = $param['name'];
-            if (isset($schema[$name])) continue; // имя совпало с placeholder'ом — правило шаблона приоритетно
+            if (isset($schema[$name])) continue;
             $spec = $param['mods'] ?: 'required';
             $schema[$name] = ['sometimes', Rule::anyOf(
                 $spec,
@@ -335,15 +247,12 @@ final class WebClient {
             throw new \LogicException("WebClient: {$method}() неприменим к группе");
     }
 
-    // --- отправка ---
-
-    /** Один готовый результат за вызов; null после исчерпания (до reset() или изменения запроса). */
     public function next(): ?array {
         if ($this->drained) return null;
 
         try {
             if ($this->pipeline === null) $this->pipeline = $this->run();
-            else                          $this->pipeline->next(); // резюм помечает предыдущий результат обработанным
+            else                          $this->pipeline->next();
 
             if (!$this->pipeline->valid()) {
                 $this->pipeline = null;
@@ -352,12 +261,11 @@ final class WebClient {
             }
             return $this->pipeline->current();
         } catch (\Throwable $th) {
-            $this->resetPipeline(); // мёртвый генератор; следующий запуск дошлёт необработанные комбо
+            $this->resetPipeline();
             throw $th;
         }
     }
 
-    /** Дренирует общий с next() генератор; после исчерпания возвращает [] (перезапуск — reset()). */
     public function send(): array {
         $results = [];
         while (($r = $this->next()) !== null)
@@ -366,7 +274,6 @@ final class WebClient {
         return $results;
     }
 
-    /** Полный перезапуск пачки: сброс обработанных комбинаций и конвейера (у группы — всех участников). */
     public function reset(): self {
         $this->processed = [];
         $this->resetPipeline();
@@ -382,7 +289,6 @@ final class WebClient {
         $this->drained  = false;
     }
 
-    /** Проверка полноты + запуск конвейера (проверки выполняются сразу, не лениво). */
     private function run(): \Generator {
         if ($this->isGroup) {
             foreach ($this->members as $m) $m->validateReady();
@@ -404,9 +310,6 @@ final class WebClient {
         }
     }
 
-    // --- URL-слой ---
-
-    /** Схема URL по verify-политике (см. док класса). */
     private function applyScheme(string $url): string {
         $verify = (bool)$this->config['verify'];
 
@@ -419,7 +322,6 @@ final class WebClient {
         return ($verify ? 'https://' : 'http://').ltrim($url, '/');
     }
 
-    /** Отделяет query string от чистого URL. */
     private static function splitUrl(string $url): array {
         $pos = strpos($url, '?');
         if ($pos === false) return [$url, []];
@@ -428,7 +330,6 @@ final class WebClient {
         return [substr($url, 0, $pos), $get];
     }
 
-    /** Подставляет только placeholder'ы URL: маркерные ключи комбо могут быть не-строками. */
     private function substitute(array $combo): string {
         $url = $this->template;
         foreach ($this->placeholders as $k)
@@ -437,7 +338,6 @@ final class WebClient {
         return $url;
     }
 
-    /** Декартово произведение query-параметров через «одометр» — лениво, без материализации. */
     private function combos(): \Generator {
         $keys   = array_keys($this->queryParams);
         $values = array_values($this->queryParams);
@@ -457,7 +357,6 @@ final class WebClient {
         }
     }
 
-    /** Конверты заданий конвейера: только необработанные комбинации; owner нужен группе. */
     private function jobs(): \Generator {
         foreach ($this->combos() as $combo) {
             $key = self::comboKey($combo);
@@ -466,17 +365,15 @@ final class WebClient {
         }
     }
 
-    /** Общий поток группы: задания участников в порядке их создания. */
     private function groupJobs(): \Generator {
         foreach ($this->members as $m)
             yield from $m->jobs();
     }
 
     private static function comboKey(array $combo): string {
-        return md5(serialize($combo)); // порядок ключей одометра стабилен
+        return md5(serialize($combo));
     }
 
-    /** Спека одного запроса; query string вытаскивается из URL прямо перед отправкой. */
     private function buildSpec(array $combo): array {
         $url = $this->placeholders ? $this->applyScheme($this->substitute($combo)) : $this->template;
 
@@ -494,7 +391,7 @@ final class WebClient {
 
         $method = strtoupper((string)$this->config['method']);
         $isRead = $method === 'GET' || $method === 'HEAD';
-        $params = array_replace($get, (array)$body); // материал для ключа кеша
+        $params = array_replace($get, (array)$body);
 
         return [
             'url'           => $clean,
@@ -508,26 +405,13 @@ final class WebClient {
         ];
     }
 
-    // --- конвейер отправки ---
-
-    /**
-     * Чанкует задания по batch и гонит через curl_multi, отдавая каждый результат по мере
-     * готовности. $this — исполнитель (клиент или группа), даёт только batch/delay; всё
-     * per-request идёт через owner задания (у одиночного клиента owner === $this).
-     * Основной поток дополняется очередью повторов (requeue из 'error') — повторы уходят
-     * тем же конвейером после исчерпания основного потока. Пометка processed стоит сразу
-     * после yield: выданный результат помечается при следующем запросе потребителя,
-     * брошенный до yield или недоставленный (закрыт finally) — нет.
-     * Свежий curl_init() на запрос, curl_close() сразу после сборки результата;
-     * finally гарантирует освобождение хендлов при исключении и при разрушении генератора.
-     */
     private function dispatch(\Generator $jobs): \Generator {
         $batch = (int)$this->config['batch'];
         $delay = (int)$this->config['delay'];
 
         $mh     = curl_multi_init();
-        $active = []; // hid => job + ['ch', 'state', 'cache']
-        $retry  = []; // очередь повторов текущего прогона (сбрасывается вместе с генератором)
+        $active = [];
+        $retry  = [];
 
         $take = static function() use ($jobs, &$retry): ?array {
             if ($jobs->valid()) { $job = $jobs->current(); $jobs->next(); return $job; }
@@ -538,13 +422,12 @@ final class WebClient {
             $needDelay = false;
             while ($jobs->valid() || $retry) {
                 if ($needDelay && $delay > 0)
-                    usleep($delay * 1000); // пауза между пачками, не перед первой
+                    usleep($delay * 1000);
 
-                // наполнение пачки (кеш-хиты не занимают слоты)
                 for ($n = 0; $n < $batch && ($job = $take()) !== null;) {
                     $owner = $job['owner'];
                     $spec  = $job['spec'];
-                    $owner->fire('prepare', $spec); // до ключа кеша — мутации spec влияют на него
+                    $owner->fire('prepare', $spec);
 
                     $cache = $owner->cacheFor($spec);
                     if ($cache !== null) {
@@ -564,13 +447,12 @@ final class WebClient {
                     $state = new \stdClass();
                     $owner->configureHandle($ch, $spec, $state);
                     curl_multi_add_handle($mh, $ch);
-                    $job['spec'] = $spec; // мутации prepare/ревалидации
+                    $job['spec'] = $spec;
                     $active[self::hid($ch)] = $job + ['ch' => $ch, 'state' => $state, 'cache' => $cache];
                     $n++;
                 }
                 $needDelay = count($active) > 0;
 
-                // дренаж пачки: yield по мере завершения хендлов
                 while ($active) {
                     do { $mrc = curl_multi_exec($mh, $running); } while ($mrc === CURLM_CALL_MULTI_PERFORM);
 
@@ -608,12 +490,6 @@ final class WebClient {
         }
     }
 
-    // --- настройка curl / сборка результата ---
-
-    /**
-     * $state (stdClass) делится ПО ССЫЛКЕ между header-колбэком и сборкой результата —
-     * для curl_multi состояние живёт до завершения хендла, массив потерял бы мутации.
-     */
     private function configureHandle($ch, array $spec, \stdClass $state): void {
         $state->headers = [];
         $state->status  = 0;
@@ -664,13 +540,13 @@ final class WebClient {
 
                 if (!$isRedirect && $onHeaders !== null && $onHeaders($state->headers, ['http_code' => $status]) === true) {
                     $state->aborted = true;
-                    return 0; // != $len => curl обрывает передачу ДО тела
+                    return 0;
                 }
                 return $len;
             }
 
             if (stripos($trim, 'http/') === 0) {
-                $state->headers = []; // редиректы не смешивают заголовки
+                $state->headers = [];
                 if (preg_match('#^HTTP/\S+\s+(\d{3})#i', $trim, $m)) $state->status = (int)$m[1];
                 return $len;
             }
@@ -696,7 +572,7 @@ final class WebClient {
             'body'          => ($aborted || $spec['method'] === 'HEAD') ? null : $content,
             'url'           => (string)$spec['url'],
             'effective_url' => $info['url'] ?? $state->url,
-            'errno'         => $aborted ? 0 : $errno, // обрыв тела на 304 — не ошибка
+            'errno'         => $aborted ? 0 : $errno,
             'error'         => ($errno !== 0 && !$aborted) ? curl_error($ch) : '',
             'aborted'       => $aborted,
             'cached'        => false,
@@ -704,7 +580,6 @@ final class WebClient {
         ];
     }
 
-    /** map|list заголовков -> список "Key: Value" для CURLOPT_HTTPHEADER. */
     private static function normalizeRequestHeaders(array $headers): array {
         $out = [];
         foreach ($headers as $k => $v) {
@@ -718,12 +593,11 @@ final class WebClient {
         return $out;
     }
 
-    /** Тело для CURLOPT_POSTFIELDS: multipart-массив, json или urlencoded-строка. */
     private static function encodeBody(array $spec) {
         $body = (array)$spec['body'];
 
         if (!empty($spec['multipart']))
-            return self::flattenMultipart($body); // массив -> curl сам строит multipart/form-data
+            return self::flattenMultipart($body);
 
         foreach (self::normalizeRequestHeaders($spec['headers']) as $line)
             if (stripos($line, 'content-type:') === 0 && stripos($line, 'application/json') !== false)
@@ -748,7 +622,6 @@ final class WebClient {
         return $found;
     }
 
-    /** Вложенные массивы -> bracket-ключи: curl не принимает вложенность в POSTFIELDS-массиве. */
     private static function flattenMultipart(array $params, string $prefix = ''): array {
         $out = [];
         foreach ($params as $k => $v) {
@@ -763,13 +636,9 @@ final class WebClient {
         return is_object($ch) ? spl_object_id($ch) : (int)$ch;
     }
 
-    // --- события / декодирование / ошибки / запись кеша ---
-
-    /** false — результат не выдаётся, задание возвращается в очередь повторов (requeue из 'error'). */
     private function finalize(array $spec, array &$result, ?CacheManager $cache, int $attempts = 0): bool {
         $result['config'] = $this->config;
 
-        // тело не качали (304/валидаторы) — отдаём сохранённый ответ, продлив ему жизнь
         if (($result['aborted'] || $result['status'] === 304) && $cache !== null
                 && ($hit = $this->cacheRead($cache)) !== null) {
             $this->touchCache($cache, $result);
@@ -797,16 +666,12 @@ final class WebClient {
             if (!empty($result['requeue'])) {
                 unset($result['requeue']);
                 if ($this->requeueAllowed($attempts))
-                    return false; // слушатель вернул запрос в очередь; 'response' не срабатывает
-                // лимит исчерпан / requeue=0 — флаг игнорируется, результат идёт потребителю
+                    return false;
             }
-            // слушатели были — считаем ошибку обработанной, результат идёт дальше
         }
 
         $this->fire('response', $spec, $result);
 
-        // data (DOMDocument для html) несериализуема — кэшируем облегчённую копию без
-        // конфига, тело реконструируется в data при чтении (cacheRead)
         if ($cache !== null && !$result['aborted'] && $result['errno'] === 0
                 && $result['status'] >= 200 && $result['status'] < 300) {
             $lean = $result;
@@ -826,7 +691,6 @@ final class WebClient {
         return $limit < 0 || $attempts < $limit;
     }
 
-    /** MIME для разбора: явный response_type (MIME) или Content-Type ответа. */
     private function resolveMime(array $spec, array $result): string {
         if ($spec['response_type'] !== '')
             return (string)$spec['response_type'];
@@ -834,11 +698,6 @@ final class WebClient {
         return strtolower(trim(explode(';', (string)($result['headers']['content-type'] ?? ''))[0]));
     }
 
-    /**
-     * 'data' -> in-memory Storage\Resource над телом по $result['type']. Декодирование ленивое:
-     * ->get() (json->массив, html/xml->текст), ->extract($schema)/->getDom()/->toArray().
-     * Пустое тело (HEAD/оборванное) -> data = null.
-     */
     private function decodeBody(array &$result): void {
         $result['data'] = (is_string($result['body']) && $result['body'] !== '')
             ? Resource::make([
@@ -848,8 +707,6 @@ final class WebClient {
             ])
             : null;
     }
-
-    // --- кеш ---
 
     private function cacheFor(array $spec): ?CacheManager {
         if (!Main::dotGet($this->config, 'cache.use')) return null;
@@ -864,11 +721,6 @@ final class WebClient {
         return $this->cacheBase->make([$spec['method'], $spec['url'], $spec['params']]);
     }
 
-    /**
-     * Свежесть по нашей мете 'fresh_until', а не по expires_in драйвера: blob хранится
-     * с ttl -1 (всегда читаем через get()), чтобы протухшую запись можно было
-     * ревалидировать и отдать её тело при 304.
-     */
     private function isFresh(CacheManager $cache): bool {
         if (!$cache->exists()) return false;
         $meta = $cache->getMeta();
@@ -883,11 +735,10 @@ final class WebClient {
         $arr = json_decode($raw, true);
         if (!is_array($arr)) return null;
 
-        $this->decodeBody($arr); // data не кэшируется — восстанавливаем из body по type
+        $this->decodeBody($arr);
         return $arr;
     }
 
-    /** Условные заголовки + вердикт-обрыв тела на основе сохранённых валидаторов. */
     private function applyRevalidation(array &$spec, CacheManager $cache): void {
         $meta = $cache->getMeta();
         $etag = (string)($meta['etag'] ?? '');
@@ -907,12 +758,10 @@ final class WebClient {
         };
     }
 
-    /** Тело не качали (304/валидаторы) — продлеваем свежесть сохранённого ответа. */
     private function touchCache(CacheManager $cache, array $result): void {
         $cache->setMeta(['fresh_until' => time() + $this->resolveTtl($result['headers'])], -1, true);
     }
 
-    /** TTL: max(конфиг, серверный max-age/Expires). */
     private function resolveTtl(array $headers): int {
         $ttl = (int)Main::dotGet($this->config, 'cache.ttl');
 

@@ -85,4 +85,16 @@ final class Kernel {
 
         (new self::$commands[$name]($positional, $rawOptions))->handle();
     }
+
+    public static function getAvailableCommands(): array {
+        static $initialized = false;
+
+        if (!$initialized) {
+            $config = static::config('default');
+            self::registerDir($config['dir'], $config['namespace']);
+            $initialized = true;
+        }
+
+        return self::$commands;
+    }
 }

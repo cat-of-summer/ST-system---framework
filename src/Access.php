@@ -132,7 +132,6 @@ final class Access {
             'onError'     => 'nullable|callable',
         ]);
 
-        // Резолв драйвера по короткому имени из реестра (полное имя класса тоже принимается).
         $driver = self::config('handleGeo.drivers.available.'.$config['driver']) ?: $config['driver'];
 
         if (!is_string($driver) || !is_subclass_of($driver, \ST_system\API\Drivers\Geo\GeoDriver::class))

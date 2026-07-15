@@ -60,9 +60,6 @@ final class View {
     }
 
     private function recomputeConfig(): void {
-        // Цепочка приоритетов: глобальный default -> personal_default источника ->
-        // каскад от родителя -> явный override (->cache()/->cascade()). Так для каждого
-        // источника (page/component/…) работают свои дефолты, но точечный override сильнее.
         $sourceKey    = (($p = strpos($this->name, ':')) !== false) ? substr($this->name, 0, $p) : $this->name;
         $sourceConfig = self::sources()[$sourceKey]['config'] ?? [];
 
@@ -77,17 +74,11 @@ final class View {
         if (in_array($name, self::RESERVED, true) || !isset(self::sources()[$name]))
             throw new \BadMethodCallException("Method ".__CLASS__."::{$name}() not found");
 
-        // Алиас-вызов View::<source>($view, ...) — сахар над View::template("<source>/<view>", ...).
         $view = (string)array_shift($args);
 
         return self::template($name.'/'.$view, ...$args);
     }
 
-    /**
-     * Базовый резолвер вьюхи по пути «<source>/<view>» (без алиас-магии, только путь).
-     * Первый сегмент — ключ источника из конфигурации, остальное — путь вьюхи внутри него.
-     * View::page('index') эквивалентно View::template('page/index').
-     */
     public static function template(string $path, ...$args): self {
         $path  = trim(str_replace('\\', '/', $path), '/');
         $slash = strpos($path, '/');
@@ -138,8 +129,6 @@ final class View {
         $defaultExt = (string)(static::config('extension') ?: 'php');
         $map        = [];
 
-        // $spec — либо строка-путь, либо массив ['source' => путь, ...per-source overrides],
-        // где overrides (cache/driver/extension/…) становятся дефолтами для этого источника.
         $add = static function (string $name, $spec) use (&$map, $defaultExt): void {
             if ($name === '' || in_array($name, self::RESERVED, true))
                 throw new \LogicException(__CLASS__.": source '{$name}' collides with a reserved method");
@@ -167,8 +156,6 @@ final class View {
 
         $source = static::config('source');
 
-        // Строка — каталог, чьи подпапки становятся источниками (ключ = имя подпапки).
-        // Массив — «ключ => путь|спека»: ключ и есть алиас источника.
         if (is_string($source) && $source !== '') {
             foreach (glob(Main::preparePath($source).'/*', GLOB_ONLYDIR) ?: [] as $dir)
                 $add(basename($dir), $dir);
@@ -222,9 +209,6 @@ final class View {
     }
 
     private function output(): string {
-        // На верхнем уровне рендера включаем оркестрацию Assets: пока работает View,
-        // ассеты идут по пути bufferization=false (плейсхолдер + finalize), даже если
-        // глобально включён bufferization=true. См. Assets::immediate().
         $top = empty(self::$frames);
         if ($top) Assets::beginOrchestration();
 
@@ -233,12 +217,10 @@ final class View {
             $cached = ($mode === true || $mode === 'full');
 
             if ($top) {
-                // Корень: пытаемся отдать/собрать composed (russian-doll), см. renderComposedRoot().
                 $html = $cached ? $this->renderComposedRoot() : $this->build();
             } elseif ($cached) {
                 $html = $this->renderCachedSkeleton();
             } else {
-                // Некешируемый узел внутри поддерева — динамика: composed для этого корня нельзя.
                 if (self::$compose !== null) self::$compose['composable'] = false;
                 $html = $this->build();
             }
@@ -257,15 +239,9 @@ final class View {
         ]);
     }
 
-    /**
-     * Верхнеуровневый composed-кеш (russian-doll): при валидном поддереве отдаёт целиком собранный
-     * HTML одним чтением `data.composed`, не спускаясь в детей; иначе — обычная пересборка
-     * skeleton+holes с параллельным сбором сводки поддерева и перезаписью composed.
-     */
     private function renderComposedRoot(): string {
         $cache = $this->cacheHandle();
 
-        // 1. Быстрый путь: собранный HTML валиден по mtime(union deps) + reads всего поддерева.
         $cmeta = $cache->getMeta('composed');
         if (is_array($cmeta['deps'] ?? null)
             && ($cmeta['stamp'] ?? null) === self::depStamp($cmeta['deps'])
@@ -280,7 +256,6 @@ final class View {
             }
         }
 
-        // 2. Пересборка под активным collector'ом поддерева.
         $prev = self::$compose;
         self::$compose = ['composable' => true, 'descendants' => [], 'deps' => [], 'sets' => [], 'assets' => []];
         try {
@@ -290,7 +265,6 @@ final class View {
             self::$compose = $prev;
         }
 
-        // 3. Пишем composed только если ВСЁ поддерево кешируемо (нет динамики/отравления).
         if (!empty($c['composable'])) {
             $deps = array_keys($c['deps']);
             $cache->set($assembled, -1, 'composed', [
@@ -305,12 +279,6 @@ final class View {
         return $assembled;
     }
 
-    /**
-     * Валидирует reads всего поддерева для composed-записи в восстановленном окружении корня:
-     * кадр с props корня + агрегированные sets как globals. Reads из props корня/sets совпадают
-     * детерминированно, reads из внешних globals сверяются с текущими. Любое несовпадение (в т.ч.
-     * reads, резолвящиеся из props промежуточных узлов) → консервативный откат на пересборку.
-     */
     private function composedReadsValid(array $cmeta): bool {
         $descendants = $cmeta['descendants'] ?? null;
         if (!is_array($descendants)) return false;
@@ -447,7 +415,6 @@ final class View {
             }
 
             if ($poisoned) {
-                // Отравленный узел не кешируется → корень нельзя композировать.
                 if (self::$compose !== null) self::$compose['composable'] = false;
                 return $this->fillHoles($skeleton, $holes, $sets);
             }
@@ -474,13 +441,10 @@ final class View {
             $sets   = is_array($data['sets']   ?? null) ? $data['sets']   : [];
             $assets = is_array($data['assets'] ?? null) ? $data['assets'] : [];
 
-            // На cache-hit build() не выполнялся → регистрация ассетов (addResource/addString/…)
-            // не отработала. Повторяем её из payload, чтобы finalize() снова получил буферы.
             if ($fromCache)
                 Assets::replay($assets);
         }
 
-        // Сводка этого узла в collector поддерева (для composed-кеша на уровне корня).
         self::composeCollect($nodeDeps ?? [], $nodeReadsKeys ?? [], $nodeReadsStamp ?? '', $sets, $assets);
 
         return $this->fillHoles($skeleton, $holes, $sets);
@@ -574,17 +538,10 @@ final class View {
                 return $token;
             }
 
-            // Сюда попадаем, когда вьюху нельзя персистить как дыру (что-то несериализуемо).
             if (self::isSerializable($this->props)) {
-                // Несериализуемы только children (напр. замыкание, переданное в layout()):
-                // они полностью «расходуются» при build(), а сериализуемые потомки внутри
-                // станут дырами текущего boundary. Вывод безопасно запечь в скелет — НЕ отравляем.
                 return $this->build();
             }
 
-            // Несериализуемые props напрямую влияют на вывод и не поддаются ключеванию —
-            // «живой регион»: строим инлайн, но отравляем ближайший boundary, т.к. его скелет
-            // нельзя безопасно переиспользовать между процессами.
             self::$boundaries[$i]['poisoned'] = true;
             return $this->build();
         }

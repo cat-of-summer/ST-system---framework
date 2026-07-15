@@ -317,7 +317,6 @@ class ImageMime extends Mime {
             'side' => $width > $height ? $width : $height
         ];
 
-        // ttl -1 -> expires_in = -1, иначе purgeExpired() снесёт запись без TTL
         $cache->setMeta(['size' => $size, 'stamp' => $stamp], -1, false);
 
         return $size;

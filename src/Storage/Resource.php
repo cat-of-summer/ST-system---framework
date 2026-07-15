@@ -7,18 +7,6 @@ use ST_system\Traits\HasAttributes;
 use ST_system\Main;
 use ST_system\Storage\Mimes;
 
-/**
- * «Именованный блоб + mime + резолвер»: базовый носитель контента и mime-сервиса, не привязанный
- * к диску/сети. Хранит тело в памяти ($raw) и SplFileInfo, построенный из «имени».
- *
- * Вызовы проксируются в __call: сперва в SplFileInfo (getPathname/getExtension/... — резолв mime
- * зависит от них, поэтому info обязан идти первым), затем в mime-сервис (get/set/parse/encode/
- * toHTML/...). Дисковые/сетевые операции (fetch/find) в базе бросают «not materialized» и
- * переопределяются наследником {@see File}.
- *
- * Конструируется напрямую массивом: new Resource(['body' => ..., 'mime' => ...]); File — через
- * свои фабрики (путь/URL).
- */
 class Resource {
 
     use HasConfig;
@@ -89,7 +77,6 @@ class Resource {
         throw new \BadMethodCallException("Method ".static::class."::{$name}() not found");
     }
 
-    /** Идентификатор содержимого для производных кешей: pathname у File, ключ запроса у WebClient. */
     final public function getId(): string {
         return $this->id;
     }
@@ -111,7 +98,6 @@ class Resource {
 
         if (!$matched) return new class($file) extends Mimes\Mime {};
 
-        // `new (reset($matched))(...)` — синтаксис PHP 8.0; на 7.4 имя класса берётся из переменной.
         $service = reset($matched);
 
         return new $service($file);
@@ -143,8 +129,6 @@ class Resource {
                     return $this->info()->getBasename('.'.$this->getExtension());
         }
 
-        // SplFileInfo-методы проксируются первыми (резолв mime зависит от getExtension()/getMime());
-        // имя сверяется по кэшу без построения info — mime-методы (parse/toHTML/get) сюда не попадают
         static $info_methods = null;
         if ($info_methods === null)
             $info_methods = array_flip(array_map('strtolower', get_class_methods(\SplFileInfo::class)));
@@ -229,7 +213,6 @@ class Resource {
         return str_replace(Main::preparePath('~'.$root, 1), '', $this->getPathname());
     }
 
-    /** Detached-буфер: возвращает in-memory тело. File переопределяет чтением диска/сети. */
     public function getRaw(bool $force = false) {
         if ($this->raw === null)
             throw new \LogicException("Resource has no content (not materialized)");
@@ -237,17 +220,14 @@ class Resource {
         return $this->raw;
     }
 
-    /** Декод собственного тела через mime->get(). */
     final public function get() {
         return $this->mime()->get($this->getRaw());
     }
 
-    /** Кодирование данных в строку через mime->set(). */
     final public function set($data, int &$flags = 0) {
         return $this->mime()->set($data, $flags);
     }
 
-    /** Псевдоним get() для декода собственного тела. */
     final public function getContents() {
         return $this->get();
     }

@@ -18,7 +18,6 @@ class MemcachedExtAdapter implements MemcachedAdapterInterface {
         $persistent = isset($cfg['persistent_id']) ? (string)$cfg['persistent_id'] : null;
         $m = $persistent !== null && $persistent !== '' ? new \Memcached($persistent) : new \Memcached();
 
-        // При persistent_id серверы уже могут быть добавлены — не дублируем.
         if (!$m->getServerList()) {
             $servers = [];
             if (is_array($cfg['servers'] ?? null) && $cfg['servers']) {

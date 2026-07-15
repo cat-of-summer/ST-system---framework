@@ -14,6 +14,8 @@ abstract class Command {
         $this->options   = static::resolveOptions($rawOptions, $optDefs);
     }
 
+    final public static function fetch(...$args): static { return new static(...$args); }
+
     abstract public function handle(): void;
 
     protected function line(string $text): void {

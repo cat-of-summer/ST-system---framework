@@ -5,23 +5,11 @@ namespace ST_system\Storage\Mimes\Traits;
 use ST_system\Cache\CacheManager;
 use ST_system\Main;
 
-/**
- * Контракт извлечения структурированных данных из DOM-ориентированного тела (HTML/XML).
- *
- * Реализующий mime задаёт только loadDom() (loadHTML vs loadXML); трейт даёт общий движок:
- * getDom()/getXPath() и extract($schema, $data) — рекурсивную выборку по xpath-схеме.
- * Работает и на in-memory Resource, и на File — тело берётся из $this->file->getRaw().
- *
- * Результат extract кешируется по идентификатору ресурса ($this->file->getId(): pathname у File,
- * ключ запроса у WebClient) + хешу схемы; инвалидация по mtime (File) либо по Main::hash тела
- * (in-memory — смена содержимого при том же id пересчитывает). Без id (аноним) — без кеша.
- */
 trait Extractable {
 
     private ?\DOMDocument $dom   = null;
     private ?\DOMXPath    $xpath = null;
 
-    /** Построение DOM из строки — специфично для типа (loadHTML / loadXML). */
     abstract protected function loadDom(string $content): \DOMDocument;
 
     public function getDom(): \DOMDocument {
@@ -32,7 +20,6 @@ trait Extractable {
         return $this->xpath ??= new \DOMXPath($this->getDom());
     }
 
-    /** Выборка по xpath-схеме: строка-селектор или ['@xpath'=>, '@extract'=>, '@array'=>]. */
     public function extract(array $schema, array $data = []): array {
         $compute = fn() => $this->applySchema($schema, $this->getDom(), $this->getXPath(), $data);
 

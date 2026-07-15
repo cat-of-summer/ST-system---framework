@@ -33,7 +33,6 @@ class SqliteAdapter implements DatabaseAdapterInterface {
         if ($path === ':memory:') {
             $dsn = 'sqlite::memory:';
         } else {
-            // Резолвим путь к файлу БД через Storage\File (поддержка ~/ и относительных путей).
             $real = File::make($path)->getPathname();
             $dir  = dirname($real);
             if (!is_dir($dir)) @mkdir($dir, 0775, true);

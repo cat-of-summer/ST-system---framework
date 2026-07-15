@@ -96,7 +96,6 @@ final class Config {
                     }
                     if ($closed)
                         break;
-                    // Незакрытая кавычка — продолжаем на следующей строке (многострочное значение).
                     $i++;
                     if ($i >= $count)
                         break;
@@ -108,7 +107,6 @@ final class Config {
                     $value = static::interpolateEnv($value, $vars);
                     $value = static::unescapeEnv($value);
                 }
-                // Одинарные кавычки: значение литерально, без escape и подстановки.
             } else {
                 $value = $rest;
                 $vlen  = strlen($value);

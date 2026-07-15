@@ -14,16 +14,12 @@ class RedisCacheDriver extends CacheDriver {
 
     private ?RedisAdapterInterface $connection = null;
 
-    /** Конфиг соединения, чтобы уметь переподключиться после disconnect(). */
     private array $connection_config = [];
 
-    /** Соединение внедрено извне — оно не наше, ронять его нельзя. */
     private bool $connection_injected = false;
 
-    /** Пул соединений, общий на процесс. */
     private static array $pool = [];
 
-    /** @var \WeakReference[] Живые драйверы — их ссылки на адаптер тоже надо ронять. */
     private static array $live = [];
 
     protected static function getDefaultConfig(): array {
@@ -50,7 +46,6 @@ class RedisCacheDriver extends CacheDriver {
         self::$live[] = \WeakReference::create($this);
     }
 
-    /** CacheDriver::spawn() клонирует драйвер — клон тоже держит ссылку на адаптер. */
     public function __clone() {
         self::$live[] = \WeakReference::create($this);
     }
@@ -69,7 +64,6 @@ class RedisCacheDriver extends CacheDriver {
         return $this->connection() !== null;
     }
 
-    /** Лениво переоткрывает соединение, если его уронил disconnect(). */
     private function connection(): ?RedisAdapterInterface {
         if ($this->connection === null && !$this->connection_injected && $this->connection_config !== [])
             $this->connection = static::getConnection($this->connection_config);
@@ -77,16 +71,6 @@ class RedisCacheDriver extends CacheDriver {
         return $this->connection;
     }
 
-    /**
-     * Роняет все соединения процесса. Сокеты закрываются деструкторами адаптеров,
-     * следующее обращение откроет новые.
-     *
-     * Обязателен вызов в ДОЧЕРНЕМ процессе сразу после pcntl_fork(): ребёнок наследует сокет
-     * родителя, оба начинают писать в один дескриптор, их байтовые потоки перемешиваются.
-     * Выглядит это как случайные, невоспроизводимые ошибки Redis.
-     *
-     * Соединения, внедрённые извне через ['connection' => $adapter], не трогаются.
-     */
     public static function disconnect(): void {
         self::$pool = [];
 
@@ -94,7 +78,7 @@ class RedisCacheDriver extends CacheDriver {
             $driver = $ref->get();
 
             if ($driver === null)             { unset(self::$live[$index]); continue; }
-            if ($driver->connection_injected) continue;   // соединение не наше
+            if ($driver->connection_injected) continue;
 
             $driver->connection = null;
         }

@@ -67,7 +67,6 @@ class DefaultParser extends IntegrationDriver {
         $this->purgeBase();
     }
 
-    /** @param string|array|null $input */
     final public function fetch($input = null): array {
         $entrypoint = $this->getEntrypoint();
         $schema     = $this->getSchema()   ?: $this->schema;
@@ -120,13 +119,6 @@ class DefaultParser extends IntegrationDriver {
         return $results;
     }
 
-    /**
-     * Пачечная загрузка URL через общий конвейер WebClient::group() (окна batch с паузой
-     * delay, повторы транзиентных сбоев по requeue). Результаты — по индексам входа.
-     *
-     * @param string[] $urls
-     * @return array<int, ?array>  WebClient-результат ('data' — Resource) на каждый URL
-     */
     private function fetchAll(array $urls): array {
         $out = array_fill(0, count($urls), null);
         if (!$urls) return $out;
@@ -200,7 +192,6 @@ class DefaultParser extends IntegrationDriver {
         ];
     }
 
-    /** @param string|array|null $input */
     private function resolveUrl($input, string $template, string $entrypoint): string {
         if ($entrypoint !== '')
             return $entrypoint;

@@ -42,7 +42,6 @@ class MemcacheExtAdapter implements MemcachedAdapterInterface {
         $this->client->set($key, $value, 0, $expiry);
     }
 
-    // В легаси-расширении нет touch() — эмулируем перезаписью с новым сроком.
     public function touch(string $key, int $expiry): void {
         $v = $this->client->get($key);
         if ($v !== false) $this->client->set($key, $v, 0, $expiry);
