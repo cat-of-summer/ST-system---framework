@@ -12,8 +12,8 @@ class JsMime extends Mime {
 
     public function toHTML(array $config = []): string {
         $type = $config['type'] ?? 'text/javascript';
-        $async = $config['async'] ? 'async' : '';
-        $defer = $config['defer'] ? 'defer' : '';
+        $async = ($config['async'] ?? false) ? 'async' : '';
+        $defer = ($config['defer'] ?? false) ? 'defer' : '';
 
         return "<script src='{$this->file->getRelativePath()}' type='{$type}' $async $defer></script>";
     }

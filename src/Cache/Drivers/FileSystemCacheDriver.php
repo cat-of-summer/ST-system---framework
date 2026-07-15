@@ -57,6 +57,8 @@ class FileSystemCacheDriver extends CacheDriver {
     protected function readBlob(string $file): ?string {
         $path = $this->attributes['dir'].'/'.$file;
 
+        if (!is_file($path)) return null;
+
         $fh = @fopen($path, 'rb');
         if ($fh === false) return null;
 
@@ -104,6 +106,8 @@ class FileSystemCacheDriver extends CacheDriver {
 
     protected function readMeta(string $file): ?array {
         $path = $this->attributes['dir'].'/'.$file.'.meta';
+
+        if (!is_file($path)) return null;
 
         $fh = @fopen($path, 'rb');
         if ($fh === false) return null;
@@ -199,11 +203,13 @@ class FileSystemCacheDriver extends CacheDriver {
         if ($lock === false) throw new \RuntimeException("Cannot open lock file {$lock_file}");
         flock($lock, LOCK_EX);
 
-        foreach ($files as $file)
+        foreach ($files as $file) {
+            if ($file->getPathname() === $lock_file) continue;
             if ($file->isDir())
                 @rmdir($file->getPathname());
             else
                 @unlink($file->getPathname());
+        }
 
         flock($lock, LOCK_UN);
         fclose($lock);

@@ -13,7 +13,7 @@ class CssMime extends Mime {
 
     public function toHTML(array $config = []): string {
         $type = $config['type'] ?? 'text/css';
-        $media = $config['media'] ? "media='{$config['media']}'" : '';
+        $media = ($config['media'] ?? null) ? "media='{$config['media']}'" : '';
 
         return "<link rel='stylesheet' href='{$this->file->getRelativePath()}' type='{$type}' $media>";
     }
