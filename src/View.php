@@ -7,7 +7,9 @@ use ST_system\Cache\CacheManager;
 
 final class View {
 
-    use HasConfig;
+    use HasConfig {
+        setConfig as private traitSetConfig;
+    }
 
     protected static function getDefaultConfig(): array {
         return [
@@ -35,6 +37,8 @@ final class View {
     private static ?array $excludes   = null;
     private static array  $boundaries = [];
     private static ?array $compose    = null;
+    private static ?array $directives     = null;
+    private static array  $directiveLayer = [];
 
     private string $name;
     private string $file;
@@ -63,7 +67,7 @@ final class View {
         $sourceKey    = (($p = strpos($this->name, ':')) !== false) ? substr($this->name, 0, $p) : $this->name;
         $sourceConfig = self::sources()[$sourceKey]['config'] ?? [];
 
-        $this->config = Main::merge(static::config(), $sourceConfig, $this->parentBundle, $this->override);
+        $this->config = Main::merge(static::config(), $sourceConfig, self::directivesFor($this->file), $this->parentBundle, $this->override);
 
         $this->bundle = Main::dotGet($this->config, 'cascade', false)
             ? Main::merge($this->parentBundle, $this->override)
@@ -73,6 +77,9 @@ final class View {
     public static function __callStatic(string $name, array $args) {
         if (in_array($name, self::RESERVED, true) || !isset(self::sources()[$name]))
             throw new \BadMethodCallException("Method ".__CLASS__."::{$name}() not found");
+
+        if (isset(self::sources()[$name]['file']))
+            return self::template($name, ...$args);
 
         $view = (string)array_shift($args);
 
@@ -88,8 +95,6 @@ final class View {
         $sources = self::sources();
         if ($key === '' || !isset($sources[$key]))
             throw new \RuntimeException(__CLASS__.": source '{$key}' not found");
-        if ($view === '')
-            throw new \RuntimeException(__CLASS__.": empty view path in '{$path}'");
 
         if (isset($args[0]) && !is_array($args[0])) {
             $props    = [];
@@ -104,18 +109,33 @@ final class View {
             Main::dotSet($normalized, $k, $value);
 
         $source = $sources[$key];
-        $file   = null;
-        foreach ([
-            "{$source['dir']}/{$view}.{$source['ext']}",
-            "{$source['dir']}/{$view}/index.{$source['ext']}",
-        ] as $candidate) {
-            $candidate = Main::preparePath($candidate, 0, true);
-            if (is_file($candidate) && !self::isExcluded($candidate)) { $file = $candidate; break; }
-        }
-        if ($file === null)
-            throw new \RuntimeException(__CLASS__.": view '{$view}' not found in {$source['dir']}");
 
-        $instance = new self($key.':'.$view, $file, $normalized, $children);
+        if (isset($source['file'])) {
+            if ($view !== '')
+                throw new \RuntimeException(__CLASS__.": source '{$key}' points to a file and takes no sub-view ('{$path}')");
+            $file = $source['file'];
+            $name = $key;
+        } else {
+            if ($view === '')
+                throw new \RuntimeException(__CLASS__.": empty view path in '{$path}'");
+
+            $file = null;
+            foreach ($source['ext'] as $ext) {
+                foreach ([
+                    "{$source['dir']}/{$view}.{$ext}",
+                    "{$source['dir']}/{$view}/index.{$ext}",
+                ] as $candidate) {
+                    $candidate = Main::preparePath($candidate, 0, true);
+                    if (is_file($candidate) && !self::isExcluded($candidate)) { $file = $candidate; break 2; }
+                }
+            }
+            if ($file === null)
+                throw new \RuntimeException(__CLASS__.": view '{$view}' not found in {$source['dir']}");
+
+            $name = $key.':'.$view;
+        }
+
+        $instance = new self($name, $file, $normalized, $children);
         $instance->auto_echo = !empty(self::$frames);
 
         return $instance;
@@ -126,7 +146,7 @@ final class View {
 
         self::buildExcludes();
 
-        $defaultExt = (string)(static::config('extension') ?: 'php');
+        $defaultExt = self::extList(static::config('extension'), ['php']);
         $map        = [];
 
         $add = static function (string $name, $spec) use (&$map, $defaultExt): void {
@@ -147,9 +167,14 @@ final class View {
             $abs = Main::preparePath($dir);
             if (isset(self::$excludes['names'][$name]) || self::isExcluded($abs)) return;
 
+            if (is_file($abs)) {
+                $map[$name] = ['file' => $abs, 'config' => $override];
+                return;
+            }
+
             $map[$name] = [
                 'dir'    => $abs,
-                'ext'    => (string)($override['extension'] ?? $defaultExt),
+                'ext'    => self::extList($override['extension'] ?? null, $defaultExt),
                 'config' => $override,
             ];
         };
@@ -190,6 +215,21 @@ final class View {
             if ($absPath === $p || strncmp($absPath, $p.'/', strlen($p) + 1) === 0)
                 return true;
         return false;
+    }
+
+    public static function setConfig($key = [], $value = null): void {
+        $flat = is_string($key) ? [$key => $value] : Main::dotFlatten((array)$key);
+
+        if (self::$frames) {
+            $config = [];
+            foreach ($flat as $k => $v) Main::dotSet($config, $k, $v);
+
+            $i = array_key_last(self::$frames);
+            self::$frames[$i]['directives'] = Main::merge(self::$frames[$i]['directives'] ?? [], $config);
+            return;
+        }
+
+        self::traitSetConfig($flat);
     }
 
     public function cache($mode = true): self {
@@ -237,6 +277,53 @@ final class View {
             'dir'    => (string) Main::dotGet($this->config, 'cache.dir', ''),
             'ttl'    => -1,
         ]);
+    }
+
+    private static function directiveCache(): CacheManager {
+        return CacheManager::make([__CLASS__, '__directives'], [
+            'driver' => (string) static::config('cache.driver'),
+            'dir'    => (string) static::config('cache.dir'),
+            'ttl'    => -1,
+        ]);
+    }
+
+    private static function directiveRegistry(): array {
+        if (self::$directives !== null) return self::$directives;
+        $data = self::directiveCache()->get();
+        return self::$directives = is_array($data) ? $data : [];
+    }
+
+    private static function directivesFor(string $file): array {
+        if (array_key_exists($file, self::$directiveLayer)) return self::$directiveLayer[$file];
+
+        $entry = self::directiveRegistry()[$file] ?? null;
+        $valid = is_array($entry)
+            && is_array($entry['config'] ?? null)
+            && (int)($entry['stamp'] ?? -1) === (is_file($file) ? (int) filemtime($file) : 0);
+
+        return self::$directiveLayer[$file] = $valid ? $entry['config'] : [];
+    }
+
+    // The registry blob must never enter a boundary's deps: boundary deps collect
+    // template files only, so registry writes cannot invalidate cached skeletons.
+    private static function storeDirectives(string $file, array $config): void {
+        $registry = self::directiveRegistry();
+        $existing = $registry[$file] ?? null;
+
+        if (!$config && $existing === null) { self::$directiveLayer[$file] = []; return; }
+
+        $stamp = is_file($file) ? (int) filemtime($file) : 0;
+        if (is_array($existing)
+            && (int)($existing['stamp'] ?? -1) === $stamp
+            && Main::hash($existing['config'] ?? null) === Main::hash($config)
+        ) { self::$directiveLayer[$file] = $config; return; }
+
+        if ($config) $registry[$file] = ['stamp' => $stamp, 'config' => $config];
+        else         unset($registry[$file]);
+
+        self::$directives = $registry;
+        self::$directiveLayer[$file] = $config;
+        self::directiveCache()->set($registry, -1);
     }
 
     private function renderComposedRoot(): string {
@@ -325,11 +412,12 @@ final class View {
             self::$boundaries[array_key_last(self::$boundaries)]['deps'][$this->file] = true;
 
         self::$frames[] = [
-            'props'    => $this->props,
-            'children' => $this->children,
-            'name'     => $this->name,
-            'bundle'   => $this->bundle,
-            'file'     => $this->file,
+            'props'      => $this->props,
+            'children'   => $this->children,
+            'name'       => $this->name,
+            'bundle'     => $this->bundle,
+            'file'       => $this->file,
+            'directives' => [],
         ];
 
         ob_start();
@@ -337,8 +425,25 @@ final class View {
         try {
             (static function ($__file, $props) { require $__file; })($this->file, $this->props);
         } finally {
-            $html = ob_get_clean();
-            array_pop(self::$frames);
+            $html  = ob_get_clean();
+            $frame = array_pop(self::$frames);
+        }
+
+        // Reached only when the template completed without throwing: directives
+        // from a template that failed mid-render are never persisted.
+        if (!empty($frame['directives'])) {
+            self::storeDirectives($this->file, $frame['directives']);
+            $this->recomputeConfig();
+
+            // Skip-write: an in-file directive that leaves this node uncacheable
+            // poisons the enclosing boundary, so its content is never frozen into
+            // a skeleton or composed blob on the pass where the directive fired.
+            if (self::$boundaries) {
+                $mode    = Main::dotGet($this->config, 'cache.use', false);
+                $touched = Main::dotGet($frame['directives'], 'cache.use', self::ABSENT) !== self::ABSENT;
+                if ($touched && $mode !== true && $mode !== 'full')
+                    self::$boundaries[array_key_last(self::$boundaries)]['poisoned'] = true;
+            }
         }
 
         return $html;
@@ -643,6 +748,18 @@ final class View {
             $html = ob_get_clean();
         }
         return $html;
+    }
+
+    private static function extList($value, array $fallback): array {
+        if ($value === null || $value === '' || $value === []) return $fallback;
+
+        $list = [];
+        foreach (is_array($value) ? $value : [$value] as $e) {
+            $e = ltrim((string)$e, '.');
+            if ($e !== '') $list[] = $e;
+        }
+
+        return $list ?: $fallback;
     }
 
     private static function sentinel(): object {
