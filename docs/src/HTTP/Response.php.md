@@ -30,15 +30,31 @@ Response::status($code)->header('X-Content-Type-Options', 'nosniff')->send();
 - **`header(string $key, string $value): self`** — добавляет/переопределяет один заголовок. Имя заголовка нормализуется: разбивается по `-`, `_` и пробелам, каждая часть приводится к виду `Ucfirst`, части склеиваются через `-` (например, `content-type` и `content_type` дают `Content-Type`).
 - **`headers(array $headers): self`** — то же самое пакетно, для ассоциативного массива `['Имя' => 'значение', ...]`.
 - **`redirect(string $url, int $status = 302): self`** — устанавливает статус (по умолчанию `302`) и заголовок `Location`.
-- **`raw($data, int $status = 200): self`** — кладёт `$data` в тело ответа как есть (без изменения `Content-Type`) и устанавливает статус.
-- **`text(string $text, int $status = 200): self`** — `Content-Type: text/plain; charset=UTF-8` + `raw()`.
-- **`html(string $html, int $status = 200): self`** — `Content-Type: text/html; charset=UTF-8` + `raw()`.
-- **`json($data, int $status = 200, int $json_options = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES): self`** — кодирует `$data` через `json_encode()`. При ошибке кодирования бросает `\RuntimeException('JSON encoding error: ' . json_last_error_msg())`. При успехе ставит `Content-Type: application/json; charset=UTF-8` и вызывает `raw()`.
+- **`raw($data, ?int $status = null): self`** — кладёт `$data` в тело ответа как есть (без изменения `Content-Type`). Статус устанавливается **только если передан явно** (`$status !== null`); при `null` текущий статус сохраняется.
+- **`text(string $text, ?int $status = null): self`** — `Content-Type: text/plain; charset=UTF-8` + `raw()`.
+- **`html(string $html, ?int $status = null): self`** — `Content-Type: text/html; charset=UTF-8` + `raw()`.
+- **`json($data, ?int $status = null, int $json_options = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES): self`** — кодирует `$data` через `json_encode()`. При ошибке кодирования бросает `\RuntimeException('JSON encoding error: ' . json_last_error_msg())`. При успехе ставит `Content-Type: application/json; charset=UTF-8` и вызывает `raw()`.
 - **`file(string $full_path, string $file_name = '', bool $download = false): self`** — отдаёт содержимое файла с диска потоково при `send()`. Бросает `\InvalidArgumentException`, если файл не найден или не читаем. Определяет MIME-тип через `finfo` (приоритетно) или `mime_content_type()`, иначе — `application/octet-stream`. Устанавливает заголовки `Content-Type`, `Content-Disposition` (`inline` или `attachment` в зависимости от `$download`; кавычки в имени файла заменяются на одинарные), `Content-Length`, `ETag` (`md5(путь|mtime|размер)`) и `Last-Modified` (GMT, из `filemtime()`).
 - **`download(string $full_path, string $file_name = ''): self`** — то же, что `file($full_path, $file_name, true)` (принудительно `Content-Disposition: attachment`).
 - **`stream(callable $callback, int $status = 200): self`** — сохраняет `$callback` для отложенного вызова внутри `send()`; сам колбэк отвечает за постепенный вывод данных (`echo`/`flush()` и т.п.).
 - **`stream_download(callable $callback, string $file_name, int $status = 200): self`** — ставит заголовки `Content-Type: application/octet-stream` и `Content-Disposition: attachment; filename="..."`, затем делегирует в `stream()`.
 - **`cookie(string $name, string $value = '', array $options = []): self`** — вызывает нативный `setcookie($name, $value, $options)` (формат опций PHP ≥ 7.3: `expires`, `path`, `domain`, `secure`, `httponly`, `samesite`).
+
+## Установка кода ответа
+
+Статус по умолчанию — `200` (значение свойства `$status`). Задать другой код можно двумя равнозначными способами:
+
+```php
+// 1) явным вызовом status() в начале цепочки
+Response::status(404)->html(View::page('404'))->send();
+
+// 2) вторым аргументом метода контента
+Response::html(View::page('404'), 404)->send();
+```
+
+Ключевой момент: методы контента (`raw`, `text`, `html`, `json`) **не перезаписывают** уже установленный статус, если код им не передан явно. Параметр `$status` у них nullable (`?int $status = null`), и `raw()` вызывает `status()` только при `$status !== null`. Поэтому `status(404)->html(...)` корректно отдаёт `404`, а не сбрасывается обратно в `200`.
+
+> ⚠️ Исключения — `redirect()` (всегда ставит статус, по умолчанию `302`), а также `stream()` / `stream_download()` (параметр `int $status = 200` не nullable и всегда применяется). Для потоков с нестандартным кодом передавайте его аргументом `stream()`, а не полагайтесь на предшествующий `status(...)`.
 
 ## `send(): void` — отправка ответа
 

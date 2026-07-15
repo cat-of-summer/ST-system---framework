@@ -2,7 +2,7 @@
 # Kernel.php
 <!-- DOCGEN:END -->
 
-`final class Kernel` (`ST_system\Console\Kernel`) — ядро обнаружения, регистрации и диспатча CLI-команд ([`Command`](Command.php.md)). Использует трейт `HasConfig` для конфигурации каталога и неймспейса поиска команд по умолчанию. Класс статический — не инстанциируется (`private function __construct()`), всё состояние хранится в статических свойствах.
+`final class Kernel` (`ST_system\Console\Kernel`) — ядро обнаружения, регистрации и диспатча CLI-команд ([`Command`](Command.php.md)). Использует трейты `HasConfig` (конфигурация каталога и неймспейса поиска команд по умолчанию) и [`HasInstance`](../Traits/HasInstance.php.md) (ленивая одноразовая инициализация). Публичный API статический, но внутри однократно создаётся единственный экземпляр через `HasInstance::getInstance()`: приватный конструктор при первом обращении автоматически сканирует конфигурный каталог (`registerDir()`), поэтому логика инициализации живёт в одном месте, а не дублируется по методам. Реестр команд хранится в статическом свойстве `self::$commands`.
 
 ## Конфиг по умолчанию
 
@@ -27,6 +27,7 @@
 
 ```php
 Kernel::register('user:create', \Console\Commands\UserCreateCommand::class);
+// self::$commands['user:create'] === 'Console\\Commands\\UserCreateCommand'
 ```
 
 ## handleCLI(array $argv): void
@@ -41,17 +42,29 @@ require __DIR__ . '/vendor/autoload.php';
 ```
 
 1. Проверяет, что скрипт выполняется под CLI SAPI — иначе бросает `\RuntimeException`.
-2. При первом вызове в рамках процесса (статический флаг) автоматически регистрирует команды из конфигурного каталога по умолчанию через `registerDir()` — повторные вызовы `handleCLI()` не пересканируют каталог заново.
-3. Имя команды берётся из `$argv[1]`. Если оно не передано или не зарегистрировано — печатается `Unknown command: ...` и список доступных команд (`implode(', ', array_keys(self::$commands))`), процесс завершается кодом `1`.
+2. Вызывает `self::getInstance()` — единая точка инициализации: при первом обращении в рамках процесса конструктор автоматически регистрирует команды из конфигурного каталога по умолчанию через `registerDir()`. Повторные вызовы `handleCLI()`/`getAvailableCommands()` переиспользуют уже созданный экземпляр и не пересканируют каталог заново.
+3. Имя команды берётся из `$argv[1]`:
+   - если имя **не передано** — печатается только список доступных команд (`Available: ...`, `implode(', ', array_keys(self::getAvailableCommands()))`) без строки `Unknown command`, процесс завершается кодом `0` (это справочный вывод, а не ошибка);
+   - если имя передано, но **не зарегистрировано** — печатается `Unknown command: <name>` и тот же список доступных команд, процесс завершается кодом `1`.
 4. Остаток аргументов (`array_slice($argv, 2)`) разбирается на позиционные значения и опции:
    - `--name=value` → `$rawOptions['name'] = 'value'`;
    - `--flag` (без `=`) → `$rawOptions['flag'] = true`;
    - `-x` / `-xvalue` (короткая опция, `/^-([a-zA-Z])(.*)$/`) → `$rawOptions['x'] = true` или значение после буквы;
    - всё остальное считается позиционным аргументом.
-5. Создаёт экземпляр найденного класса команды (`new $commandClass($positional, $rawOptions)`) и вызывает `handle()`.
+5. Создаёт экземпляр найденного класса команды (`new self::$commands[$name]($positional, $rawOptions)`), вызывает `handle()` и завершает процесс через `exit(0)`. `handleCLI()` — **терминальная операция**: код после её вызова не выполняется (по аналогии с [`Route::handleRequest()`](../HTTP/Route.php.md), который завершается через `Response::send()`).
 
 ```
 $ php console.php user:create Ivan ivan@example.com --role=admin -f
 ```
 
 `user:create` — имя команды (сигнатура), `Ivan`/`ivan@example.com` — позиционные аргументы, `--role=admin` и `-f` — опции; всё это передаётся в конструктор `UserCreateCommand`, чья разобранная сигнатура сопоставляет их с `name`/`email`/`role`/`force` (см. [Command.php.md](Command.php.md)).
+
+## getAvailableCommands(): array
+
+Гарантирует инициализацию (`self::getInstance()`) и возвращает весь реестр команд в виде `сигнатура => полное имя класса команды`. Удобно для интроспекции доступных команд — список сигнатур и классов, где они определены:
+
+```php
+foreach (Kernel::getAvailableCommands() as $signature => $class) {
+    echo "{$signature} => {$class}" . PHP_EOL;
+}
+```

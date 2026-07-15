@@ -46,15 +46,16 @@ final class Response {
         return $this;
     }
 
-    private function raw($data, int $status = 200): self {
-        $this->status($status);
+    private function raw($data, ?int $status = null): self {
+        if ($status !== null)
+            $this->status($status);
 
         $this->content = $data;
 
         return $this;
     }
 
-    private function text(string $text, int $status = 200): self {
+    private function text(string $text, ?int $status = null): self {
         $this->header('Content-Type', 'text/plain; charset=UTF-8');
 
         $this->raw($text, $status);
@@ -62,7 +63,7 @@ final class Response {
         return $this;
     }
 
-    private function html(string $html, int $status = 200): self {
+    private function html(string $html, ?int $status = null): self {
         $this->header('Content-Type', 'text/html; charset=UTF-8');
 
         $this->raw($html, $status);
@@ -70,12 +71,12 @@ final class Response {
         return $this;
     }
 
-    private function json($data, int $status = 200, int $json_options = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES): self {
+    private function json($data, ?int $status = null, int $json_options = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES): self {
         $encoded = @json_encode($data, $json_options);
 
         if ($encoded === false)
             throw new \RuntimeException('JSON encoding error: ' . json_last_error_msg());
-        
+
         $this->header('Content-Type', 'application/json; charset=UTF-8');
 
         $this->raw($encoded, $status);

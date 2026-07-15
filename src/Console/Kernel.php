@@ -5,9 +5,11 @@ namespace ST_system\Console;
 use ST_system\Main;
 use ST_system\Storage\File;
 use ST_system\Traits\HasConfig;
+use ST_system\Traits\HasInstance;
 
 final class Kernel {
     use HasConfig;
+    use HasInstance;
 
     protected static function getDefaultConfig(): array {
         return [
@@ -20,7 +22,10 @@ final class Kernel {
 
     private static array $commands = [];
 
-    private function __construct() {}
+    private function __construct() {
+        $config = static::config('default');
+        self::registerDir($config['dir'], $config['namespace']);
+    }
 
     public static function registerDir(string $dir, string $namespace): void {
         $files = File::find($dir, ['extension' => 'php', 'max_files' => 0]);
@@ -47,18 +52,18 @@ final class Kernel {
         if (PHP_SAPI !== 'cli')
             throw new \RuntimeException(__CLASS__.'::handleCLI() is CLI-only, but SAPI is "'.PHP_SAPI.'"');
 
-        static $initialized = false;
-        if (!$initialized) {
-            $config = static::config('default');
-            self::registerDir($config['dir'], $config['namespace']);
-            $initialized = true;
-        }
+        self::getInstance();
 
         $name = $argv[1] ?? null;
 
-        if (!$name || !isset(self::$commands[$name])) {
-            echo 'Unknown command: ' . ($name ?? '(none)') . PHP_EOL;
-            echo 'Available: ' . implode(', ', array_keys(self::$commands)) . PHP_EOL;
+        if (!$name) {
+            echo 'Available: ' . implode(', ', array_keys(self::getAvailableCommands())) . PHP_EOL;
+            exit(0);
+        }
+
+        if (!isset(self::$commands[$name])) {
+            echo 'Unknown command: ' . $name . PHP_EOL;
+            echo 'Available: ' . implode(', ', array_keys(self::getAvailableCommands())) . PHP_EOL;
             exit(1);
         }
 
@@ -84,16 +89,12 @@ final class Kernel {
         }
 
         (new self::$commands[$name]($positional, $rawOptions))->handle();
+
+        exit(0);
     }
 
     public static function getAvailableCommands(): array {
-        static $initialized = false;
-
-        if (!$initialized) {
-            $config = static::config('default');
-            self::registerDir($config['dir'], $config['namespace']);
-            $initialized = true;
-        }
+        self::getInstance();
 
         return self::$commands;
     }

@@ -41,16 +41,26 @@ final class Route {
 
         foreach (self::routes() as $r) {
             $query_params = [];
+            $slots = [];
+            $n = 0;
 
-            $pattern = $r->pattern;
+            $tmp = preg_replace_callback('#\{(\.\.\.)?(\w+)(?::([^{}]+))?\}#', function ($matches) use (&$query_params, &$slots, &$n) {
+                $name = $matches[2];
+                $query_params[] = $name;
+
+                $sub = ($matches[3] ?? '') !== '' ? $matches[3]
+                     : ($matches[1] === '...'    ? '.+'
+                     :                             '[^/]+');
+
+                $key = 'STtok'.$n.'STtok'; $n++;
+                $slots[$key] = "(?P<{$name}>{$sub})";
+                return $key;
+            }, $r->pattern);
 
             if ($r->strict_mode)
-                $pattern = preg_quote($pattern, '#');
+                $tmp = preg_quote($tmp, '#');
 
-            $regexp = str_replace('//', '/', "#^".preg_replace_callback($r->strict_mode ? '#\\\\\{(\w+)\\\\\}#' : '#\\{(\w+)\\}#', function ($matches) use (&$query_params) {
-                $query_params[] = $matches[1];
-                return "(?P<{$matches[1]}>[^/]+)";
-            }, $pattern).'/?$#');
+            $regexp = str_replace('//', '/', "#^".strtr($tmp, $slots).'/?$#');
 
             if (preg_match($regexp, Request::uri(), $matches)) {
                 $route = $r;
