@@ -357,10 +357,6 @@ jobs:
 
           printf '%s\n' "${ALL_FILES[@]}" | sort > "$TMPDIR_WORK/source.txt"
 
-          # No guard here: with no matches, find prints nothing and sed|sort yields an
-          # empty file on its own. A `find | head | grep` guard under `set -o pipefail`
-          # can return 141 (SIGPIPE, head closes the pipe early) and wrongly empty this
-          # file, which would reclassify every existing doc as "new" and overwrite it.
           find "$DOCS_DIR" -type f -name '*.md' ! -name 'README.md' -printf '%P\n' \
             | sed 's/\.md$//' | sort > "$TMPDIR_WORK/existing.txt"
 
@@ -384,8 +380,7 @@ jobs:
           while IFS= read -r file; do
             [[ -z "$file" ]] && continue
             md_path="$DOCS_DIR/${file}.md"
-            # Never overwrite an existing doc: creation only stubs missing files, so a
-            # misclassification can never destroy hand-written content below DOCGEN:END.
+
             [ -f "$md_path" ] && continue
             mkdir -p "$(dirname "$md_path")"
             filename="$(basename "$file")"
