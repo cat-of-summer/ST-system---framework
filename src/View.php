@@ -20,6 +20,8 @@ final class View {
                 'use'    => false,
                 'driver' => 'filesystem',
                 'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+                'deps'   => [],
+                'key'    => null,
             ],
             'cascade' => false,
         ];
@@ -48,6 +50,7 @@ final class View {
     private array  $bundle;
     private array  $parentBundle;
     private array  $override    = [];
+    private        $keyExtra    = self::ABSENT;
     private bool   $auto_echo   = false;
     private bool   $rendered    = false;
 
@@ -271,12 +274,58 @@ final class View {
         }
     }
 
+    /**
+     * cache.deps — классы, отдающие зависимости, использованные ЗА ВРЕМЯ рендера границы.
+     * Контракт — пара record()/stopRecording(), та же, что у Assets, а не одиночный колбэк:
+     * накопительный геттер тут не работает, потому что источник отмечает свои файлы один раз
+     * за запрос, и дифф вокруг build() отдал бы их только первой границе.
+     */
+    private function depProviders(): array {
+        $raw = Main::dotGet($this->config, 'cache.deps', []);
+        if ($raw === null || $raw === '') return [];
+
+        $out = [];
+        foreach ((is_array($raw) ? $raw : [$raw]) as $p) {
+            $p = is_object($p) ? get_class($p) : (string) $p;
+            if ($p === '') continue;
+
+            if (!method_exists($p, 'record') || !method_exists($p, 'stopRecording'))
+                throw new \LogicException(__CLASS__.": cache.deps provider '{$p}' must implement record() and stopRecording()");
+
+            $out[$p] = true;
+        }
+
+        return array_keys($out);
+    }
+
     private function cacheHandle(): CacheManager {
-        return CacheManager::make([__CLASS__, $this->name, $this->props], [
+        return CacheManager::make([
+            'c' => __CLASS__,
+            'n' => $this->name,
+            'p' => $this->props,
+            'k' => $this->keyExtra(),
+        ], [
             'driver' => (string) Main::dotGet($this->config, 'cache.driver', 'filesystem'),
             'dir'    => (string) Main::dotGet($this->config, 'cache.dir', ''),
             'ttl'    => -1,
         ]);
+    }
+
+    private function keyExtra() {
+        if ($this->keyExtra === self::ABSENT)
+            $this->keyExtra = self::resolveKeyExtra(Main::dotGet($this->config, 'cache.key', null));
+
+        return $this->keyExtra;
+    }
+
+    private static function resolveKeyExtra($value) {
+        if ($value instanceof \Closure || (is_callable($value) && !is_string($value) && !is_array($value)))
+            return self::resolveKeyExtra($value());
+
+        if (is_array($value))
+            return array_map([self::class, 'resolveKeyExtra'], $value);
+
+        return $value;
     }
 
     private static function directiveCache(): CacheManager {
@@ -304,8 +353,6 @@ final class View {
         return self::$directiveLayer[$file] = $valid ? $entry['config'] : [];
     }
 
-    // The registry blob must never enter a boundary's deps: boundary deps collect
-    // template files only, so registry writes cannot invalidate cached skeletons.
     private static function storeDirectives(string $file, array $config): void {
         $registry = self::directiveRegistry();
         $existing = $registry[$file] ?? null;
@@ -429,15 +476,10 @@ final class View {
             $frame = array_pop(self::$frames);
         }
 
-        // Reached only when the template completed without throwing: directives
-        // from a template that failed mid-render are never persisted.
         if (!empty($frame['directives'])) {
             self::storeDirectives($this->file, $frame['directives']);
             $this->recomputeConfig();
 
-            // Skip-write: an in-file directive that leaves this node uncacheable
-            // poisons the enclosing boundary, so its content is never frozen into
-            // a skeleton or composed blob on the pass where the directive fired.
             if (self::$boundaries) {
                 $mode    = Main::dotGet($this->config, 'cache.use', false);
                 $touched = Main::dotGet($frame['directives'], 'cache.use', self::ABSENT) !== self::ABSENT;
@@ -498,11 +540,18 @@ final class View {
                 'poisoned' => false,
             ];
 
+            $providers = $this->depProviders();
+            $extraDeps = [];
+
             Assets::record();
+            foreach ($providers as $p) $p::record();
+
             try {
                 $skeleton = $this->build();
             } finally {
                 $assetOps = Assets::stopRecording();
+                foreach ($providers as $p)
+                    $extraDeps = array_merge($extraDeps, $p::stopRecording());
                 $b = array_pop(self::$boundaries);
             }
 
@@ -524,7 +573,7 @@ final class View {
                 return $this->fillHoles($skeleton, $holes, $sets);
             }
 
-            $files = array_keys($b['deps']);
+            $files = array_values(array_unique(array_merge(array_keys($b['deps']), $extraDeps)));
             $cache->set($skeleton, -1, '', [
                 'stamp'       => self::depStamp($files),
                 'deps'        => $files,
@@ -593,7 +642,7 @@ final class View {
 
         $stamps = [];
         foreach ($files as $f)
-            $stamps[$f] = is_file($f) ? (int) filemtime($f) : 0;
+            $stamps[$f] = file_exists($f) ? (int) filemtime($f) : 0;
 
         return Main::hash($stamps);
     }
