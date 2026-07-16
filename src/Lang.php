@@ -452,12 +452,25 @@ final class Lang {
                 $override = [];
             }
 
-            if ($dir === '') continue;
+            if ($dir === '') continue;   // пустой путь = выключить источник
+
+            // Путь источника всегда относителен dir: ведущие '/' и '~' срезаются, чтобы они не
+            // уводили из корня, а '..' запрещён ($strict) — громкая ошибка честнее тихого побега.
+            $rel = ltrim($dir, '/~');
+            if ($rel === '') $rel = '.';   // '/', '~' => сам dir
+
+            try {
+                $abs = Main::preparePath($rel, $root, true);
+            } catch (\InvalidArgumentException $e) {
+                throw new \InvalidArgumentException(
+                    __CLASS__.": источник '{$name}' выходит за пределы dir: '..' в пути '{$dir}' запрещён", 0, $e
+                );
+            }
 
             // Оверрайды читаются инлайном: self::$sources присваивается только в return,
             // поэтому вызов чего-либо, что зовёт sources(), отсюда — бесконечная рекурсия.
             $map[$name] = [
-                'dir'      => Main::preparePath($dir, $root),
+                'dir'      => $abs,
                 'ext'      => self::extList($override['extensions'] ?? null),
                 'dir_name' => trim((string)($override['dir_name'] ?? static::config('dir_name')), '/'),
                 'cache'    => Main::merge((array)static::config('cache'), (array)($override['cache'] ?? [])),
