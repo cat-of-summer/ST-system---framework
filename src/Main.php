@@ -16,9 +16,21 @@ final class Main {
         return (string)$ts;
     }
 
-    public static function pluralForm($n, $forms): string {
-        $n = (int)$n;
-        return $forms[($n % 10 == 1 && $n % 100 != 11) ? 0 : (($n % 10 >= 2 && $n % 10 <= 4 && ($n % 100 < 10 || $n % 100 >= 20)) ? 1 : 2)];
+    public static function pluralIndex(int $n, string $locale = 'ru'): int {
+        $n = abs($n);
+
+        switch ($locale) {
+            case 'ru':
+            case 'uk':
+            case 'be':
+                return ($n % 10 === 1 && $n % 100 !== 11) ? 0 : (($n % 10 >= 2 && $n % 10 <= 4 && ($n % 100 < 10 || $n % 100 >= 20)) ? 1 : 2);
+            default:
+                return $n === 1 ? 0 : 1;
+        }
+    }
+
+    public static function pluralForm($n, $forms, string $locale = 'ru'): string {
+        return $forms[self::pluralIndex((int)$n, $locale)];
     }
 
     private static function splitWords(string $name): array {
@@ -39,6 +51,20 @@ final class Main {
         return $cache[$name] ??= implode('', array_map(
             fn($w) => ucfirst(strtolower($w)),
             static::splitWords($name)
+        ));
+    }
+
+    public static function readable(string $name): string {
+        static $cache = [];
+        
+        $words = static::splitWords($name);
+
+        return $cache[$name] ??= implode(' ', array_map(
+            static fn($word, $index) => $index === 0
+                ? ucfirst(strtolower($word))
+                : strtolower($word),
+            $words,
+            array_keys($words)
         ));
     }
 

@@ -9,22 +9,21 @@ final class Lang {
 
     use HasConfig {
         setConfig as private traitSetConfig;
+        config     as private traitConfig;
     }
 
     protected static function getDefaultConfig(): array {
         return [
-            'source'     => ['~' => '~'],
-            'locale'     => 'ru',
+            'dir'        => '~',
+            'source'     => [],
+            'locale'     => 'en',
             'fallback'   => 'en',
             'extensions' => ['php', 'json'],
             'dir_name'   => '',
             'cache' => [
-                'use'     => true,
-                'driver'  => 'filesystem',
-                'dir'     => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
-                'check'   => 'mtime',
-                'ttl'     => 60,
-                'exclude' => [],
+                'use'    => true,
+                'driver' => 'filesystem',
+                'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
             ],
             'plural' => [],
         ];
@@ -32,48 +31,60 @@ final class Lang {
 
     private const RESERVED = [
         'get', 'set', 'has', 'all', 'choice', 'config', 'setConfig', 'applyConfig',
-        'setLocale', 'getLocale', 'setFallback', 'getFallback', 'purge', 'getUsedFiles', 'sources',
+        'purge', 'getUsedFiles', 'sources',
+        'setLocale', 'getLocale', 'setFallback', 'getFallback',
     ];
+
+    private const STRUCTURAL = ['dir', 'source', 'extensions', 'dir_name', 'cache'];
 
     private const ABSENT = "\0__lang_absent__";
 
-    private static ?string $locale    = null;
-    private static ?string $fallback  = null;
-    private static ?array  $sources   = null;
-    private static ?array  $excludes  = null;
-    private static array   $maps      = [];
-    private static array   $fileData  = [];
-    private static array   $runtime   = [];
-    private static array   $usedFiles = [];
+    private static ?array $sources     = null;
+    private static ?array $systemPaths = null;
+    private static array  $maps        = [];
+    private static array  $fileData    = [];
+    private static array  $runtime     = [];
+    private static array  $usedFiles   = [];
+    private static array  $resolving   = [];
 
-    public static function setConfig(array $config = []): void {
-        self::$sources  = null;
-        self::$excludes = null;
-        self::$maps     = [];
-        self::$fileData = [];
+    public static function setConfig($key = [], $value = null): void {
+        $flat = is_string($key) ? [$key => $value] : Main::dotFlatten((array)$key);
 
-        self::traitSetConfig($config);
+        foreach ($flat as $k => $_) {
+            $root = ($p = strpos($k, '.')) !== false ? substr($k, 0, $p) : $k;
+
+            if (in_array($root, self::STRUCTURAL, true)) {
+                self::$sources     = null;
+                self::$systemPaths = null;
+                self::$maps        = [];
+                self::$fileData    = [];
+                break;
+            }
+        }
+
+        self::traitSetConfig($flat);
     }
 
-    public static function setLocale(string $locale): void {
-        self::$locale = $locale;
+    public static function config(string $key = '') {
+        $value = self::traitConfig($key);
+
+        return ($key === 'locale' || $key === 'fallback')
+            ? self::resolveLocaleValue($value, $key)
+            : $value;
     }
 
-    public static function getLocale(): string {
-        return self::$locale ?? self::resolveLocaleValue(static::config('locale'));
-    }
+    private static function resolveLocaleValue($value, string $key): string {
+        if ($value instanceof \Closure || (is_callable($value) && !is_string($value))) {
+            if (isset(self::$resolving[$key]))
+                throw new \LogicException(__CLASS__.": рекурсия при резолве config('{$key}')");
 
-    public static function setFallback(string $locale): void {
-        self::$fallback = $locale;
-    }
-
-    public static function getFallback(): string {
-        return self::$fallback ?? self::resolveLocaleValue(static::config('fallback'));
-    }
-
-    private static function resolveLocaleValue($value): string {
-        if ($value instanceof \Closure || (is_callable($value) && !is_string($value)))
-            $value = $value();
+            self::$resolving[$key] = true;
+            try {
+                $value = $value();
+            } finally {
+                unset(self::$resolving[$key]);
+            }
+        }
 
         return (string)$value;
     }
@@ -88,10 +99,10 @@ final class Lang {
     }
 
     public static function get(string $key, array $params = [], $default = null, ?string $locale = null) {
-        $locale = $locale ?? self::getLocale();
+        $locale = $locale ?? static::config('locale');
         $value  = self::find($key, $locale);
 
-        if ($value === self::ABSENT && ($fb = self::getFallback()) !== '' && $fb !== $locale)
+        if ($value === self::ABSENT && ($fb = static::config('fallback')) !== '' && $fb !== $locale)
             $value = self::find($key, $fb);
 
         if ($value === self::ABSENT)
@@ -101,11 +112,11 @@ final class Lang {
     }
 
     public static function choice(string $key, $number, array $params = [], $default = null, ?string $locale = null): string {
-        $locale = $locale ?? self::getLocale();
+        $locale = $locale ?? static::config('locale');
         $value  = self::find($key, $locale);
         $used   = $locale;
 
-        if ($value === self::ABSENT && ($fb = self::getFallback()) !== '' && $fb !== $locale) {
+        if ($value === self::ABSENT && ($fb = static::config('fallback')) !== '' && $fb !== $locale) {
             $value = self::find($key, $fb);
             $used  = $fb;
         }
@@ -125,16 +136,16 @@ final class Lang {
     }
 
     public static function has(string $key, ?string $locale = null): bool {
-        $locale = $locale ?? self::getLocale();
+        $locale = $locale ?? static::config('locale');
 
         if (self::find($key, $locale) !== self::ABSENT) return true;
 
-        $fb = self::getFallback();
+        $fb = static::config('fallback');
         return $fb !== '' && $fb !== $locale && self::find($key, $fb) !== self::ABSENT;
     }
 
     public static function set($key, $value = null, ?string $locale = null): void {
-        $locale = $locale ?? self::getLocale();
+        $locale = $locale ?? static::config('locale');
         $flat   = is_array($key) ? Main::dotFlatten($key) : [(string)$key => $value];
 
         foreach ($flat as $k => $v)
@@ -142,11 +153,11 @@ final class Lang {
     }
 
     public static function all(string $prefix = '', ?string $locale = null): array {
-        $locale = $locale ?? self::getLocale();
+        $locale = $locale ?? static::config('locale');
         [$sourceName, $path] = self::splitKey($prefix);
 
         $locales = [];
-        if (($fb = self::getFallback()) !== '' && $fb !== $locale) $locales[] = $fb;
+        if (($fb = static::config('fallback')) !== '' && $fb !== $locale) $locales[] = $fb;
         $locales[] = $locale;
 
         $result = [];
@@ -179,10 +190,17 @@ final class Lang {
     }
 
     public static function purge(): void {
-        CacheManager::make('', [
-            'driver' => static::config('cache.driver'),
-            'dir'    => static::config('cache.dir'),
-        ])->purgeBase();
+        $seen = [];
+
+        foreach (self::sources() as $s) {
+            $driver = (string)($s['cache']['driver'] ?? '');
+            $dir    = (string)($s['cache']['dir'] ?? '');
+
+            if ($dir === '' || isset($seen[$k = $driver."\0".$dir])) continue;
+            $seen[$k] = true;
+
+            CacheManager::make('', ['driver' => $driver, 'dir' => $dir])->purgeBase();
+        }
 
         self::$maps     = [];
         self::$fileData = [];
@@ -204,16 +222,8 @@ final class Lang {
 
         if ($path === '') return self::ABSENT;
 
-        $source   = $sources[$sourceName];
-        $segments = explode('.', $path);
-
-        if (!static::config('cache.use') || $source['excluded'])
-            return self::resolveCold($source, $segments, $locale, false);
-
-        if (self::$excludes['prefixes'] || self::$excludes['regexes']) {
-            $value = self::resolveCold($source, $segments, $locale, true);
-            if ($value !== self::ABSENT) return $value;
-        }
+        if (empty($sources[$sourceName]['cache']['use']))
+            return self::resolveCold($sources[$sourceName], explode('.', $path), $locale);
 
         return self::mapLookup(self::compiledMap($sourceName, $locale), $path);
     }
@@ -223,7 +233,7 @@ final class Lang {
         return $p === false ? ['~', $key] : [substr($key, 0, $p), substr($key, $p + 1)];
     }
 
-    private static function resolveCold(array $source, array $segments, string $locale, bool $onlyExcluded) {
+    private static function resolveCold(array $source, array $segments, string $locale) {
         $n      = count($segments);
         $suffix = $source['dir_name'] !== '' ? '/'.$source['dir_name'] : '';
 
@@ -231,14 +241,10 @@ final class Lang {
         for ($i = 1; $i < $n; $i++)
             $dirs[$i] = $dirs[$i - 1].'/'.$segments[$i - 1];
 
-        if ($onlyExcluded) {
-            $max = $n - 1;
-        } else {
-            $max = 0;
-            for ($i = 1; $i < $n; $i++) {
-                if (!is_dir($dirs[$i])) break;
-                $max = $i;
-            }
+        $max = 0;
+        for ($i = 1; $i < $n; $i++) {
+            if (!is_dir($dirs[$i])) break;
+            $max = $i;
         }
 
         for ($i = $max; $i >= 0; $i--) {
@@ -247,7 +253,6 @@ final class Lang {
             foreach ($source['ext'] as $ext) {
                 $file = $dir.'/'.$locale.'.'.$ext;
 
-                if ($onlyExcluded && !self::isExcluded($dir) && !self::isExcluded($file)) continue;
                 if (!is_file($file)) continue;
 
                 $data = self::parseFile($file);
@@ -292,7 +297,7 @@ final class Lang {
         if (!isset($sources[$sourceName]))
             throw new \RuntimeException(__CLASS__.": источник '{$sourceName}' не найден");
 
-        if (static::config('cache.use') && !$sources[$sourceName]['excluded'])
+        if (!empty($sources[$sourceName]['cache']['use']))
             return self::compiledMap($sourceName, $locale);
 
         $memoKey = $sourceName."\0".$locale;
@@ -308,29 +313,27 @@ final class Lang {
         $memoKey = $sourceName."\0".$locale;
         if (isset(self::$maps[$memoKey])) return self::$maps[$memoKey];
 
-        $cache = CacheManager::make([__CLASS__, $sourceName, $locale, self::sources()[$sourceName], self::$excludes], [
-            'driver' => static::config('cache.driver'),
-            'dir'    => static::config('cache.dir'),
+        $source = self::sources()[$sourceName];
+
+        // Ключ строго ассоциативный: Main::hash() сортирует элементы списка (SORT_STRING),
+        // из-за чего список был бы нечувствителен к порядку. Сюда входит только то, что влияет
+        // на содержимое карты — не cache.use и не сырой оверрайд (он мог бы принести Closure).
+        $cache = CacheManager::make([
+            'c' => __CLASS__,
+            's' => $sourceName,
+            'l' => $locale,
+            'd' => $source['dir'],
+            'e' => implode(',', $source['ext']),
+            'n' => $source['dir_name'],
+        ], [
+            'driver' => $source['cache']['driver'],
+            'dir'    => $source['cache']['dir'],
             'ttl'    => -1,
         ]);
 
-        $meta  = $cache->getMeta();
-        $check = static::config('cache.check');
-        $fresh = false;
+        $meta = $cache->getMeta();
 
-        if (is_array($meta['deps'] ?? null) && isset($meta['stamp'])) {
-            if ($check === 'never') {
-                $fresh = true;
-            } elseif ($check === 'ttl' && (time() - (int)($meta['checked'] ?? 0)) < (int)static::config('cache.ttl')) {
-                $fresh = true;
-            } else {
-                $fresh = $meta['stamp'] === self::depStamp($meta['deps']);
-                if ($fresh && $check === 'ttl')
-                    $cache->setMeta(['checked' => time()], -1);
-            }
-        }
-
-        if ($fresh) {
+        if (is_array($meta['deps'] ?? null) && isset($meta['stamp']) && $meta['stamp'] === self::depStamp($meta['deps'])) {
             $map = $cache->get();
             if (is_array($map)) {
                 foreach ((array)($meta['files'] ?? []) as $f) self::$usedFiles[$f] = true;
@@ -338,13 +341,12 @@ final class Lang {
             }
         }
 
-        [$map, $deps, $files] = self::buildMap(self::sources()[$sourceName], $locale);
+        [$map, $deps, $files] = self::buildMap($source, $locale);
 
         $cache->set($map, -1, '', [
-            'stamp'   => self::depStamp($deps),
-            'deps'    => $deps,
-            'files'   => $files,
-            'checked' => time(),
+            'stamp' => self::depStamp($deps),
+            'deps'  => $deps,
+            'files' => $files,
         ]);
 
         foreach ($files as $f) self::$usedFiles[$f] = true;
@@ -372,13 +374,13 @@ final class Lang {
                 $path = $dir.'/'.$item;
 
                 if (is_dir($path)) {
-                    if (self::isExcluded($path)) continue;
+                    if (self::isSystemPath($path)) continue;
 
                     if ($dirName !== '' && $item === $dirName)
                         $queue[] = [$path, $prefix, $depth, true];
                     elseif ($dirName === '' || !$isLang)
                         $queue[] = [$path, $prefix === '' ? $item : $prefix.'.'.$item, $depth + 1, $dirName === ''];
-                } elseif ($isLang && isset($names[$item]) && !self::isExcluded($path)) {
+                } elseif ($isLang && isset($names[$item])) {
                     $found[] = [$depth, $names[$item], $path, $prefix];
                 }
             }
@@ -425,13 +427,15 @@ final class Lang {
     private static function sources(): array {
         if (self::$sources !== null) return self::$sources;
 
-        self::buildExcludes();
+        $root = Main::preparePath(((string)static::config('dir')) ?: '~');
 
         $source = static::config('source');
-        $source = is_array($source) ? $source : ['~' => (string)$source];
+        $source = is_array($source)
+            ? $source
+            : (($source === '' || $source === null) ? [] : ['~' => (string)$source]);
 
         if (!isset($source['~']))
-            $source = ['~' => '~'] + $source;
+            $source = ['~' => '.'] + $source;
 
         $map = [];
         foreach ($source as $name => $spec) {
@@ -450,13 +454,13 @@ final class Lang {
 
             if ($dir === '') continue;
 
-            $abs = Main::preparePath($dir);
-
+            // Оверрайды читаются инлайном: self::$sources присваивается только в return,
+            // поэтому вызов чего-либо, что зовёт sources(), отсюда — бесконечная рекурсия.
             $map[$name] = [
-                'dir'      => $abs,
+                'dir'      => Main::preparePath($dir, $root),
                 'ext'      => self::extList($override['extensions'] ?? null),
                 'dir_name' => trim((string)($override['dir_name'] ?? static::config('dir_name')), '/'),
-                'excluded' => isset(self::$excludes['names'][$name]) || self::isExcluded($abs),
+                'cache'    => Main::merge((array)static::config('cache'), (array)($override['cache'] ?? [])),
             ];
         }
 
@@ -472,48 +476,28 @@ final class Lang {
         return $list ?: ['php', 'json'];
     }
 
-    private static function buildExcludes(): void {
-        if (self::$excludes !== null) return;
+    // Кеш-каталоги лежат внутри дерева источника (по умолчанию источник — весь document root),
+    // а buildMap() кладёт каждый пройденный каталог в deps. Без этого prune запись кеша меняла бы
+    // mtime каталога из собственных deps, и карта инвалидировала бы себя на каждом запросе.
+    private static function isSystemPath(string $absPath): bool {
+        if (self::$systemPaths === null) {
+            $paths = [];
 
-        $raw = static::config('cache.exclude');
-        $raw = is_array($raw) ? $raw : (($raw === '' || $raw === null) ? [] : [$raw]);
-
-        $names = $prefixes = $regexes = [];
-        foreach ($raw as $e) {
-            $e = (string)$e;
-            if ($e === '') continue;
-
-            if (strncmp($e, 'regex:', 6) === 0) {
-                $pattern = substr($e, 6);
-                if (@preg_match($pattern, '') === false)
-                    throw new \InvalidArgumentException(__CLASS__.": некорректное регулярное выражение в cache.exclude: '{$pattern}'");
-                $regexes[] = $pattern;
-            } elseif (strpbrk($e, '/~\\') !== false) {
-                $prefixes[] = Main::preparePath($e);
-            } else {
-                $names[$e] = true;
+            foreach (self::sources() as $s) {
+                $d = (string)($s['cache']['dir'] ?? '');
+                if ($d !== '') $paths[Main::preparePath($d)] = true;
             }
+
+            $d = (string)CacheManager::config('default.dir');
+            if ($d !== '') $paths[Main::preparePath($d)] = true;
+
+            self::$systemPaths = array_keys($paths);
         }
-
-        foreach ([static::config('cache.dir'), CacheManager::config('default.dir')] as $sys) {
-            $sys = (string)$sys;
-            if ($sys !== '') $prefixes[] = Main::preparePath($sys);
-        }
-
-        self::$excludes = ['names' => $names, 'prefixes' => $prefixes, 'regexes' => $regexes];
-    }
-
-    private static function isExcluded(string $absPath): bool {
-        if (self::$excludes === null) self::buildExcludes();
 
         $absPath = str_replace('\\', '/', $absPath);
 
-        foreach (self::$excludes['prefixes'] as $p)
+        foreach (self::$systemPaths as $p)
             if ($absPath === $p || strncmp($absPath, $p.'/', strlen($p) + 1) === 0)
-                return true;
-
-        foreach (self::$excludes['regexes'] as $r)
-            if (preg_match($r, $absPath) === 1)
                 return true;
 
         return false;
@@ -524,16 +508,7 @@ final class Lang {
         if (isset($rules[$locale]) && is_callable($rules[$locale]))
             return max(0, (int)$rules[$locale]($n));
 
-        $n = abs($n);
-
-        switch ($locale) {
-            case 'ru':
-            case 'uk':
-            case 'be':
-                return ($n % 10 === 1 && $n % 100 !== 11) ? 0 : (($n % 10 >= 2 && $n % 10 <= 4 && ($n % 100 < 10 || $n % 100 >= 20)) ? 1 : 2);
-            default:
-                return $n === 1 ? 0 : 1;
-        }
+        return Main::pluralIndex($n, $locale);
     }
 
     private static function placeholders(array $params): array {
