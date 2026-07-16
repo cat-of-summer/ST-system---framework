@@ -18,6 +18,7 @@
 - [Assets.php](Assets.php.md)
 - [Config.php](Config.php.md)
 - [Debug.php](Debug.php.md)
+- [Lang.php](Lang.php.md)
 - [Loader.php](Loader.php.md)
 - [Main.php](Main.php.md)
 - [Menu.php](Menu.php.md)
