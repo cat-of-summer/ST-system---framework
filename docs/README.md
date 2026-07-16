@@ -85,6 +85,7 @@ use ST_system\HTTP\Request;
 | `Debug` | Обработчик ошибок/исключений/shutdown, форматирование и линтинг | [src/Debug.php.md](src/Debug.php.md) |
 | `Menu` | Построение HTML-меню из массива или файла | [src/Menu.php.md](src/Menu.php.md) |
 | `View` | Шаблонизатор: рендер PHP-вьюх, слоты/дети, каскадный конфиг, кэш скелета с "дырками" для динамических частей | [src/View.php.md](src/View.php.md) |
+| `Lang` | Локализация: гибридное хранение фраз (каталоги + массивы), плейсхолдеры, склонения, компилируемый кэш | [src/Lang.php.md](src/Lang.php.md) |
 | `Assets` | Менеджер ассетов: сборка/минификация через `Mimes` и кэш | [src/Assets.php.md](src/Assets.php.md) |
 | `CensorText` | Цензурирование текста (стоп-слова) | [src/CensorText/CensorText.php.md](src/CensorText/CensorText.php.md) |
 
