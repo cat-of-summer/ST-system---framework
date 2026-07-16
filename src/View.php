@@ -20,7 +20,6 @@ final class View {
                 'use'    => false,
                 'driver' => 'filesystem',
                 'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
-                'deps'   => [],
                 'key'    => null,
             ],
             'cascade' => false,
@@ -157,9 +156,9 @@ final class View {
                 throw new \LogicException(__CLASS__.": source '{$name}' collides with a reserved method");
 
             if (is_array($spec)) {
-                $dir      = (string)($spec['source'] ?? '');
+                $dir      = (string)($spec['path'] ?? '');
                 $override = $spec;
-                unset($override['source']);
+                unset($override['path']);
             } else {
                 $dir      = (string)$spec;
                 $override = [];
@@ -272,30 +271,6 @@ final class View {
         } finally {
             if ($top) Assets::endOrchestration();
         }
-    }
-
-    /**
-     * cache.deps — классы, отдающие зависимости, использованные ЗА ВРЕМЯ рендера границы.
-     * Контракт — пара record()/stopRecording(), та же, что у Assets, а не одиночный колбэк:
-     * накопительный геттер тут не работает, потому что источник отмечает свои файлы один раз
-     * за запрос, и дифф вокруг build() отдал бы их только первой границе.
-     */
-    private function depProviders(): array {
-        $raw = Main::dotGet($this->config, 'cache.deps', []);
-        if ($raw === null || $raw === '') return [];
-
-        $out = [];
-        foreach ((is_array($raw) ? $raw : [$raw]) as $p) {
-            $p = is_object($p) ? get_class($p) : (string) $p;
-            if ($p === '') continue;
-
-            if (!method_exists($p, 'record') || !method_exists($p, 'stopRecording'))
-                throw new \LogicException(__CLASS__.": cache.deps provider '{$p}' must implement record() and stopRecording()");
-
-            $out[$p] = true;
-        }
-
-        return array_keys($out);
     }
 
     private function cacheHandle(): CacheManager {
@@ -539,19 +514,15 @@ final class View {
                 'base'     => count(self::$frames),
                 'poisoned' => false,
             ];
-
-            $providers = $this->depProviders();
-            $extraDeps = [];
-
+            
             Assets::record();
-            foreach ($providers as $p) $p::record();
+            Lang::record();
 
             try {
                 $skeleton = $this->build();
             } finally {
-                $assetOps = Assets::stopRecording();
-                foreach ($providers as $p)
-                    $extraDeps = array_merge($extraDeps, $p::stopRecording());
+                $assetOps  = Assets::stopRecording();
+                $extraDeps = Lang::stopRecording();
                 $b = array_pop(self::$boundaries);
             }
 

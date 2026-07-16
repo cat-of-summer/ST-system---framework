@@ -3,13 +3,18 @@
 namespace ST_system\Console;
 
 abstract class Command {
-    public static string $signature = '';
+
+    protected static string $signature = '';
 
     private array $arguments = [];
     private array $options   = [];
 
+    final public static function getSignature(): string {
+        return static::$signature;
+    }
+
     final public function __construct(array $positional = [], array $rawOptions = []) {
-        [$argDefs, $optDefs] = static::parseSignature(static::$signature);
+        [$argDefs, $optDefs] = static::parseSignature(static::getSignature());
         $this->arguments = static::resolveArguments($positional, $argDefs);
         $this->options   = static::resolveOptions($rawOptions, $optDefs);
     }

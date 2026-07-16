@@ -2,7 +2,17 @@
 # Command.php
 <!-- DOCGEN:END -->
 
-`abstract class Command` (`ST_system\Console\Command`) — базовый класс для CLI-команд фреймворка. Конкретная команда объявляется как подкласс с публичным статическим свойством `$signature` (декларативная сигнатура аргументов/опций) и переопределённым `handle()` — точкой входа с бизнес-логикой. [`Kernel`](Kernel.php.md) обнаруживает такие подклассы по каталогу, читает `$signature` каждого и на основе введённых в CLI аргументов создаёт экземпляр и вызывает его `handle()`.
+`abstract class Command` (`ST_system\Console\Command`) — базовый класс для CLI-команд фреймворка. Конкретная команда объявляется как подкласс с защищённым статическим свойством `$signature` (декларативная сигнатура аргументов/опций) и переопределённым `handle()` — точкой входа с бизнес-логикой. [`Kernel`](Kernel.php.md) обнаруживает такие подклассы по каталогу, читает сигнатуру каждого через `getSignature()` и на основе введённых в CLI аргументов создаёт экземпляр и вызывает его `handle()`.
+
+## `$signature` и `getSignature()`
+
+```php
+protected static string $signature = '';
+
+final public static function getSignature(): string
+```
+
+Свойство **`protected`**: сигнатура — декларация класса, а не runtime-состояние, и переопределять её на лету снаружи нельзя. Наружу она отдаётся только на чтение, через `final public static getSignature()` — `final`, чтобы источником значения всегда оставалось само свойство. Читается через позднее статическое связывание (`static::$signature`), поэтому подкласс объявляет своё значение обычным переопределением, а команда без сигнатуры (`''`) просто не регистрируется в `Kernel`.
 
 ## Формат `$signature`
 
@@ -16,7 +26,7 @@
 - `{--f|name=default}` — опция с однобуквенным алиасом (`-f`).
 
 ```php
-public static string $signature = 'user:create {name} {email?} {--role=user} {--f|force}';
+protected static string $signature = 'user:create {name} {email?} {--role=user} {--f|force}';
 ```
 
 ## Конструктор
@@ -27,7 +37,7 @@ final public function __construct(array $positional = [], array $rawOptions = []
 final public static function fetch(array $positional = [], array $rawOptions = [])
 ```
 
-Объявлен `final` — подклассы не переопределяют конструктор, а получают уже разобранные значения через `argument()`/`option()`. Внутри: парсится `static::$signature` (`parseSignature()`), затем резолвятся позиционные аргументы (`resolveArguments()` — печатает сообщение об ошибке в STDERR и завершает процесс кодом `1`, если обязательный аргумент не передан) и опции (`resolveOptions()` — учитывает алиасы и значения по умолчанию).
+Объявлен `final` — подклассы не переопределяют конструктор, а получают уже разобранные значения через `argument()`/`option()`. Внутри: парсится `static::getSignature()` (`parseSignature()`), затем резолвятся позиционные аргументы (`resolveArguments()` — печатает сообщение об ошибке в STDERR и завершает процесс кодом `1`, если обязательный аргумент не передан) и опции (`resolveOptions()` — учитывает алиасы и значения по умолчанию).
 
 ## handle(): void
 
@@ -55,7 +65,7 @@ namespace Console\Commands;
 use ST_system\Console\Command;
 
 class UserCreateCommand extends Command {
-    public static string $signature = 'user:create {name} {email?} {--role=user} {--f|force}';
+    protected static string $signature = 'user:create {name} {email?} {--role=user} {--f|force}';
 
     public function handle(): void {
         $name  = $this->argument('name');

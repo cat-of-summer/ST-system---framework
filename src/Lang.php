@@ -27,7 +27,7 @@ final class Lang {
     }
 
     protected static function getReservedEvents(): array {
-        return ['build_key'];
+        return ['source_call'];
     }
 
     protected static function getDefaultConfig(): array {
@@ -50,12 +50,7 @@ final class Lang {
     private const RESERVED = [
         'get', 'set', 'has', 'all', 'choice', 'config', 'setConfig', 'applyConfig',
         'purge', 'getUsedFiles', 'sources', 'record', 'stopRecording',
-        // Публичные методы: __callStatic для них не сработает, поэтому его гард не поможет —
-        // источник с таким именем упал бы с ArgumentCountError вместо внятной ошибки.
-        // 'trigger' приходит из HasEvents: алиас 'on' не исключает остальные методы трейта.
         'on', 'trigger',
-        // Удалены, но зарезервированы: иначе источник перехватит вызов через __callStatic
-        // и вернёт строку вместо ошибки.
         'setLocale', 'getLocale', 'setFallback', 'getFallback',
     ];
 
@@ -124,6 +119,8 @@ final class Lang {
 
         $key = (string)array_shift($args);
 
+        self::getInstance()->fire('source_call', $name, $key);
+
         return self::get($name.':'.$key, ...$args);
     }
 
@@ -180,7 +177,7 @@ final class Lang {
         foreach ($flat as $k => $v)
             self::$runtime[$locale][$k] = $v;
 
-        self::$found = [];   // мемо резолва мог зафиксировать ABSENT для перекрытого теперь ключа
+        self::$found = [];
     }
 
     public static function all(string $prefix = '', ?string $locale = null): array {
@@ -243,10 +240,6 @@ final class Lang {
         return array_keys(self::$usedFiles);
     }
 
-    // Рекордер зеркалит Assets::record()/stopRecording() — тот же контракт, что View уже
-    // дёргает вокруг build(). Накопительного getUsedFiles() для этого недостаточно:
-    // он множество, а не список на область, и дифф вокруг build() отдал бы файлы источника
-    // только первой границе (мемо-гард в compiledMap() отмечает их ровно один раз за запрос).
     public static function record(): void {
         self::$recording[] = [];
     }
@@ -255,9 +248,6 @@ final class Lang {
         return self::$recording ? array_values(array_unique(array_pop(self::$recording))) : [];
     }
 
-    // $deps шире $files: в них есть и каталоги, потому что mtime каталога — единственный сигнал
-    // о ПОЯВЛЕНИИ нового языкового файла. Рекордеру нужны они, а getUsedFiles() остаётся
-    // списком именно файлов, как и задокументирован.
     private static function recordDeps(array $deps, array $files): void {
         foreach ($files as $f) self::$usedFiles[$f] = true;
 
@@ -279,17 +269,11 @@ final class Lang {
 
         if ($path === '') return self::ABSENT;
 
-        self::getInstance()->fire('build_key', $path, $sourceName, $locale);
-
         $source = $sources[$sourceName];
 
         if (empty($source['cache']['use']))
             return self::resolve($source, $sourceName, $path, $locale, null);
 
-        // Карта берётся ДО мемо: на мемо-хите compiledMap() заново отмечает зависимости
-        // источника в активном рекордере. Иначе первая граница, спросившая ключ, забирала бы
-        // зависимости себе, а всем следующим доставался бы пустой список — то есть навсегда
-        // устаревший HTML. Мемо кеширует только результат резолва.
         $map = self::compiledMap($sourceName, $locale);
 
         $memoKey = $sourceName."\0".$locale."\0".$path;
@@ -298,20 +282,12 @@ final class Lang {
         return self::$found[$memoKey] = self::resolve($source, $sourceName, $path, $locale, $map);
     }
 
-    /**
-     * Наследование: фраза, объявленная в родительском каталоге, видна в дочерней области под
-     * своим коротким именем. Кандидаты строятся отбрасыванием левого сегмента до упора
-     * (`index.copy` -> `copy`), первое попадание побеждает. Срабатывает только после промаха,
-     * поэтому ключи, которые резолвятся сейчас, резолвятся ровно так же.
-     */
     private static function resolve(array $source, string $sourceName, string $path, string $locale, ?array $map) {
         $segments = explode('.', $path);
 
         for ($j = 0, $n = count($segments); $j < $n; $j++) {
             $candidate = $j === 0 ? $path : implode('.', array_slice($segments, $j));
 
-            // Runtime-оверрайд по переписанному ключу: без этого set('page:index.copy') не
-            // виделся бы вызовом page('copy'), который build_key переписал в 'index.copy'.
             $full = $sourceName.':'.$candidate;
             if (isset(self::$runtime[$locale]) && array_key_exists($full, self::$runtime[$locale]))
                 return self::$runtime[$locale][$full];
@@ -417,9 +393,6 @@ final class Lang {
     private static function compiledMap(string $sourceName, string $locale): array {
         $memoKey = $sourceName."\0".$locale;
 
-        // Мемо-хит обязан отметить зависимости заново: иначе за запрос они запишутся ровно
-        // один раз, и вторая граница View получила бы пустой список — то есть навсегда
-        // устаревший HTML вместо лишней пересборки.
         if (isset(self::$maps[$memoKey])) {
             [$deps, $files] = self::$mapDeps[$memoKey];
             self::recordDeps($deps, $files);
@@ -428,9 +401,6 @@ final class Lang {
 
         $source = self::sources()[$sourceName];
 
-        // Ключ строго ассоциативный: Main::hash() сортирует элементы списка (SORT_STRING),
-        // из-за чего список был бы нечувствителен к порядку. Сюда входит только то, что влияет
-        // на содержимое карты — не cache.use и не сырой оверрайд (он мог бы принести Closure).
         $cache = CacheManager::make([
             'c' => __CLASS__,
             's' => $sourceName,
@@ -560,20 +530,18 @@ final class Lang {
                 throw new \LogicException(__CLASS__.": источник '{$name}' конфликтует с зарезервированным методом");
 
             if (is_array($spec)) {
-                $dir      = (string)($spec['source'] ?? '');
+                $dir      = (string)($spec['path'] ?? '');
                 $override = $spec;
-                unset($override['source']);
+                unset($override['path']);
             } else {
                 $dir      = (string)$spec;
                 $override = [];
             }
 
-            if ($dir === '') continue;   // пустой путь = выключить источник
+            if ($dir === '') continue;
 
-            // Путь источника всегда относителен dir: ведущие '/' и '~' срезаются, чтобы они не
-            // уводили из корня, а '..' запрещён ($strict) — громкая ошибка честнее тихого побега.
             $rel = ltrim($dir, '/~');
-            if ($rel === '') $rel = '.';   // '/', '~' => сам dir
+            if ($rel === '') $rel = '.';
 
             try {
                 $abs = Main::preparePath($rel, $root, true);
@@ -583,8 +551,6 @@ final class Lang {
                 );
             }
 
-            // Оверрайды читаются инлайном: self::$sources присваивается только в return,
-            // поэтому вызов чего-либо, что зовёт sources(), отсюда — бесконечная рекурсия.
             $map[$name] = [
                 'dir'      => $abs,
                 'ext'      => self::extList($override['extensions'] ?? null),
@@ -605,9 +571,6 @@ final class Lang {
         return $list ?: ['php', 'json'];
     }
 
-    // Кеш-каталоги лежат внутри дерева источника (по умолчанию источник — весь document root),
-    // а buildMap() кладёт каждый пройденный каталог в deps. Без этого prune запись кеша меняла бы
-    // mtime каталога из собственных deps, и карта инвалидировала бы себя на каждом запросе.
     private static function isSystemPath(string $absPath): bool {
         if (self::$systemPaths === null) {
             $paths = [];
