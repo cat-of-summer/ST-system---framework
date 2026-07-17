@@ -44,16 +44,23 @@ final class Route {
             $slots = [];
             $n = 0;
 
-            $tmp = preg_replace_callback('#\{(\.\.\.)?(\w+)(?::([^{}]+))?\}#', function ($matches) use (&$query_params, &$slots, &$n) {
-                $name = $matches[2];
+            $tmp = preg_replace_callback('#(/)?\{(\.\.\.)?(\w+)(\?)?(?::([^{}]+))?\}#', function ($matches) use (&$query_params, &$slots, &$n) {
+                $slash    = $matches[1] ?? '';
+                $name     = $matches[3];
+                $optional = ($matches[4] ?? '') === '?';
+
                 $query_params[] = $name;
 
-                $sub = ($matches[3] ?? '') !== '' ? $matches[3]
-                     : ($matches[1] === '...'    ? '.+'
+                $sub = ($matches[5] ?? '') !== '' ? $matches[5]
+                     : ($matches[2] === '...'    ? '.+'
                      :                             '[^/]+');
 
                 $key = 'STtok'.$n.'STtok'; $n++;
-                $slots[$key] = "(?P<{$name}>{$sub})";
+
+                $slots[$key] = $optional
+                    ? '(?:'.$slash.'(?P<'.$name.'>'.$sub.'))?'
+                    : $slash.'(?P<'.$name.'>'.$sub.')';
+
                 return $key;
             }, $r->pattern);
 

@@ -50,8 +50,7 @@ final class Lang {
     private const RESERVED = [
         'get', 'set', 'has', 'all', 'choice', 'config', 'setConfig', 'applyConfig',
         'purge', 'getUsedFiles', 'sources', 'record', 'stopRecording',
-        'on', 'trigger',
-        'setLocale', 'getLocale', 'setFallback', 'getFallback',
+        'on', 'trigger', 'lockLocale',
     ];
 
     private const STRUCTURAL = ['dir', 'source', 'extensions', 'dir_name', 'cache'];
@@ -68,9 +67,25 @@ final class Lang {
     private static array  $recording   = [];
     private static array  $found       = [];
     private static array  $resolving   = [];
+    private static bool   $localeLocked = false;
+
+    public static function lockLocale(?string $locale = null): void {
+        if (self::$localeLocked)
+            throw new \LogicException(__CLASS__.": локаль уже заблокирована через lockLocale()");
+
+        if ($locale !== null)
+            self::traitSetConfig(['locale' => $locale]);
+
+        self::traitSetConfig(['locale' => self::config('locale')]);
+
+        self::$localeLocked = true;
+    }
 
     public static function setConfig($key = [], $value = null): void {
         $flat = is_string($key) ? [$key => $value] : Main::dotFlatten((array)$key);
+
+        if (self::$localeLocked && array_key_exists('locale', $flat))
+            throw new \LogicException(__CLASS__."::setConfig(): локаль заблокирована через lockLocale() и не может быть переопределена");
 
         foreach ($flat as $k => $_) {
             $root = ($p = strpos($k, '.')) !== false ? substr($k, 0, $p) : $k;
