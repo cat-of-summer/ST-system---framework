@@ -60,7 +60,6 @@ final class Lang {
     private static ?array $sources     = null;
     private static ?array $systemPaths = null;
     private static array  $maps        = [];
-    private static array  $trees       = [];
     private static array  $merged      = [];
     private static array  $mapDeps     = [];
     private static array  $fileData    = [];
@@ -96,7 +95,6 @@ final class Lang {
                 self::$sources     = null;
                 self::$systemPaths = null;
                 self::$maps        = [];
-                self::$trees       = [];
                 self::$merged      = [];
                 self::$mapDeps     = [];
                 self::$fileData    = [];
@@ -220,7 +218,6 @@ final class Lang {
         }
 
         self::$maps     = [];
-        self::$trees    = [];
         self::$merged   = [];
         self::$mapDeps  = [];
         self::$fileData = [];
@@ -323,49 +320,49 @@ final class Lang {
     }
 
     private static function scopeTree(string $sourceName, string $path, string $locale, array $map) {
-        $segments = self::pathSegments($path);
+        $acc      = '';
+        $prefixes = [''];
+        foreach (self::pathSegments($path) as $seg) {
+            $acc = $acc === '' ? $seg : $acc.'.'.$seg;
+            $prefixes[] = $acc;
+        }
 
-        $layers = [];
-        for ($j = count($segments) - 1; $j >= 0; $j--) {
-            $candidate = $j === 0 ? $path : implode('.', array_slice($segments, $j));
-
-            $sub = self::subTree($map, $candidate);
-            if ($sub !== []) $layers[] = $sub;
+        $tree    = [];
+        $matched = false;
+        foreach ($prefixes as $prefix) {
+            $own = self::ownPhrases($map, $prefix);
+            if ($own !== []) { $matched = true; $tree = self::mergeTree($tree, $own); }
         }
 
         $runtime = self::runtimeTree($sourceName, $path, $locale);
 
-        if ($path !== '' && !$layers && !$runtime) return self::ABSENT;
-
-        $tree = self::fullTree($sourceName, $locale, $map);
-
-        foreach ($layers as $layer) $tree = self::mergeTree($tree, $layer);
+        if ($path !== '' && !$matched && !$runtime) return self::ABSENT;
 
         if ($runtime) $tree = self::mergeTree($tree, $runtime);
 
         return $tree === [] ? self::ABSENT : $tree;
     }
 
-    private static function fullTree(string $sourceName, string $locale, array $map): array {
-        $memoKey = $sourceName."\0".$locale;
-        if (isset(self::$trees[$memoKey])) return self::$trees[$memoKey];
+    private static function ownPhrases(array $map, string $prefix): array {
+        $out = [];
 
-        $tree = [];
-        foreach ($map as $k => $v) Main::dotSet($tree, $k, $v);
+        if ($prefix === '') {
+            foreach ($map as $k => $v)
+                if (strpos($k, '.') === false) $out[$k] = $v;
 
-        return self::$trees[$memoKey] = $tree;
-    }
+            return $out;
+        }
 
-    private static function subTree(array $map, string $prefix): array {
-        $sub = [];
         $pfx = $prefix.'.';
         $len = strlen($pfx);
 
-        foreach ($map as $k => $v)
-            if (strncmp($k, $pfx, $len) === 0)
-                Main::dotSet($sub, substr($k, $len), $v);
+        foreach ($map as $k => $v) {
+            if (strncmp($k, $pfx, $len) !== 0) continue;
+            if (strpos($k, '.', $len) !== false) continue;
+            $out[substr($k, $len)] = $v;
+        }
 
-        return $sub;
+        return $out;
     }
 
     private static function runtimeTree(string $sourceName, string $path, string $locale): array {
