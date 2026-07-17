@@ -48,7 +48,7 @@ final class Lang {
     }
 
     private const RESERVED = [
-        'get', 'set', 'has', 'all', 'choice', 'config', 'setConfig', 'applyConfig',
+        'get', 'set', 'has', 'choice', 'config', 'setConfig', 'applyConfig',
         'purge', 'getUsedFiles', 'sources', 'record', 'stopRecording',
         'on', 'trigger', 'lockLocale',
     ];
@@ -60,6 +60,8 @@ final class Lang {
     private static ?array $sources     = null;
     private static ?array $systemPaths = null;
     private static array  $maps        = [];
+    private static array  $trees       = [];
+    private static array  $merged      = [];
     private static array  $mapDeps     = [];
     private static array  $fileData    = [];
     private static array  $runtime     = [];
@@ -94,6 +96,8 @@ final class Lang {
                 self::$sources     = null;
                 self::$systemPaths = null;
                 self::$maps        = [];
+                self::$trees       = [];
+                self::$merged      = [];
                 self::$mapDeps     = [];
                 self::$fileData    = [];
                 self::$found       = [];
@@ -141,10 +145,16 @@ final class Lang {
 
     public static function get(string $key, array $params = [], $default = null, ?string $locale = null) {
         $locale = $locale ?? static::config('locale');
-        $value  = self::find($key, $locale);
+        $value  = self::find($key, $locale, $isScope);
 
-        if ($value === self::ABSENT && ($fb = static::config('fallback')) !== '' && $fb !== $locale)
-            $value = self::find($key, $fb);
+        if (($fb = static::config('fallback')) !== '' && $fb !== $locale) {
+            $fbValue = self::find($key, $fb, $fbIsScope);
+
+            if ($isScope && $fbIsScope)
+                $value = self::$merged[$key."\0".$locale."\0".$fb] ??= self::mergeTree($fbValue, $value);
+            elseif ($value === self::ABSENT)
+                $value = $fbValue;
+        }
 
         if ($value === self::ABSENT)
             $value = $default ?? $key;
@@ -192,44 +202,8 @@ final class Lang {
         foreach ($flat as $k => $v)
             self::$runtime[$locale][$k] = $v;
 
-        self::$found = [];
-    }
-
-    public static function all(string $prefix = '', ?string $locale = null): array {
-        $locale = $locale ?? static::config('locale');
-        [$sourceName, $path] = self::splitKey($prefix);
-
-        $locales = [];
-        if (($fb = static::config('fallback')) !== '' && $fb !== $locale) $locales[] = $fb;
-        $locales[] = $locale;
-
-        $result = [];
-        foreach ($locales as $loc) {
-            foreach (self::fullMap($sourceName, $loc) as $k => $v)
-                self::collectInto($result, $k, $path, $v);
-
-            foreach (self::$runtime[$loc] ?? [] as $k => $v) {
-                if ($prefix === '' && strpos($k, ':') !== false) continue;
-                self::collectInto($result, $k, $prefix, $v);
-            }
-        }
-
-        return $result;
-    }
-
-    private static function collectInto(array &$result, string $key, string $prefix, $value): void {
-        if ($prefix === '') {
-            Main::dotSet($result, $key, $value);
-            return;
-        }
-
-        if ($key === $prefix) {
-            if (is_array($value)) $result = array_replace($result, $value);
-            return;
-        }
-
-        if (strncmp($key, $prefix.'.', strlen($prefix) + 1) === 0)
-            Main::dotSet($result, substr($key, strlen($prefix) + 1), $value);
+        self::$found  = [];
+        self::$merged = [];
     }
 
     public static function purge(): void {
@@ -246,6 +220,8 @@ final class Lang {
         }
 
         self::$maps     = [];
+        self::$trees    = [];
+        self::$merged   = [];
         self::$mapDeps  = [];
         self::$fileData = [];
         self::$found    = [];
@@ -272,33 +248,36 @@ final class Lang {
         foreach ($deps as $p) self::$recording[$i][] = $p;
     }
 
-    private static function find(string $key, string $locale) {
+    private static function find(string $key, string $locale, ?bool &$isScope = null) {
+        $isScope = false;
+
         if (isset(self::$runtime[$locale]) && array_key_exists($key, self::$runtime[$locale]))
             return self::$runtime[$locale][$key];
 
         [$sourceName, $path] = self::splitKey($key);
 
-        $sources = self::sources();
-        if (!isset($sources[$sourceName]))
+        if (!isset(self::sources()[$sourceName]))
             throw new \RuntimeException(__CLASS__.": источник '{$sourceName}' не найден");
 
-        if ($path === '') return self::ABSENT;
-
-        $source = $sources[$sourceName];
-
-        if (empty($source['cache']['use']))
-            return self::resolve($source, $sourceName, $path, $locale, null);
-
-        $map = self::compiledMap($sourceName, $locale);
+    
+        $map = self::fullMap($sourceName, $locale);
 
         $memoKey = $sourceName."\0".$locale."\0".$path;
-        if (array_key_exists($memoKey, self::$found)) return self::$found[$memoKey];
+        if (array_key_exists($memoKey, self::$found)) {
+            [$value, $isScope] = self::$found[$memoKey];
+            return $value;
+        }
 
-        return self::$found[$memoKey] = self::resolve($source, $sourceName, $path, $locale, $map);
+        $value = self::resolve($sourceName, $path, $locale, $map, $isScope);
+
+        self::$found[$memoKey] = [$value, $isScope];
+
+        return $value;
     }
 
-    private static function resolve(array $source, string $sourceName, string $path, string $locale, ?array $map) {
-        $segments = explode('.', $path);
+    private static function resolve(string $sourceName, string $path, string $locale, array $map, ?bool &$isScope) {
+        $isScope  = false;
+        $segments = self::pathSegments($path);
 
         for ($j = 0, $n = count($segments); $j < $n; $j++) {
             $candidate = $j === 0 ? $path : implode('.', array_slice($segments, $j));
@@ -307,55 +286,24 @@ final class Lang {
             if (isset(self::$runtime[$locale]) && array_key_exists($full, self::$runtime[$locale]))
                 return self::$runtime[$locale][$full];
 
-            $value = $map !== null
-                ? self::mapLookup($map, $candidate)
-                : self::resolveCold($source, array_slice($segments, $j), $locale);
-
+            $value = self::mapLookup($map, $candidate);
             if ($value !== self::ABSENT) return $value;
         }
 
-        return self::ABSENT;
+        $tree = self::scopeTree($sourceName, $path, $locale, $map);
+        if ($tree === self::ABSENT) return self::ABSENT;
+
+        $isScope = true;
+        return $tree;
+    }
+
+    private static function pathSegments(string $path): array {
+        return $path === '' ? [] : explode('.', $path);
     }
 
     private static function splitKey(string $key): array {
         $p = strpos($key, ':');
         return $p === false ? ['~', $key] : [substr($key, 0, $p), substr($key, $p + 1)];
-    }
-
-    private static function resolveCold(array $source, array $segments, string $locale) {
-        $n      = count($segments);
-        $suffix = $source['dir_name'] !== '' ? '/'.$source['dir_name'] : '';
-
-        $dirs = [$source['dir']];
-        for ($i = 1; $i < $n; $i++)
-            $dirs[$i] = $dirs[$i - 1].'/'.$segments[$i - 1];
-
-        $max = 0;
-        for ($i = 1; $i < $n; $i++) {
-            if (!is_dir($dirs[$i])) break;
-            $max = $i;
-        }
-
-        for ($i = $max; $i >= 0; $i--) {
-            $dir = $dirs[$i].$suffix;
-
-            foreach ($source['ext'] as $ext) {
-                $file = $dir.'/'.$locale.'.'.$ext;
-
-                if (!is_file($file)) continue;
-
-                $data = self::parseFile($file);
-                if ($data === null) continue;
-
-                $value = Main::dotGet($data, implode('.', array_slice($segments, $i)), self::ABSENT);
-                if ($value !== self::ABSENT) {
-                    self::recordDeps([$file], [$file]);
-                    return $value;
-                }
-            }
-        }
-
-        return self::ABSENT;
     }
 
     private static function mapLookup(array $map, string $path) {
@@ -371,14 +319,87 @@ final class Lang {
             }
         }
 
+        return self::ABSENT;
+    }
+
+    private static function scopeTree(string $sourceName, string $path, string $locale, array $map) {
+        $segments = self::pathSegments($path);
+
+        $layers = [];
+        for ($j = count($segments) - 1; $j >= 0; $j--) {
+            $candidate = $j === 0 ? $path : implode('.', array_slice($segments, $j));
+
+            $sub = self::subTree($map, $candidate);
+            if ($sub !== []) $layers[] = $sub;
+        }
+
+        $runtime = self::runtimeTree($sourceName, $path, $locale);
+
+        if ($path !== '' && !$layers && !$runtime) return self::ABSENT;
+
+        $tree = self::fullTree($sourceName, $locale, $map);
+
+        foreach ($layers as $layer) $tree = self::mergeTree($tree, $layer);
+
+        if ($runtime) $tree = self::mergeTree($tree, $runtime);
+
+        return $tree === [] ? self::ABSENT : $tree;
+    }
+
+    private static function fullTree(string $sourceName, string $locale, array $map): array {
+        $memoKey = $sourceName."\0".$locale;
+        if (isset(self::$trees[$memoKey])) return self::$trees[$memoKey];
+
+        $tree = [];
+        foreach ($map as $k => $v) Main::dotSet($tree, $k, $v);
+
+        return self::$trees[$memoKey] = $tree;
+    }
+
+    private static function subTree(array $map, string $prefix): array {
         $sub = [];
-        $pfx = $path.'.';
+        $pfx = $prefix.'.';
         $len = strlen($pfx);
+
         foreach ($map as $k => $v)
             if (strncmp($k, $pfx, $len) === 0)
                 Main::dotSet($sub, substr($k, $len), $v);
 
-        return $sub ?: self::ABSENT;
+        return $sub;
+    }
+
+    private static function runtimeTree(string $sourceName, string $path, string $locale): array {
+        $pfx = $sourceName === '~' ? '' : $sourceName.':';
+        if ($path !== '') $pfx .= $path.'.';
+
+        $len  = strlen($pfx);
+        $tree = [];
+
+        foreach (self::$runtime[$locale] ?? [] as $k => $v) {
+            if ($len !== 0 && strncmp($k, $pfx, $len) !== 0) continue;
+
+            $rest = substr($k, $len);
+
+            if ($rest === '' || ($len === 0 && strpos($rest, ':') !== false)) continue;
+
+            Main::dotSet($tree, $rest, $v);
+        }
+
+        return $tree;
+    }
+
+    private static function mergeTree(array $base, array $over): array {
+        foreach ($over as $k => $v) {
+            $base[$k] = (
+                array_key_exists($k, $base)
+                && is_array($base[$k]) && is_array($v)
+                && !Main::arrayIsList($base[$k]) && !Main::arrayIsList($v)
+            )
+                ? self::mergeTree($base[$k], $v)
+                : $v;
+        }
+
+        return $base;
     }
 
     private static function fullMap(string $sourceName, string $locale): array {
