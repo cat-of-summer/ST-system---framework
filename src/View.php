@@ -26,7 +26,7 @@ final class View {
         ];
     }
 
-    private const RESERVED = ['template', 'get', 'set', 'slot', 'capture', 'config', 'setConfig', 'applyConfig', 'sources', 'name', 'path', 'cache', 'cascade'];
+    private const RESERVED = ['template', 'get', 'set', 'slot', 'capture', 'config', 'setConfig', 'applyConfig', 'sources', 'name', 'path', 'deep', 'cache', 'cascade'];
 
     private const MAX_DEPTH = 50;
 
@@ -700,23 +700,33 @@ final class View {
         return $value === $sentinel ? $default : $value;
     }
 
-    public static function name(int $i = 0): string {
-        $count = count(self::$frames);
-        if ($count === 0) return '';
-        if ($i < 0) $i += $count;
-        if ($i < 0 || $i >= $count) return '';
-        $name = self::$frames[$i]['name'];
+    public static function name(?int $i = null): string {
+        $idx = self::frameIndex($i);
+        if ($idx === null) return '';
+        $name = self::$frames[$idx]['name'];
         $pos  = strpos($name, ':');
         return $pos === false ? $name : substr($name, $pos + 1);
     }
 
-    public static function path(int $i = -1): string {
-        $count = count(self::$frames);
-        if ($count === 0) return '';
-        if ($i < 0) $i += $count;
-        if ($i < 0 || $i >= $count) return '';
-        $file = self::$frames[$i]['file'] ?? '';
+    public static function path(?int $i = null): string {
+        $idx = self::frameIndex($i);
+        if ($idx === null) return '';
+        $file = self::$frames[$idx]['file'] ?? '';
         return $file === '' ? '' : (string) preg_replace('/\.[^.\/\\\\]+$/', '', $file);
+    }
+
+    public static function deep(): int {
+        return max(0, count(self::$frames) - 1);
+    }
+
+    // null => root (frame 0); i >= 0 counts up from the current view (0 = current, 1 = direct parent).
+    // So name() === name(deep()) and name(0) is the innermost frame. Out of range => null.
+    private static function frameIndex(?int $i): ?int {
+        $count = count(self::$frames);
+        if ($count === 0) return null;
+        if ($i === null)  return 0;
+        $idx = $count - 1 - $i;
+        return ($idx < 0 || $idx >= $count) ? null : $idx;
     }
 
     public static function set($key, $value = null): void {
