@@ -103,10 +103,11 @@ final class UploadedFile extends Resource implements \ArrayAccess {
     }
 
     public static function registerRules(): void {
+
         Rule::filtered(fn($v, array $p) => static::filter($v, fn(self $f) => $f->isValid()))
         ->order(500)
         ->handleError(fn($v) => 'The file failed to upload or is invalid')
-        ->alias('file');
+        ->alias('files');
 
         Rule::filtered(fn($v, array $p) => static::filter($v, function(self $f) use ($p): bool {
             if (!$f->isValid()) return false;

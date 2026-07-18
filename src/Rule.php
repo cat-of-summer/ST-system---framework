@@ -823,9 +823,9 @@ final class Rule {
 
 
         self::create(['array', 'min', 'max'])
-            ->order(700)
-            ->seesSentinel()
-            ->alias('count');
+        ->order(700)
+        ->seesSentinel()
+        ->alias('count');
 
 
         (self::create(function(&$v, array $p): bool {
