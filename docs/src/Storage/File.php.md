@@ -231,8 +231,9 @@ query-параметров свой файл на диске.
   (расширение → таблица `mimes.extensions` или `mime_override`). Если пусто и это URI — читает
   `content-type` из `getMeta()`. Если пусто и у инстанса есть `$original`, который сам URI —
   заимствует **его** content-type (случай, когда `$this` — уже локально-кешированная копия
-  remote-оригинала, у которой самой по себе нет заголовков). Иначе — фоллбэк на
-  `finfo_file`/`mime_content_type` для локального пути.
+  remote-оригинала, у которой самой по себе нет заголовков). Иначе — фоллбэк на определение
+  по содержимому локального файла: `detectMime()` из трейта [[HasMime.php]]
+  (`finfo_file`, затем `mime_content_type`), общего с `HTTP\UploadedFile`.
 - `exists(): bool` (`private`) — всегда `false` для URI (существование remote-ресурса
   бессмысленно проверять без фетча), иначе `file_exists()`.
 - `getDirectory(int $depth = 0): string` (`public`) — стартовая директория: сам путь, если это

@@ -6,6 +6,7 @@ final class Rule {
 
     private static $registry = [];
     private static array $prefixStack = [];
+    private static array $requiredStack = [];
 
     private \Closure $callback;
     private ?\Closure $before = null;
@@ -16,6 +17,7 @@ final class Rule {
     private array $params = [];
     private bool $frozen = false;
     private bool $seesSentinel = false;
+    private ?string $ruleName = null;
 
     private function __construct(\Closure $callback) {
         self::init();
@@ -83,7 +85,49 @@ final class Rule {
         $clone->frozen = false;
         return $clone;
     }
-    
+
+    private static function pipeline(array $rules, &$value, array $params = []): array {
+        $required = false;
+        foreach ($rules as $r)
+            if ($r->ruleName === 'required') { $required = true; break; }
+
+        self::$requiredStack[] = $required;
+
+        $errors = [];
+        try {
+            foreach ($rules as $rule) {
+                if (!empty($params) && empty($rule->params)) {
+                    $rule = $rule->copy();
+                    $rule->params = $params;
+                }
+                [$passed, $ruleErrors] = $rule->execute($value);
+                if (!empty($ruleErrors))
+                    array_push($errors, ...$ruleErrors);
+                if (!$passed && $rule->skip) break;
+            }
+        } finally {
+            array_pop(self::$requiredStack);
+        }
+
+        return $errors;
+    }
+
+    public static function filtered(callable $select): Rule {
+        return self::create(function(&$v, array $params = []) use ($select): bool {
+            [$kept, $single] = $select(self::isSentinel($v) ? null : $v, $params);
+
+            if (empty($kept)) {
+                $v = self::sentinel();
+                return !end(self::$requiredStack);
+            }
+
+            $v = $single ? $kept[0] : $kept;
+            return true;
+        })
+        ->seesSentinel()
+        ->skip();
+    }
+
     public static function scope(string $prefix, \Closure $fn) {
         self::init();
         self::$prefixStack[] = $prefix;
@@ -117,6 +161,8 @@ final class Rule {
     }
 
     public function alias(string $name, $skip = 0): self {
+        if ($this->ruleName === null) $this->ruleName = $name;
+
         if (strpos($name, '\\') !== false) {
             $name = ltrim($name, '\\');
         } elseif ($prefix = self::currentPrefix()) {
@@ -269,15 +315,7 @@ final class Rule {
             }
 
             return self::create(function(&$data) use ($subRules): array {
-                $errors = [];
-                foreach ($subRules as $rule) {
-                    [$passed, $ruleErrors] = $rule->execute($data);
-                    if (!empty($ruleErrors)) {
-                        array_push($errors, ...$ruleErrors);
-                    }
-                    if (!$passed && $rule->skip) break;
-                }
-                return $errors;
+                return self::pipeline($subRules, $data);
             })->seesSentinel();
         }
 
@@ -292,19 +330,7 @@ final class Rule {
             }
 
             return self::create(function(&$data, array $params = []) use ($subRules): array {
-                $errors = [];
-                foreach ($subRules as $rule) {
-                    if (!empty($params) && empty($rule->params)) {
-                        $rule = $rule->copy();
-                        $rule->params = $params;
-                    }
-                    [$passed, $ruleErrors] = $rule->execute($data);
-                    if (!empty($ruleErrors)) {
-                        array_push($errors, ...$ruleErrors);
-                    }
-                    if (!$passed && $rule->skip) break;
-                }
-                return $errors;
+                return self::pipeline($subRules, $data, $params);
             })->seesSentinel();
         }
 
@@ -356,13 +382,8 @@ final class Rule {
             foreach ($compiled as $key => $rules) {
                 $temp = array_key_exists($key, $data) ? $data[$key] : self::sentinel();
 
-                foreach ($rules as $rule) {
-                    [$passed, $ruleErrors] = $rule->execute($temp);
-                    foreach ($ruleErrors as $err) {
-                        $errors[] = "{$key}.{$err}";
-                    }
-                    if (!$passed && $rule->skip) break;
-                }
+                foreach (self::pipeline($rules, $temp) as $err)
+                    $errors[] = "{$key}.{$err}";
 
                 if (!self::isSentinel($temp)) {
                     $result[$key] = $temp;
@@ -400,16 +421,11 @@ final class Rule {
             $toRemove = [];
 
             foreach ($data as $i => &$item) {
-                $elementFailed = false;
-                foreach ($rules as $rule) {
-                    [$passed, $ruleErrors] = $rule->execute($item);
-                    foreach ($ruleErrors as $err) {
-                        $errors[] = "{$i}.{$err}";
-                        $elementFailed = true;
-                    }
-                    if (!$passed && $rule->skip) break;
-                }
-                if ($elementFailed) $toRemove[] = $i;
+                $elemErrors = self::pipeline($rules, $item);
+                foreach ($elemErrors as $err)
+                    $errors[] = "{$i}.{$err}";
+                if (!empty($elemErrors) || self::isSentinel($item))
+                    $toRemove[] = $i;
             }
             unset($item);
 
@@ -742,6 +758,7 @@ final class Rule {
 
 
         (self::create(function(&$v): bool {
+            if (is_object($v) && method_exists($v, 'toArray')) { $v = $v->toArray(); return true; }
             if (is_array($v)) return true;
             if ($v === null || self::isSentinel($v)) { $v = []; return true; }
             return false;
@@ -1044,47 +1061,6 @@ final class Rule {
         ->handleError(fn($v) => 'Must be declined')
         ->alias('declined');
 
-        
-        (self::create(function(&$v): bool {
-            return is_array($v)
-                && isset($v['tmp_name'], $v['error'], $v['size'], $v['name'])
-                && $v['error'] === UPLOAD_ERR_OK
-                && is_uploaded_file($v['tmp_name']);
-        }))
-        ->order(500)
-        ->handleError(fn($v) => 'Invalid file upload')
-        ->alias('file');
-
-        
-        (self::create(function(&$v, array $p): bool {
-            if (!is_array($v) || !isset($v['tmp_name']) || $v['error'] !== UPLOAD_ERR_OK) return false;
-            if (!is_uploaded_file($v['tmp_name'])) return false;
-            $finfo = new \finfo(FILEINFO_MIME_TYPE);
-            $mime  = $finfo->file($v['tmp_name']);
-            return in_array($mime, $p, true);
-        }))
-        ->order(600)
-        ->handleError(fn($v) => 'Invalid MIME type')
-        ->alias('mimes');
-
-        
-        (self::create(function(&$v, array $p): bool {
-            if (!is_array($v) || !isset($v['name'])) return false;
-            $ext = strtolower(pathinfo($v['name'], PATHINFO_EXTENSION));
-            return in_array($ext, array_map('strtolower', $p), true);
-        }))
-        ->order(600)
-        ->handleError(fn($v) => 'Invalid file extension')
-        ->alias('extension');
-
-        
-        (self::create(function(&$v, array $p): bool {
-            if (!is_array($v) || !isset($v['size'])) return false;
-            $maxKb = (float)($p[0] ?? 0);
-            return $v['size'] <= $maxKb * 1024;
-        }))
-        ->order(600)
-        ->handleError(fn($v) => 'File exceeds size limit')
-        ->alias('filesize');
+        \ST_system\HTTP\UploadedFile::registerRules();
     }
 }

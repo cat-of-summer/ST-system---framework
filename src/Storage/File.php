@@ -5,8 +5,11 @@ namespace ST_system\Storage;
 use ST_system\Main;
 use ST_system\HTTP\WebClient;
 use ST_system\Cache\CacheManager;
+use ST_system\Storage\Traits\HasMime;
 
 final class File extends Resource {
+
+    use HasMime;
 
     protected static function getDefaultConfig(): array {
         return array_merge(parent::getDefaultConfig(), [
@@ -531,23 +534,7 @@ final class File extends Resource {
             if ($ct !== '') return explode(';', $ct, 2)[0];
         }
 
-        $path = $this->getPathname();
-
-        $mime_type = '';
-
-        if (function_exists('finfo_open')) {
-
-            static $finfo = null;
-            if ($finfo === null) $finfo = finfo_open(FILEINFO_MIME_TYPE) ?: false;
-
-            if ($finfo !== false)
-                $mime_type = @finfo_file($finfo, $path);
-        }
-
-        if ($mime_type == '')
-            $mime_type = @mime_content_type($path) ?: '';
-
-        return $mime_type;
+        return $this->detectMime($this->getPathname());
     }
 
     private function exists(): bool {

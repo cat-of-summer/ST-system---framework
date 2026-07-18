@@ -132,25 +132,7 @@ class Request {
                         : [];
                     break;
                 case 'query': $this->data['query'] = $this->_query(); break;
-                case '_files':
-                    $this->data['_files'] = [];
-                    foreach ($_FILES as $field => $file) {
-                        $this->data['_files'][$field] = [];
-
-                        foreach (is_array($file['name']) ? $file['name'] : [$file['name']] as $i => $filename) {
-                            if (is_array($file['error']) ? $file['error'][$i] : $file['error'] !== UPLOAD_ERR_OK)
-                                continue;
-                            
-                            $this->data['_files'][$field][] = [
-                                'name'       => $filename,
-                                'tmp_name'   => is_array($file['tmp_name']) ? $file['tmp_name'][$i] : $file['tmp_name'],
-                                'type'       => is_array($file['type']) ? $file['type'][$i] : $file['type'],
-                                'size'       => is_array($file['size']) ? $file['size'][$i] : $file['size'],
-                                'extenstion' => strtolower(pathinfo($filename, PATHINFO_EXTENSION))
-                            ];
-                        }
-                    }
-                    break;
+                case '_files': $this->data['_files'] = UploadedFile::fetch(); break;
                 case 'files': $this->data['files'] = $this->_files(); break;
                 case '_data':
                     $this->data['_data'] = array_merge(

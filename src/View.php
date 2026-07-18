@@ -719,8 +719,6 @@ final class View {
         return max(0, count(self::$frames) - 1);
     }
 
-    // null => root (frame 0); i >= 0 counts up from the current view (0 = current, 1 = direct parent).
-    // So name() === name(deep()) and name(0) is the innermost frame. Out of range => null.
     private static function frameIndex(?int $i): ?int {
         $count = count(self::$frames);
         if ($count === 0) return null;
