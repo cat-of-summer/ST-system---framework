@@ -5,7 +5,7 @@ namespace ST_system;
 use ST_system\Main;
 use ST_system\Rule;
 use ST_system\Traits\HasConfig;
-use ST_system\Traits\HasStaticEvents;
+use ST_system\Traits\Events\HasStaticEvents;
 use ST_system\Traits\HasInstance;
 
 final class Debug {

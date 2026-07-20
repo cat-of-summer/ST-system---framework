@@ -31,26 +31,10 @@ final class Assets {
 
     private static array $buffers = [];
     private static array $stack   = [];
-
-    // Пока View рендерит, Assets в immediate-режиме: выводом владеет View, свою
-    // буферизацию не включаем. Флаг ставят слушатели render_open/render_close.
     private static bool $rendering = false;
-
-    /**
-     * Позиции ассетов в ДОКУМЕНТЕ, а не в порядке исполнения. Под кешем потомок
-     * рендерится позже тела родителя (из дырки), поэтому каждый элемент несёт
-     * путь вида [2,0,1], и буфер сортируется по нему. Стек кадров: slot_enter
-     * толкает кадр потомка, slot_leave снимает.
-     */
     private static array $positions = [];
-
-    /** Стек кадров лога операций (по кадру на границу кеша). */
     private static array $recording = [];
-
-    /** Стек кадров зависимостей-директорий (раскрытых File::find). */
-    /** Идемпотентность подписки на события View. */
     private static bool $view_events_registered = false;
-
     private File $file;
     private string $buffer;
 
@@ -132,13 +116,6 @@ final class Assets {
         return end(self::$stack) ?: static::config('default_buffer');
     }
 
-    /* ==================================================================
-     *  Вклад в кеш View: подписка на события его жизненного цикла.
-     *  View находит registerViewEvents() по имени (утиная типизация, без
-     *  общего интерфейса) и зовёт его. Публично отсюда торчит только этот
-     *  метод; вся кеш-механика ниже — приватная, её дёргают слушатели.
-     * ================================================================== */
-
     public static function registerViewEvents(): void {
         if (self::$view_events_registered) return;
         self::$view_events_registered = true;
@@ -156,27 +133,20 @@ final class Assets {
         View::on('slot_leave',   static function () { self::leaveSlot(); });
 
         View::on('compose_collect', static function (array &$contrib) {
-            // Переносим позиции ассетов в координаты корня прямо в слоте узла;
-            // слияние в аккумулятор делает View обобщённо.
             if (isset($contrib['assets']) && is_array($contrib['assets']))
                 $contrib['assets'] = self::rebase($contrib['assets']);
         });
     }
-
-    /* ------------------------------------------------ границы кеша */
 
     private static function openFrame(): void {
         self::$recording[] = ['ops' => [], 'depth' => count(self::currentPath())];
     }
 
     private static function closeFrame(array &$deps, array &$payload): void {
-        // Директории-зависимости отслеживает сам File (свой контрибьютор), здесь
-        // только лог операций для реплея.
         $frame = self::$recording ? array_pop(self::$recording) : ['ops' => []];
         $payload['assets'] = $frame['ops'];
     }
 
-    /** Узел взят из кеша: позиции в payload относительны, разворачиваем по текущему пути. */
     private static function replayFrom(array $payload): void {
         $ops = $payload['assets'] ?? null;
         if (!is_array($ops) || !$ops) return;
@@ -193,16 +163,11 @@ final class Assets {
         return $ops;
     }
 
-    /* --------------------------------------------------- вложенность */
-
     private static function reserveSlot(): array {
-        // Путь ОТНОСИТЕЛЬНО узла: дырка едет в кеш вместе с ним и при следующей
-        // отдаче может оказаться в другом месте документа.
         return array_slice(self::nextPos(), self::recordingDepth());
     }
 
     private static function enterSlot($slot): void {
-        // Без зарезервированного места (запись старого формата) занимаем новое.
         $path = $slot === null
             ? self::nextPos()
             : array_merge(self::currentPath(), (array) $slot);
@@ -213,8 +178,6 @@ final class Assets {
     private static function leaveSlot(): void {
         if (self::$positions) array_pop(self::$positions);
     }
-
-    /* -------------------------------------------------------- позиции */
 
     private static function immediate(): bool {
         return self::$rendering || !static::config('bufferization');
@@ -260,10 +223,6 @@ final class Assets {
         self::$recording[$i]['ops'][] = $op;
     }
 
-    /**
-     * Повторно применяет лог операций. Позиции в $ops уже абсолютные —
-     * их развернул rebase() перед вызовом.
-     */
     private static function replay(array $ops): void {
         foreach ($ops as $op) {
             $buffer = (string)($op['buffer'] ?? static::config('default_buffer'));
@@ -290,8 +249,6 @@ final class Assets {
     private static function ensureBuffer(string $name): void {
         if (!isset(self::$buffers[$name]))
             self::$buffers[$name] = [
-                // Список ['pos' => путь, 'html' => строка]: порядок задаёт не
-                // момент добавления, а позиция в документе.
                 'content'      => [],
                 'started'      => false,
                 'seen_assets'  => [],
@@ -300,7 +257,6 @@ final class Assets {
             ];
     }
 
-    /** Строковые ассеты буфера, склеенные в порядке документа. */
     private static function contentHtml(string $name): string {
         self::ensureBuffer($name);
 
@@ -322,8 +278,6 @@ final class Assets {
         $key = md5($html);
         if (isset(self::$buffers[$buffer]['seen_strings'][$key])) return;
 
-        // Позиция задана снаружи => это повтор из кеша, записывать его в лог не
-        // нужно: он там уже есть. Своя позиция => живая регистрация.
         $live = $pos === null;
         $pos ??= self::nextPos();
 
@@ -396,8 +350,6 @@ final class Assets {
             $items = self::$buffers[$buffer]['assets'][$type] ?? [];
             if (!$items) continue;
 
-            // Порядок документа, а не порядок регистрации: потомок, отданный из
-            // кеша, регистрируется позже родителя, но стоять должен на своём месте.
             usort($items, fn($a, $b) => self::comparePos($a['pos'] ?? [], $b['pos'] ?? []));
 
             $groups = [];

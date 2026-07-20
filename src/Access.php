@@ -3,7 +3,7 @@
 namespace ST_system;
 
 use ST_system\Traits\HasConfig;
-use ST_system\Traits\HasStaticEvents;
+use ST_system\Traits\Events\HasStaticEvents;
 use ST_system\Traits\HasInstance;
 use ST_system\HTTP\Request;
 use ST_system\HTTP\Response;

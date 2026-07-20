@@ -250,7 +250,9 @@ use ST_system\HTTP\Request;
 |-------|------------|--------------|
 | `Traits\HasInstance` | Синглтон-экземпляр | [src/Traits/HasInstance.php.md](src/Traits/HasInstance.php.md) |
 | `Traits\HasConfig` | Конфигурация класса (значения по умолчанию, переопределение) | [src/Traits/HasConfig.php.md](src/Traits/HasConfig.php.md) |
-| `Traits\HasEvents` | События и слушатели | [src/Traits/HasEvents.php.md](src/Traits/HasEvents.php.md) |
+| `Traits\Events\EmitsEvents` | Общее ядро событий (рассылка, reserved) | [src/Traits/Events/EmitsEvents.php.md](src/Traits/Events/EmitsEvents.php.md) |
+| `Traits\Events\HasEvents` | События на инстансе (`$obj->on()`) | [src/Traits/Events/HasEvents.php.md](src/Traits/Events/HasEvents.php.md) |
+| `Traits\Events\HasStaticEvents` | События на классе-фасаде (`Class::on()`) | [src/Traits/Events/HasStaticEvents.php.md](src/Traits/Events/HasStaticEvents.php.md) |
 | `Traits\HasAttributes` | Доступ к атрибутам/свойствам | [src/Traits/HasAttributes.php.md](src/Traits/HasAttributes.php.md) |
 
 

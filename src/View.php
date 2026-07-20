@@ -11,7 +11,7 @@ final class View {
         setConfig as private traitSetConfig;
     }
 
-    use \ST_system\Traits\HasStaticEvents;
+    use \ST_system\Traits\Events\HasStaticEvents;
 
     protected static function getDefaultConfig(): array {
         return [
@@ -25,10 +25,6 @@ final class View {
                 'key'    => null,
             ],
             'cascade' => false,
-            // Подсистемы, вкладывающиеся в кеш через события View. Каждая обязана
-            // иметь статический registerViewEvents(); при первом рендере View сам
-            // его зовёт. Ключи — произвольные, под ними едут payload и слоты.
-            // Свой: View::setConfig(['contributors.myLayer' => Foo::class]).
             'contributors' => [
                 'assets' => Assets::class,
                 'lang'   => Lang::class,
@@ -37,8 +33,6 @@ final class View {
         ];
     }
 
-    // Внутренние события жизненного цикла: приложение может их слушать (on),
-    // но не эмитить (trigger).
     protected static function getReservedEvents(): array {
         return [
             'render_open', 'render_finalize', 'render_close',
@@ -49,11 +43,6 @@ final class View {
 
     private static bool $booted = false;
 
-    /**
-     * Поднимает контрибьюторов из конфига: проверяет контракт и даёт каждому
-     * подписаться на события. Идемпотентность самой registerViewEvents() —
-     * на стороне контрибьютора, поэтому повторный ручной вызов безопасен.
-     */
     private static function bootContributors(): void {
         if (self::$booted) return;
         self::$booted = true;
@@ -325,10 +314,6 @@ final class View {
     }
 
     private function cacheHandle(): CacheManager {
-        // Контрибьюторы добавляют то, что меняет результат, но не является ни
-        // props, ни файлом на диске: локаль, отпечаток рантайм-переводов. Без
-        // этого запись, собранная в одних условиях, была бы отдана в других —
-        // например, русская страница английскому запросу.
         $keyParts = [];
         self::fire('cache_key', $keyParts);
 
@@ -417,8 +402,6 @@ final class View {
         ) {
             $html = $cache->get('composed');
             if ($html !== null) {
-                // Позиции в composed уже абсолютны (rebase на compose_collect),
-                // и на корне текущий путь пуст — replay встаёт как есть.
                 $contrib = (array)($cmeta['contrib'] ?? []);
                 self::fire('cache_replay', $contrib);
 
@@ -487,13 +470,8 @@ final class View {
         foreach ($deps as $f)         self::$compose['deps'][$f]  = true;
         foreach ($sets as $k => $v)   self::$compose['sets'][$k]  = $v;
 
-        // Payload узла задан относительно него самого. Даём контрибьюторам
-        // преобразовать свои слоты под координаты корня (Assets переносит позиции;
-        // тем, кому это не нужно, слушать событие не обязательно)...
         self::fire('compose_collect', $contrib);
 
-        // ...затем обобщённо сливаем ВСЕ слоты в аккумулятор — так payload любого
-        // контрибьютора переживает composed без отдельного слушателя.
         foreach ($contrib as $name => $slot) {
             if ($slot === null) continue;
 
@@ -645,9 +623,6 @@ final class View {
             $sets    = is_array($data['sets']    ?? null) ? $data['sets']    : [];
             $contrib = is_array($data['contrib'] ?? null) ? $data['contrib'] : [];
 
-            // Тело узла не исполнялось — восстанавливаем состояние подсистем.
-            // Позиции в payload относительны узлу, replay-слушатель разворачивает
-            // их по текущему пути.
             if ($fromCache)
                 self::fire('cache_replay', $contrib);
         }
@@ -682,8 +657,6 @@ final class View {
                 $child->override = (array)($d['override'] ?? []);
                 $child->recomputeConfig();
 
-                // Потомок рендерится позже тела родителя, но вкладываться обязан
-                // в место, зарезервированное при создании дырки.
                 $slots = (array)($d['slots'] ?? []);
                 self::fire('slot_enter', $slots);
 
@@ -752,8 +725,6 @@ final class View {
                     'children' => $this->children,
                     'override' => $this->override,
                 ];
-                // Место занимаем СЕЙЧАС, пока мы на нужной позиции в теле
-                // родителя; рендер потомка произойдёт позже.
                 $slots = [];
                 self::fire('slot_reserve', $slots);
                 self::$boundaries[$i]['holes'][$token]['slots'] = $slots;
@@ -816,8 +787,6 @@ final class View {
         return max(0, count(self::$frames) - 1);
     }
 
-    // null => root (frame 0); i >= 0 counts up from the current view (0 = current, 1 = direct parent).
-    // So name() === name(deep()) and name(0) is the innermost frame. Out of range => null.
     private static function frameIndex(?int $i): ?int {
         $count = count(self::$frames);
         if ($count === 0) return null;

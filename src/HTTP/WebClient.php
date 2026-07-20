@@ -5,7 +5,7 @@ namespace ST_system\HTTP;
 use ST_system\Main;
 use ST_system\Rule;
 use ST_system\Cache\CacheManager;
-use ST_system\Traits\HasEvents;
+use ST_system\Traits\Events\HasEvents;
 use ST_system\Traits\HasConfig;
 use ST_system\Storage\Resource;
 

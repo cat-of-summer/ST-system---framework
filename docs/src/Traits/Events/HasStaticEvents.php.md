@@ -4,7 +4,7 @@
 
 ## Назначение
 
-`HasStaticEvents` — статический близнец [`HasEvents`](HasEvents.php.md): тот же pub/sub-механизм (`on()` / `fire()` / `trigger()` / `getReservedEvents()`), но слушатели хранятся в `private static array $listeners` — **на класс, а не на объект**.
+`HasStaticEvents` — статический близнец [`HasEvents`](HasEvents.php.md): тот же pub/sub-механизм (`on()` / `fire()` / `trigger()`), но слушатели хранятся в `private static array $listeners` — **на класс, а не на объект**. Общая механика обоих — в [`EmitsEvents`](EmitsEvents.php.md); `HasStaticEvents` добавляет лишь статическое хранилище и соглашение вызова.
 
 Нужен классам-фасадам, у которых нет единого инстанса для событий:
 
@@ -24,7 +24,7 @@
 | `trigger()` | `public function` | `public static function` |
 | подписка | `$obj->on(...)` | `Class::on(...)` |
 
-Семантика идентична:
+Семантика идентична (обе берут её из [`EmitsEvents`](EmitsEvents.php.md)):
 
 - **много слушателей** на событие, вызываются в порядке регистрации;
 - данные из слушателей — **только по ссылке** (`&...$params`); возвраты `fire()` отбрасывает;
@@ -36,4 +36,4 @@
 ## Применение во фреймворке
 
 - `Access::on('throw'|'ban'|…)`, `Debug::on('on_error'|…)`, `Lang::on('source_call')` — точки расширения фасадов.
-- `View` — весь событийный шов кеша (`render_open`, `cache_open`/`cache_close`, `cache_replay`, `slot_*`, `cache_key`, `compose_collect`), на который подписываются контрибьюторы (`Assets`, `Lang`, `Storage\File`). См. [View.php](../View.php.md#вкладчики-в-кеш-через-события).
+- `View` — весь событийный шов кеша (`render_open`, `cache_open`/`cache_close`, `cache_replay`, `slot_*`, `cache_key`, `compose_collect`), на который подписываются контрибьюторы (`Assets`, `Lang`, `Storage\File`). См. [View.php](../../View.php.md#вкладчики-в-кеш-через-события).

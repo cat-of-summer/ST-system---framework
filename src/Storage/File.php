@@ -119,15 +119,6 @@ final class File extends Resource {
         return parent::__call($name, $args);
     }
 
-    // Директории, просмотренные find() при раскрытии директорий и glob-шаблонов.
-    // Нужны потребителям с кешем (View): состав такой директории — часть входных
-    // данных, поэтому её mtime обязан участвовать в инвалидации, иначе добавление
-    // нового файла в директорию останется незамеченным.
-    //
-    // Стек кадров синхронизирован с границами кеша View (cache_open/cache_close):
-    // find() пишет в верхний кадр, поэтому каждая директория приписывается той
-    // границе, во время рендера которой её просматривали. Вне рендера стек пуст —
-    // ничего не копится. Наружу торчит только registerViewEvents().
     private static array $scanned_stack = [];
 
     private static bool $view_events_registered = false;
@@ -209,8 +200,6 @@ final class File extends Resource {
 
                         foreach ($iterator as $file)
                             if ($file->isFile() && (!isset($config['extension']) || in_array($file->getExtension(), $config['extension'], true))) {
-                                // При рекурсивном обходе новый файл меняет mtime только
-                                // своей поддиректории, поэтому отмечаем каждую.
                                 self::noteScannedDir($file->getPath());
                                 $results[$file->getPathname()] = $file->getPathname();
 

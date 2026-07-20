@@ -3,7 +3,7 @@
 namespace ST_system;
 
 use ST_system\Traits\HasConfig;
-use ST_system\Traits\HasStaticEvents;
+use ST_system\Traits\Events\HasStaticEvents;
 use ST_system\Cache\CacheManager;
 
 final class Lang {
@@ -196,34 +196,21 @@ final class Lang {
         self::$merged = [];
     }
 
-    /* ==================================================================
-     *  Вклад Lang в кеш View через его события. View находит
-     *  registerViewEvents() по имени и зовёт его. Публично торчит только
-     *  этот метод; отслеживание файлов, ключ локали и отпечаток
-     *  рантайм-переводов — приватные.
-     * ================================================================== */
-
     public static function registerViewEvents(): void {
         if (self::$view_events_registered) return;
         self::$view_events_registered = true;
 
-        // Локаль и рантайм-переопределения (Lang::set) не отслеживаются по mtime:
-        // при смене языка файлы не меняются, поэтому они идут прямо в ключ.
-        // Иначе запись, собранная под одним языком, была бы отдана под другим.
         View::on('cache_key', static function (array &$parts) {
             $parts['lang'] = [self::config('locale'), self::runtimeStamp()];
         });
 
-        // Прочитанные языковые файлы — в deps границы (инвалидация по mtime).
         View::on('cache_open',  static function () { self::record(); });
         View::on('cache_close', static function (array &$deps, array &$payload) {
             $paths = self::stopRecording();
             if ($paths) $deps = array_merge($deps, $paths);
         });
-        // cache_replay Lang не слушает: переводы уже запечены в скелет.
     }
 
-    /** Отпечаток рантайм-переопределений (Lang::set()); пусто, если их нет. */
     private static function runtimeStamp(): string {
         return self::$runtime ? Main::hash(self::$runtime) : '';
     }
