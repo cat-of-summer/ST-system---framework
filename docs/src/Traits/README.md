@@ -1,13 +1,15 @@
 <!-- DOCGEN:START -->
 # Traits
 
+## Папки
+
+- [Events](Events/)
+
 ## Файлы
 
 - [HasAttributes.php](HasAttributes.php.md)
 - [HasConfig.php](HasConfig.php.md)
-- [HasEvents.php](HasEvents.php.md)
 - [HasInstance.php](HasInstance.php.md)
-- [HasStaticEvents.php](HasStaticEvents.php.md)
 
 <!-- DOCGEN:END -->
 
