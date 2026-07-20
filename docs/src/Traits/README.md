@@ -7,6 +7,7 @@
 - [HasConfig.php](HasConfig.php.md)
 - [HasEvents.php](HasEvents.php.md)
 - [HasInstance.php](HasInstance.php.md)
+- [HasStaticEvents.php](HasStaticEvents.php.md)
 
 <!-- DOCGEN:END -->
 
