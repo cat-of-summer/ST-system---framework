@@ -26,9 +26,9 @@ final class View {
             ],
             'cascade' => false,
             'contributors' => [
-                'assets' => Assets::class,
-                'lang'   => Lang::class,
-                'file'   => Storage\File::class,
+                Assets::class,
+                Lang::class,
+                Storage\File::class,
             ],
         ];
     }
@@ -47,12 +47,12 @@ final class View {
         if (self::$booted) return;
         self::$booted = true;
 
-        foreach ((array) static::config('contributors') as $name => $class) {
+        foreach ((array) static::config('contributors') as $class) {
             if ($class === null || $class === '') continue;
 
             if (!is_string($class) || !class_exists($class) || !method_exists($class, 'registerViewEvents'))
                 throw new \InvalidArgumentException(
-                    __CLASS__.": contributor '{$name}' must expose static registerViewEvents()"
+                    __CLASS__.": contributor ".var_export($class, true)." must expose static registerViewEvents()"
                 );
 
             $class::registerViewEvents();
