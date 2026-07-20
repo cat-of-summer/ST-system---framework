@@ -5,23 +5,17 @@ namespace ST_system;
 use ST_system\Main;
 use ST_system\Rule;
 use ST_system\Traits\HasConfig;
-use ST_system\Traits\HasEvents;
+use ST_system\Traits\HasStaticEvents;
 use ST_system\Traits\HasInstance;
 
 final class Debug {
 
     use HasInstance;
     use HasConfig;
-    use HasEvents {
-        on as private _on;
-    }
+    use HasStaticEvents;
 
     protected static function getReservedEvents(): array {
         return ['on_error', 'on_exception', 'on_shutdown'];
-    }
-
-    public static function on(string $event, callable $listener): void {
-        static::getInstance()->_on($event, $listener);
     }
 
     protected static function getDefaultConfig(): array {
@@ -296,9 +290,9 @@ final class Debug {
             'file'        => 'string|@filesystem.file',
         ]);
 
-        if (!empty($config['onError']))     static::getInstance()->_on('on_error',     $config['onError']);
-        if (!empty($config['onException'])) static::getInstance()->_on('on_exception', $config['onException']);
-        if (!empty($config['onShutdown']))  static::getInstance()->_on('on_shutdown',  $config['onShutdown']);
+        if (!empty($config['onError']))     static::on('on_error',     $config['onError']);
+        if (!empty($config['onException'])) static::on('on_exception', $config['onException']);
+        if (!empty($config['onShutdown']))  static::on('on_shutdown',  $config['onShutdown']);
 
         error_reporting(static::config('handle_error.reporting.level'));
 
@@ -324,14 +318,14 @@ final class Debug {
 
         $error = compact('severity', 'message', 'file', 'line');
 
-        if (static::getInstance()->fire('on_error', $error) === false)
+        if (static::fire('on_error', $error) === false)
             static::__callStatic(static::config('handle_error.output.method'), [$error, static::config('handle_error.output.config')]);
     }
 
     private static function onException(\Throwable $th): void {
         if (!array_filter(static::config('handle_error.exception.level'), fn($c) => $th instanceof $c)) return;
 
-        if (static::getInstance()->fire('on_exception', $th) === false)
+        if (static::fire('on_exception', $th) === false)
             static::__callStatic(static::config('handle_error.output.method'), [[
                 'type'    => get_class($th),
                 'message' => $th->getMessage(),
@@ -347,7 +341,7 @@ final class Debug {
 
         if (!$error || !in_array($error['type'], static::config('handle_error.shutdown.level'), true)) return;
 
-        if (static::getInstance()->fire('on_shutdown', $error) === false)
+        if (static::fire('on_shutdown', $error) === false)
             static::__callStatic(static::config('handle_error.output.method'), [$error, static::config('handle_error.output.config')]);
     }
 

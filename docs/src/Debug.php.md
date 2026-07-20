@@ -4,7 +4,7 @@
 
 `final class Debug` (`ST_system\Debug`) — служебный dev-инструмент отладки: форматированный backtrace, именованные таймеры и бенчмарк, обёртка над `php -l` (линтер синтаксиса) и, отдельно, полноценный установщик глобального **error/exception/shutdown-handler'а** (`handleError()`) с подключаемыми "методами дампа" (файл, консоль браузера, email, исключение, инлайн-эхо) и системой событий, позволяющей приложению перехватить ошибку раньше дефолтного вывода.
 
-Использует трейты `HasInstance` (приватный синглтон-конструктор + `getInstance()`), `HasConfig` (конфиг с dot-путями и валидацией через `Rule`), `HasEvents` (подписки/`fire`) — метод `on` трейта переименован внутри класса в приватный `_on` и класс поверх него даёт свой публичный `static::on()`, который всегда работает с единственным инстансом синглтона. Зависит от `ST_system\Main` (`timestamp()`, `uuid()`, `preparePath()`) и `ST_system\Rule` (валидация конфигов внутри dump-методов и `getOutput()`).
+Использует трейты `HasInstance` (приватный синглтон-конструктор + `getInstance()` — нужен для диспетчеризации dump-методов, см. `__callStatic`), `HasConfig` (конфиг с dot-путями и валидацией через `Rule`) и `HasStaticEvents` (статические подписки/`fire` на класс). События теперь статические: `Debug::on()`/`fire()` идут прямо через трейт, без обёртки над синглтоном. Зависит от `ST_system\Main` (`timestamp()`, `uuid()`, `preparePath()`) и `ST_system\Rule` (валидация конфигов внутри dump-методов и `getOutput()`).
 
 ## Конфиг по умолчанию
 
@@ -45,7 +45,7 @@
 
 ## Зарезервированные события
 
-`on_error`, `on_exception`, `on_shutdown` — их нельзя триггерить вручную через `trigger()` (это защищено `HasEvents::trigger()`, который проверяет `getReservedEvents()`), они файрятся только внутри самого `Debug` при обработке ошибок.
+`on_error`, `on_exception`, `on_shutdown` — их нельзя триггерить вручную через `trigger()` (это защищено `HasStaticEvents::trigger()`, который проверяет `getReservedEvents()`), они файрятся только внутри самого `Debug` при обработке ошибок.
 
 ## Backtrace
 
@@ -194,7 +194,7 @@ Debug::handleError([
 
 Вызывается **только один раз за запрос** (`static $done`) — повторный вызов бросает `\LogicException`. Что делает:
 
-1. регистрирует переданные `onError`/`onException`/`onShutdown` как слушателей событий `on_error`/`on_exception`/`on_shutdown` (сахар над `HasEvents::on`);
+1. регистрирует переданные `onError`/`onException`/`onShutdown` как слушателей событий `on_error`/`on_exception`/`on_shutdown` (сахар над `HasStaticEvents::on`);
 2. выставляет `error_reporting()` в уровень из `handle_error.reporting.level` (по умолчанию `E_ALL`);
 3. выставляет ini `display_errors`/`display_startup_errors` по `display` конфигу и форсирует `log_errors=1`;
 4. направляет нативный ini `error_log` PHP на тот же файл (`dir`/`file`) — то есть встроенное логирование ошибок PHP тоже пишет в этот файл, независимо от собственного handler'а класса;

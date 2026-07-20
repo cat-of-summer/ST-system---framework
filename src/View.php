@@ -11,6 +11,8 @@ final class View {
         setConfig as private traitSetConfig;
     }
 
+    use \ST_system\Traits\HasStaticEvents;
+
     protected static function getDefaultConfig(): array {
         return [
             'source'    => [],
@@ -23,7 +25,49 @@ final class View {
                 'key'    => null,
             ],
             'cascade' => false,
+            // Подсистемы, вкладывающиеся в кеш через события View. Каждая обязана
+            // иметь статический registerViewEvents(); при первом рендере View сам
+            // его зовёт. Ключи — произвольные, под ними едут payload и слоты.
+            // Свой: View::setConfig(['contributors.myLayer' => Foo::class]).
+            'contributors' => [
+                'assets' => Assets::class,
+                'lang'   => Lang::class,
+                'file'   => Storage\File::class,
+            ],
         ];
+    }
+
+    // Внутренние события жизненного цикла: приложение может их слушать (on),
+    // но не эмитить (trigger).
+    protected static function getReservedEvents(): array {
+        return [
+            'render_open', 'render_finalize', 'render_close',
+            'cache_key', 'cache_open', 'cache_close', 'cache_replay',
+            'slot_reserve', 'slot_enter', 'slot_leave', 'compose_collect',
+        ];
+    }
+
+    private static bool $booted = false;
+
+    /**
+     * Поднимает контрибьюторов из конфига: проверяет контракт и даёт каждому
+     * подписаться на события. Идемпотентность самой registerViewEvents() —
+     * на стороне контрибьютора, поэтому повторный ручной вызов безопасен.
+     */
+    private static function bootContributors(): void {
+        if (self::$booted) return;
+        self::$booted = true;
+
+        foreach ((array) static::config('contributors') as $name => $class) {
+            if ($class === null || $class === '') continue;
+
+            if (!is_string($class) || !class_exists($class) || !method_exists($class, 'registerViewEvents'))
+                throw new \InvalidArgumentException(
+                    __CLASS__.": contributor '{$name}' must expose static registerViewEvents()"
+                );
+
+            $class::registerViewEvents();
+        }
     }
 
     private const RESERVED = ['template', 'get', 'set', 'slot', 'capture', 'config', 'setConfig', 'applyConfig', 'sources', 'name', 'path', 'deep', 'cache', 'cascade'];
@@ -251,8 +295,11 @@ final class View {
     }
 
     private function output(): string {
+        self::bootContributors();
+
         $top = empty(self::$frames);
-        if ($top) Assets::beginOrchestration();
+
+        if ($top) self::fire('render_open');
 
         try {
             $mode   = Main::dotGet($this->config, 'cache.use', false);
@@ -267,18 +314,30 @@ final class View {
                 $html = $this->build();
             }
 
-            return $top ? Assets::finalize($html) : $html;
+            if (!$top) return $html;
+
+            self::fire('render_finalize', $html);
+
+            return $html;
         } finally {
-            if ($top) Assets::endOrchestration();
+            if ($top) self::fire('render_close');
         }
     }
 
     private function cacheHandle(): CacheManager {
+        // Контрибьюторы добавляют то, что меняет результат, но не является ни
+        // props, ни файлом на диске: локаль, отпечаток рантайм-переводов. Без
+        // этого запись, собранная в одних условиях, была бы отдана в других —
+        // например, русская страница английскому запросу.
+        $keyParts = [];
+        self::fire('cache_key', $keyParts);
+
         return CacheManager::make([
             'c' => __CLASS__,
             'n' => $this->name,
             'p' => $this->props,
             'k' => $this->keyExtra(),
+            'x' => $keyParts,
         ], [
             'driver' => (string) Main::dotGet($this->config, 'cache.driver', 'filesystem'),
             'dir'    => (string) Main::dotGet($this->config, 'cache.dir', ''),
@@ -358,7 +417,11 @@ final class View {
         ) {
             $html = $cache->get('composed');
             if ($html !== null) {
-                if (is_array($cmeta['assets'] ?? null)) Assets::replay($cmeta['assets']);
+                // Позиции в composed уже абсолютны (rebase на compose_collect),
+                // и на корне текущий путь пуст — replay встаёт как есть.
+                $contrib = (array)($cmeta['contrib'] ?? []);
+                self::fire('cache_replay', $contrib);
+
                 foreach ((array)($cmeta['sets'] ?? []) as $k => $v)
                     Main::dotSet(self::$globals, $k, $v);
                 return (string) $html;
@@ -366,7 +429,7 @@ final class View {
         }
 
         $prev = self::$compose;
-        self::$compose = ['composable' => true, 'descendants' => [], 'deps' => [], 'sets' => [], 'assets' => []];
+        self::$compose = ['composable' => true, 'descendants' => [], 'deps' => [], 'sets' => [], 'contrib' => []];
         try {
             $assembled = $this->renderCachedSkeleton();
             $c = self::$compose;
@@ -381,7 +444,7 @@ final class View {
                 'deps'        => $deps,
                 'descendants' => $c['descendants'],
                 'sets'        => $c['sets'],
-                'assets'      => $c['assets'],
+                'contrib'     => $c['contrib'],
             ]);
         }
 
@@ -414,7 +477,7 @@ final class View {
         }
     }
 
-    private static function composeCollect(array $deps, array $readsKeys, string $readsStamp, array $sets, array $assets): void {
+    private static function composeCollect(array $deps, array $readsKeys, string $readsStamp, array $sets, array $contrib): void {
         if (self::$compose === null) return;
 
         self::$compose['descendants'][] = [
@@ -423,7 +486,22 @@ final class View {
         ];
         foreach ($deps as $f)         self::$compose['deps'][$f]  = true;
         foreach ($sets as $k => $v)   self::$compose['sets'][$k]  = $v;
-        foreach ($assets as $op)      self::$compose['assets'][]  = $op;
+
+        // Payload узла задан относительно него самого. Даём контрибьюторам
+        // преобразовать свои слоты под координаты корня (Assets переносит позиции;
+        // тем, кому это не нужно, слушать событие не обязательно)...
+        self::fire('compose_collect', $contrib);
+
+        // ...затем обобщённо сливаем ВСЕ слоты в аккумулятор — так payload любого
+        // контрибьютора переживает composed без отдельного слушателя.
+        foreach ($contrib as $name => $slot) {
+            if ($slot === null) continue;
+
+            $prev = self::$compose['contrib'][$name] ?? null;
+            self::$compose['contrib'][$name] = $prev === null
+                ? $slot
+                : array_merge((array) $prev, (array) $slot);
+        }
     }
 
     private function build(): string {
@@ -515,14 +593,15 @@ final class View {
                 'poisoned' => false,
             ];
             
-            Assets::record();
-            Lang::record();
+            self::fire('cache_open');
 
             try {
                 $skeleton = $this->build();
             } finally {
-                $assetOps  = Assets::stopRecording();
-                $extraDeps = Lang::stopRecording();
+                $contrib   = [];
+                $extraDeps = [];
+                self::fire('cache_close', $extraDeps, $contrib);
+
                 $b = array_pop(self::$boundaries);
             }
 
@@ -533,7 +612,7 @@ final class View {
 
             if (!$poisoned) {
                 try {
-                    $payload = base64_encode(\serialize(['holes' => $holes, 'sets' => $sets, 'assets' => $assetOps]));
+                    $payload = base64_encode(\serialize(['holes' => $holes, 'sets' => $sets, 'contrib' => $contrib]));
                 } catch (\Throwable $e) {
                     $poisoned = true;
                 }
@@ -559,18 +638,21 @@ final class View {
         }
 
         if ($payload === null || $payload === '') {
-            $holes = $sets = $assets = [];
+            $holes = $sets = $contrib = [];
         } else {
-            $data   = \unserialize((string) base64_decode($payload), ['allowed_classes' => true]);
-            $holes  = is_array($data['holes']  ?? null) ? $data['holes']  : [];
-            $sets   = is_array($data['sets']   ?? null) ? $data['sets']   : [];
-            $assets = is_array($data['assets'] ?? null) ? $data['assets'] : [];
+            $data    = \unserialize((string) base64_decode($payload), ['allowed_classes' => true]);
+            $holes   = is_array($data['holes']   ?? null) ? $data['holes']   : [];
+            $sets    = is_array($data['sets']    ?? null) ? $data['sets']    : [];
+            $contrib = is_array($data['contrib'] ?? null) ? $data['contrib'] : [];
 
+            // Тело узла не исполнялось — восстанавливаем состояние подсистем.
+            // Позиции в payload относительны узлу, replay-слушатель разворачивает
+            // их по текущему пути.
             if ($fromCache)
-                Assets::replay($assets);
+                self::fire('cache_replay', $contrib);
         }
 
-        self::composeCollect($nodeDeps ?? [], $nodeReadsKeys ?? [], $nodeReadsStamp ?? '', $sets, $assets);
+        self::composeCollect($nodeDeps ?? [], $nodeReadsKeys ?? [], $nodeReadsStamp ?? '', $sets, $contrib);
 
         return $this->fillHoles($skeleton, $holes, $sets);
     }
@@ -599,7 +681,17 @@ final class View {
                 $child = new self($d['name'], $d['file'], $d['props'], $d['children'] ?? null);
                 $child->override = (array)($d['override'] ?? []);
                 $child->recomputeConfig();
-                $map[$token] = $child->output();
+
+                // Потомок рендерится позже тела родителя, но вкладываться обязан
+                // в место, зарезервированное при создании дырки.
+                $slots = (array)($d['slots'] ?? []);
+                self::fire('slot_enter', $slots);
+
+                try {
+                    $map[$token] = $child->output();
+                } finally {
+                    self::fire('slot_leave');
+                }
             }
         } finally {
             array_pop(self::$frames);
@@ -660,6 +752,11 @@ final class View {
                     'children' => $this->children,
                     'override' => $this->override,
                 ];
+                // Место занимаем СЕЙЧАС, пока мы на нужной позиции в теле
+                // родителя; рендер потомка произойдёт позже.
+                $slots = [];
+                self::fire('slot_reserve', $slots);
+                self::$boundaries[$i]['holes'][$token]['slots'] = $slots;
                 return $token;
             }
 
@@ -719,6 +816,8 @@ final class View {
         return max(0, count(self::$frames) - 1);
     }
 
+    // null => root (frame 0); i >= 0 counts up from the current view (0 = current, 1 = direct parent).
+    // So name() === name(deep()) and name(0) is the innermost frame. Out of range => null.
     private static function frameIndex(?int $i): ?int {
         $count = count(self::$frames);
         if ($count === 0) return null;

@@ -3,7 +3,7 @@
 namespace ST_system;
 
 use ST_system\Traits\HasConfig;
-use ST_system\Traits\HasEvents;
+use ST_system\Traits\HasStaticEvents;
 use ST_system\Traits\HasInstance;
 use ST_system\HTTP\Request;
 use ST_system\HTTP\Response;
@@ -58,9 +58,7 @@ final class Access {
         ];
     }
 
-    use HasEvents {
-        on as private _on;
-    }
+    use HasStaticEvents;
 
     private static $block = [
         'name'         => null,
@@ -80,10 +78,6 @@ final class Access {
             $config['dir'] = static::config('firewall.dir');
 
         $this->cache = CacheManager::make(static::config('salt') ?: 'st_access', $config);
-    }
-
-    public static function on(string $event, callable $listener): void {
-        self::getInstance()->_on($event, $listener);
     }
 
     private static function extractCredential(string $name, string $method): ?string {
@@ -233,7 +227,7 @@ final class Access {
     }
 
     public static function throw(int $code): void {
-        if (self::getInstance()->fire('throw', $code) === false)
+        if (self::fire('throw', $code) === false)
             Response::status($code)->header('X-Content-Type-Options', 'nosniff')->send();
     }
 
@@ -408,7 +402,7 @@ final class Access {
                 $reason = 'no_http2';
 
             if ($reason !== null) {
-                $self->fire('screen', $reason, $ip);
+                self::fire('screen', $reason, $ip);
                 self::throw(403);
                 return;
             }
@@ -417,7 +411,7 @@ final class Access {
         $verdict = self::matchRules($ip);
         if ($verdict === 'allow') return;
         if ($verdict === 'deny') {
-            $self->fire('deny', $ip);
+            self::fire('deny', $ip);
             self::throw(403);
             return;
         }
@@ -467,7 +461,7 @@ final class Access {
             $cache->set($self->seal($state), $ttl);
 
         if ($violated) {
-            $self->fire('ban', $ip);
+            self::fire('ban', $ip);
             self::throw(429);
         }
     }
@@ -489,7 +483,7 @@ final class Access {
             $entryTtl = max($entryTtl, (int)($l[1] ?? 0));
 
         $cache->set($self->seal($state), $entryTtl);
-        $self->fire('ban', $ip);
+        self::fire('ban', $ip);
     }
 
     public static function unbanIp(string $ip): void {
@@ -514,13 +508,12 @@ final class Access {
             $cache->set($self->seal($state), $entryTtl);
         }
 
-        $self->fire('unban', $ip);
+        self::fire('unban', $ip);
     }
 
     public static function unbanAll(): void {
-        $self = self::getInstance();
-        $self->cache->purgeBase();
-        $self->fire('unbanAll');
+        self::getInstance()->cache->purgeBase();
+        self::fire('unbanAll');
     }
 
     public static function verifyBot(?array $signatures = null): bool {
@@ -568,7 +561,7 @@ final class Access {
         if (!isset($cached['v']))
             $cache->set($self->seal(['v' => $verified ? 1 : 0]), 3600);
 
-        if ($verified) $self->fire('verifiedBot', $ip, $ua);
+        if ($verified) self::fire('verifiedBot', $ip, $ua);
 
         return $verified;
     }

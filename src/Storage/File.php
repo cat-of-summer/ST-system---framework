@@ -119,6 +119,38 @@ final class File extends Resource {
         return parent::__call($name, $args);
     }
 
+    // Директории, просмотренные find() при раскрытии директорий и glob-шаблонов.
+    // Нужны потребителям с кешем (View): состав такой директории — часть входных
+    // данных, поэтому её mtime обязан участвовать в инвалидации, иначе добавление
+    // нового файла в директорию останется незамеченным.
+    //
+    // Стек кадров синхронизирован с границами кеша View (cache_open/cache_close):
+    // find() пишет в верхний кадр, поэтому каждая директория приписывается той
+    // границе, во время рендера которой её просматривали. Вне рендера стек пуст —
+    // ничего не копится. Наружу торчит только registerViewEvents().
+    private static array $scanned_stack = [];
+
+    private static bool $view_events_registered = false;
+
+    public static function registerViewEvents(): void {
+        if (self::$view_events_registered) return;
+        self::$view_events_registered = true;
+
+        \ST_system\View::on('cache_open',  static function () {
+            self::$scanned_stack[] = [];
+        });
+        \ST_system\View::on('cache_close', static function (array &$deps, array &$payload) {
+            $frame = self::$scanned_stack ? array_pop(self::$scanned_stack) : [];
+            if ($frame) $deps = array_merge($deps, array_keys($frame));
+        });
+    }
+
+    private static function noteScannedDir(string $dir): void {
+        if ($dir === '' || !self::$scanned_stack || !is_dir($dir)) return;
+
+        self::$scanned_stack[array_key_last(self::$scanned_stack)][$dir] = true;
+    }
+
     private static function getFilesystemIterator(string $start_dir, array $config): object {
         $flags = \FilesystemIterator::SKIP_DOTS | \FilesystemIterator::CURRENT_AS_FILEINFO | ($config['sym_links'] ? \FilesystemIterator::FOLLOW_SYMLINKS : 0);
 
@@ -172,10 +204,14 @@ final class File extends Resource {
             if (!$hasGlob) {
                 if (file_exists($i)) {
                     if (is_dir($i)) {
+                        self::noteScannedDir($i);
                         $iterator = static::getFilesystemIterator($i, $config);
 
                         foreach ($iterator as $file)
                             if ($file->isFile() && (!isset($config['extension']) || in_array($file->getExtension(), $config['extension'], true))) {
+                                // При рекурсивном обходе новый файл меняет mtime только
+                                // своей поддиректории, поэтому отмечаем каждую.
+                                self::noteScannedDir($file->getPath());
                                 $results[$file->getPathname()] = $file->getPathname();
 
                                 if ($config['max_files'] > 0 && count($results) >= $config['max_files'] )
@@ -197,6 +233,8 @@ final class File extends Resource {
 
                 if (!is_dir($start_dir) || !is_readable($start_dir))
                     throw new \InvalidArgumentException("Start directory '{$start_dir}' does not exist or is not readable.");
+
+                self::noteScannedDir($start_dir);
 
                 $pattern = str_replace('\\', '/', $dir_prefix) . substr($i, $regex_offset);
 

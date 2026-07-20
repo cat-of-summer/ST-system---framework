@@ -3,8 +3,7 @@
 namespace ST_system;
 
 use ST_system\Traits\HasConfig;
-use ST_system\Traits\HasEvents;
-use ST_system\Traits\HasInstance;
+use ST_system\Traits\HasStaticEvents;
 use ST_system\Cache\CacheManager;
 
 final class Lang {
@@ -14,17 +13,9 @@ final class Lang {
         config     as private traitConfig;
     }
 
-    use HasInstance;
-
-    use HasEvents {
-        on as private _on;
-    }
+    use HasStaticEvents;
 
     private function __construct() {}
-
-    public static function on(string $event, callable $listener): void {
-        self::getInstance()->_on($event, $listener);
-    }
 
     protected static function getReservedEvents(): array {
         return ['source_call'];
@@ -49,8 +40,8 @@ final class Lang {
 
     private const RESERVED = [
         'get', 'set', 'has', 'choice', 'config', 'setConfig', 'applyConfig',
-        'purge', 'getUsedFiles', 'sources', 'record', 'stopRecording',
-        'on', 'trigger', 'lockLocale',
+        'purge', 'getUsedFiles', 'sources',
+        'on', 'trigger', 'lockLocale', 'registerViewEvents',
     ];
 
     private const STRUCTURAL = ['dir', 'source', 'extensions', 'dir_name', 'cache'];
@@ -69,6 +60,7 @@ final class Lang {
     private static array  $found       = [];
     private static array  $resolving   = [];
     private static bool   $localeLocked = false;
+    private static bool   $view_events_registered = false;
 
     public static function lockLocale(?string $locale = null): void {
         if (self::$localeLocked)
@@ -136,7 +128,7 @@ final class Lang {
 
         $key = (string)array_shift($args);
 
-        self::getInstance()->fire('source_call', $name, $key);
+        self::fire('source_call', $name, $key);
 
         return self::get($name.':'.$key, ...$args);
     }
@@ -204,6 +196,38 @@ final class Lang {
         self::$merged = [];
     }
 
+    /* ==================================================================
+     *  Вклад Lang в кеш View через его события. View находит
+     *  registerViewEvents() по имени и зовёт его. Публично торчит только
+     *  этот метод; отслеживание файлов, ключ локали и отпечаток
+     *  рантайм-переводов — приватные.
+     * ================================================================== */
+
+    public static function registerViewEvents(): void {
+        if (self::$view_events_registered) return;
+        self::$view_events_registered = true;
+
+        // Локаль и рантайм-переопределения (Lang::set) не отслеживаются по mtime:
+        // при смене языка файлы не меняются, поэтому они идут прямо в ключ.
+        // Иначе запись, собранная под одним языком, была бы отдана под другим.
+        View::on('cache_key', static function (array &$parts) {
+            $parts['lang'] = [self::config('locale'), self::runtimeStamp()];
+        });
+
+        // Прочитанные языковые файлы — в deps границы (инвалидация по mtime).
+        View::on('cache_open',  static function () { self::record(); });
+        View::on('cache_close', static function (array &$deps, array &$payload) {
+            $paths = self::stopRecording();
+            if ($paths) $deps = array_merge($deps, $paths);
+        });
+        // cache_replay Lang не слушает: переводы уже запечены в скелет.
+    }
+
+    /** Отпечаток рантайм-переопределений (Lang::set()); пусто, если их нет. */
+    private static function runtimeStamp(): string {
+        return self::$runtime ? Main::hash(self::$runtime) : '';
+    }
+
     public static function purge(): void {
         $seen = [];
 
@@ -228,11 +252,11 @@ final class Lang {
         return array_keys(self::$usedFiles);
     }
 
-    public static function record(): void {
+    private static function record(): void {
         self::$recording[] = [];
     }
 
-    public static function stopRecording(): array {
+    private static function stopRecording(): array {
         return self::$recording ? array_values(array_unique(array_pop(self::$recording))) : [];
     }
 

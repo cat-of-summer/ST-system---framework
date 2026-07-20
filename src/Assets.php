@@ -29,10 +29,27 @@ final class Assets {
         return '<!-- __ASSETS__:'.$salt[$name].':'.$name.'__ -->';
     }
 
-    private static array $buffers       = [];
-    private static array $stack         = [];
-    private static array $recording     = [];
-    private static int   $orchestration = 0;
+    private static array $buffers = [];
+    private static array $stack   = [];
+
+    // Пока View рендерит, Assets в immediate-режиме: выводом владеет View, свою
+    // буферизацию не включаем. Флаг ставят слушатели render_open/render_close.
+    private static bool $rendering = false;
+
+    /**
+     * Позиции ассетов в ДОКУМЕНТЕ, а не в порядке исполнения. Под кешем потомок
+     * рендерится позже тела родителя (из дырки), поэтому каждый элемент несёт
+     * путь вида [2,0,1], и буфер сортируется по нему. Стек кадров: slot_enter
+     * толкает кадр потомка, slot_leave снимает.
+     */
+    private static array $positions = [];
+
+    /** Стек кадров лога операций (по кадру на границу кеша). */
+    private static array $recording = [];
+
+    /** Стек кадров зависимостей-директорий (раскрытых File::find). */
+    /** Идемпотентность подписки на события View. */
+    private static bool $view_events_registered = false;
 
     private File $file;
     private string $buffer;
@@ -115,38 +132,146 @@ final class Assets {
         return end(self::$stack) ?: static::config('default_buffer');
     }
 
-    public static function beginOrchestration(): void {
-        self::$orchestration++;
+    /* ==================================================================
+     *  Вклад в кеш View: подписка на события его жизненного цикла.
+     *  View находит registerViewEvents() по имени (утиная типизация, без
+     *  общего интерфейса) и зовёт его. Публично отсюда торчит только этот
+     *  метод; вся кеш-механика ниже — приватная, её дёргают слушатели.
+     * ================================================================== */
+
+    public static function registerViewEvents(): void {
+        if (self::$view_events_registered) return;
+        self::$view_events_registered = true;
+
+        View::on('render_open',     static function () { self::$rendering = true; });
+        View::on('render_finalize', static function (string &$html) { $html = self::finalize($html); });
+        View::on('render_close',    static function () { self::$rendering = false; });
+
+        View::on('cache_open',   static function () { self::openFrame(); });
+        View::on('cache_close',  static function (array &$deps, array &$payload) { self::closeFrame($deps, $payload); });
+        View::on('cache_replay', static function (array $payload) { self::replayFrom($payload); });
+
+        View::on('slot_reserve', static function (array &$slots) { $slots['assets'] = self::reserveSlot(); });
+        View::on('slot_enter',   static function (array $slots) { self::enterSlot($slots['assets'] ?? null); });
+        View::on('slot_leave',   static function () { self::leaveSlot(); });
+
+        View::on('compose_collect', static function (array &$contrib) {
+            // Переносим позиции ассетов в координаты корня прямо в слоте узла;
+            // слияние в аккумулятор делает View обобщённо.
+            if (isset($contrib['assets']) && is_array($contrib['assets']))
+                $contrib['assets'] = self::rebase($contrib['assets']);
+        });
     }
 
-    public static function endOrchestration(): void {
-        if (self::$orchestration > 0) self::$orchestration--;
+    /* ------------------------------------------------ границы кеша */
+
+    private static function openFrame(): void {
+        self::$recording[] = ['ops' => [], 'depth' => count(self::currentPath())];
     }
+
+    private static function closeFrame(array &$deps, array &$payload): void {
+        // Директории-зависимости отслеживает сам File (свой контрибьютор), здесь
+        // только лог операций для реплея.
+        $frame = self::$recording ? array_pop(self::$recording) : ['ops' => []];
+        $payload['assets'] = $frame['ops'];
+    }
+
+    /** Узел взят из кеша: позиции в payload относительны, разворачиваем по текущему пути. */
+    private static function replayFrom(array $payload): void {
+        $ops = $payload['assets'] ?? null;
+        if (!is_array($ops) || !$ops) return;
+
+        self::replay(self::rebase($ops));
+    }
+
+    private static function rebase(array $ops): array {
+        $base = self::currentPath();
+        foreach ($ops as &$op)
+            $op['pos'] = array_merge($base, (array)($op['pos'] ?? []));
+        unset($op);
+
+        return $ops;
+    }
+
+    /* --------------------------------------------------- вложенность */
+
+    private static function reserveSlot(): array {
+        // Путь ОТНОСИТЕЛЬНО узла: дырка едет в кеш вместе с ним и при следующей
+        // отдаче может оказаться в другом месте документа.
+        return array_slice(self::nextPos(), self::recordingDepth());
+    }
+
+    private static function enterSlot($slot): void {
+        // Без зарезервированного места (запись старого формата) занимаем новое.
+        $path = $slot === null
+            ? self::nextPos()
+            : array_merge(self::currentPath(), (array) $slot);
+
+        self::$positions[] = ['path' => $path, 'n' => 0];
+    }
+
+    private static function leaveSlot(): void {
+        if (self::$positions) array_pop(self::$positions);
+    }
+
+    /* -------------------------------------------------------- позиции */
 
     private static function immediate(): bool {
-        return self::$orchestration > 0 || !static::config('bufferization');
+        return self::$rendering || !static::config('bufferization');
     }
 
-    public static function record(): void {
-        self::$recording[] = [];
+    private static function currentPath(): array {
+        if (!self::$positions) self::$positions[] = ['path' => [], 'n' => 0];
+
+        return self::$positions[array_key_last(self::$positions)]['path'];
     }
 
-    public static function stopRecording(): array {
-        return self::$recording ? (array) array_pop(self::$recording) : [];
+    private static function nextPos(): array {
+        if (!self::$positions) self::$positions[] = ['path' => [], 'n' => 0];
+
+        $i      = array_key_last(self::$positions);
+        $path   = self::$positions[$i]['path'];
+        $path[] = self::$positions[$i]['n']++;
+
+        return $path;
     }
 
-    private static function recordOp(array $op): void {
-        if (self::$recording)
-            self::$recording[array_key_last(self::$recording)][] = $op;
+    private static function recordingDepth(): int {
+        return self::$recording
+            ? self::$recording[array_key_last(self::$recording)]['depth']
+            : 0;
     }
 
-    public static function replay(array $ops): void {
+    private static function comparePos(array $a, array $b): int {
+        $n = min(count($a), count($b));
+
+        for ($i = 0; $i < $n; $i++)
+            if ($a[$i] !== $b[$i]) return $a[$i] <=> $b[$i];
+
+        return count($a) <=> count($b);
+    }
+
+    private static function recordOp(array $op, array $pos): void {
+        if (!self::$recording) return;
+
+        $i        = array_key_last(self::$recording);
+        $op['pos'] = array_slice($pos, self::$recording[$i]['depth']);
+
+        self::$recording[$i]['ops'][] = $op;
+    }
+
+    /**
+     * Повторно применяет лог операций. Позиции в $ops уже абсолютные —
+     * их развернул rebase() перед вызовом.
+     */
+    private static function replay(array $ops): void {
         foreach ($ops as $op) {
             $buffer = (string)($op['buffer'] ?? static::config('default_buffer'));
             $kind   = (string)($op['op'] ?? '');
+            $pos    = (array)($op['pos'] ?? []);
 
             if ($kind === 'content') {
-                self::storeAsset((string)($op['html'] ?? ''), $buffer);
+                self::storeAsset((string)($op['html'] ?? ''), $buffer, $pos);
                 continue;
             }
 
@@ -157,7 +282,7 @@ final class Assets {
                 $key   = Main::hash([$file->getPathname(), $attrs]);
                 if (isset(self::$buffers[$buffer]['seen_assets'][$key])) continue;
                 self::$buffers[$buffer]['seen_assets'][$key] = true;
-                self::$buffers[$buffer]['assets'][(string)($op['type'] ?? '')][] = ['file' => $file, 'attrs' => $attrs];
+                self::$buffers[$buffer]['assets'][(string)($op['type'] ?? '')][] = ['file' => $file, 'attrs' => $attrs, 'pos' => $pos];
             }
         }
     }
@@ -165,7 +290,9 @@ final class Assets {
     private static function ensureBuffer(string $name): void {
         if (!isset(self::$buffers[$name]))
             self::$buffers[$name] = [
-                'content'      => '',
+                // Список ['pos' => путь, 'html' => строка]: порядок задаёт не
+                // момент добавления, а позиция в документе.
+                'content'      => [],
                 'started'      => false,
                 'seen_assets'  => [],
                 'seen_strings' => [],
@@ -173,22 +300,37 @@ final class Assets {
             ];
     }
 
-    private static function unpackBuffer(string $name): string {
+    /** Строковые ассеты буфера, склеенные в порядке документа. */
+    private static function contentHtml(string $name): string {
         self::ensureBuffer($name);
-        $content = self::$buffers[$name]['content'];
-        self::$buffers[$name]['content'] = '';
+
+        $items = self::$buffers[$name]['content'];
+        usort($items, fn($a, $b) => self::comparePos($a['pos'], $b['pos']));
+
+        return implode('', array_column($items, 'html'));
+    }
+
+    private static function unpackBuffer(string $name): string {
+        $content = self::contentHtml($name);
+        self::$buffers[$name]['content'] = [];
         return $content;
     }
 
-    private static function storeAsset(string $html, string $buffer): void {
+    private static function storeAsset(string $html, string $buffer, ?array $pos = null): void {
         self::ensureBuffer($buffer);
 
         $key = md5($html);
         if (isset(self::$buffers[$buffer]['seen_strings'][$key])) return;
 
+        // Позиция задана снаружи => это повтор из кеша, записывать его в лог не
+        // нужно: он там уже есть. Своя позиция => живая регистрация.
+        $live = $pos === null;
+        $pos ??= self::nextPos();
+
         self::$buffers[$buffer]['seen_strings'][$key] = true;
-        self::$buffers[$buffer]['content'] .= $html;
-        self::recordOp(['op' => 'content', 'html' => $html, 'buffer' => $buffer]);
+        self::$buffers[$buffer]['content'][] = ['pos' => $pos, 'html' => $html];
+
+        if ($live) self::recordOp(['op' => 'content', 'html' => $html, 'buffer' => $buffer], $pos);
     }
 
     private static function mount(string $name): void {
@@ -254,6 +396,10 @@ final class Assets {
             $items = self::$buffers[$buffer]['assets'][$type] ?? [];
             if (!$items) continue;
 
+            // Порядок документа, а не порядок регистрации: потомок, отданный из
+            // кеша, регистрируется позже родителя, но стоять должен на своём месте.
+            usort($items, fn($a, $b) => self::comparePos($a['pos'] ?? [], $b['pos'] ?? []));
+
             $groups = [];
             foreach ($items as $item)
                 $groups[Main::hash($item['attrs'])][] = $item;
@@ -284,24 +430,28 @@ final class Assets {
         $buffer = $buffer !== '' ? $buffer : self::currentBuffer();
         self::ensureBuffer($buffer);
 
-        foreach (File::find($src, ['fallback' => 'make']) as $file) {
+        $found = File::find($src, ['fallback' => 'make']);
+
+        foreach ($found as $file) {
             $key = Main::hash([$file->getPathname(), $attrs]);
             if (isset(self::$buffers[$buffer]['seen_assets'][$key])) continue;
 
+            $pos = self::nextPos();
+
             self::$buffers[$buffer]['seen_assets'][$key] = true;
-            self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs];
-            self::recordOp(['op' => 'asset', 'type' => $type, 'path' => $file->getPathname(), 'attrs' => $attrs, 'buffer' => $buffer]);
+            self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs, 'pos' => $pos];
+            self::recordOp(['op' => 'asset', 'type' => $type, 'path' => $file->getPathname(), 'attrs' => $attrs, 'buffer' => $buffer], $pos);
         }
     }
 
     private static function finalize(string $html): string {
-        foreach (self::$buffers as $name => &$buf) {
-            $replacement = $buf['content'] . self::buildAssetsHtml($name);
+        foreach (array_keys(self::$buffers) as $name) {
+            $replacement = self::contentHtml($name) . self::buildAssetsHtml($name);
             $html = str_replace(self::placeholder($name), $replacement, $html);
-            $buf['started'] = false;
-            $buf['content'] = '';
+
+            self::$buffers[$name]['started'] = false;
+            self::$buffers[$name]['content'] = [];
         }
-        unset($buf);
 
         return $html;
     }
@@ -424,7 +574,9 @@ final class Assets {
         $buffer = $buffer !== '' ? $buffer : self::currentBuffer();
         self::ensureBuffer($buffer);
 
-        foreach (File::find($path, ['fallback' => 'make']) as $file) {
+        $found = File::find($path, ['fallback' => 'make']);
+
+        foreach ($found as $file) {
             $mime = $file->getMime();
             $type = strpos($mime, 'font/') === 0   ? 'fonts'
                   : ($mime === 'text/css'           ? 'css'
@@ -434,9 +586,12 @@ final class Assets {
             if ($type !== null) {
                 $key = Main::hash([$file->getPathname(), $attrs]);
                 if (isset(self::$buffers[$buffer]['seen_assets'][$key])) continue;
+
+                $pos = self::nextPos();
+
                 self::$buffers[$buffer]['seen_assets'][$key] = true;
-                self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs];
-                self::recordOp(['op' => 'asset', 'type' => $type, 'path' => $file->getPathname(), 'attrs' => $attrs, 'buffer' => $buffer]);
+                self::$buffers[$buffer]['assets'][$type][] = ['file' => $file, 'attrs' => $attrs, 'pos' => $pos];
+                self::recordOp(['op' => 'asset', 'type' => $type, 'path' => $file->getPathname(), 'attrs' => $attrs, 'buffer' => $buffer], $pos);
                 continue;
             }
 
