@@ -322,7 +322,7 @@ final class Access {
         return self::normalizeIp($ip) === self::normalizeIp($pattern);
     }
 
-    private function salt(): string {
+    private static function salt(): string {
         static $salt = null;
 
         if ($salt === null)
@@ -331,7 +331,7 @@ final class Access {
         return (string)$salt;
     }
 
-    private function xorStream(string $data, string $salt): string {
+    public static function xorStream(string $data, string $salt): string {
         $out = '';
         $len = strlen($data);
 
@@ -341,21 +341,21 @@ final class Access {
         return $out;
     }
 
-    private function seal(array $state): string {
+    public static function seal(array $state, string $salt = ''): string {
         $json = (string)json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $salt = $this->salt();
+        $salt = $salt !== '' ? $salt : self::salt();
 
         if (empty($salt)) return $json;
 
-        $ct = $this->xorStream($json, $salt);
+        $ct = self::xorStream($json, $salt);
 
         return substr(hash_hmac('sha256', $ct, $salt, true), 0, 8) . $ct;
     }
 
-    private function unseal(?string $blob): array {
+    public static function unseal(?string $blob, string $salt = ''): array {
         if ($blob === null) return [];
 
-        $salt = $this->salt();
+        $salt = $salt !== '' ? $salt : self::salt();
 
         if (empty($salt)) {
             $data = json_decode($blob, true);
@@ -369,7 +369,7 @@ final class Access {
 
         if (!hash_equals($tag, substr(hash_hmac('sha256', $ct, $salt, true), 0, 8))) return [];
 
-        $data = json_decode($this->xorStream($ct, $salt), true);
+        $data = json_decode(self::xorStream($ct, $salt), true);
 
         return is_array($data) ? $data : [];
     }
@@ -417,8 +417,8 @@ final class Access {
         }
 
         $now   = time();
-        $cache = $self->cache->make(['access:fw', substr(hash('sha256', $self->salt().'|'.$ip), 0, 32)]);
-        $state = $self->unseal($cache->get());
+        $cache = $self->cache->make(['access:fw', substr(hash('sha256', self::salt().'|'.$ip), 0, 32)]);
+        $state = self::unseal($cache->get());
 
         if (($state['ban'] ?? 0) > $now) {
             self::throw(429);
@@ -458,7 +458,7 @@ final class Access {
         }
 
         if ($state)
-            $cache->set($self->seal($state), $ttl);
+            $cache->set(self::seal($state), $ttl);
 
         if ($violated) {
             self::fire('ban', $ip);
@@ -474,15 +474,15 @@ final class Access {
 
         $ttl = $ttl ?: (int)self::config('firewall.ttl');
 
-        $cache = $self->cache->make(['access:fw', substr(hash('sha256', $self->salt().'|'.$ip), 0, 32)]);
-        $state = $self->unseal($cache->get());
+        $cache = $self->cache->make(['access:fw', substr(hash('sha256', self::salt().'|'.$ip), 0, 32)]);
+        $state = self::unseal($cache->get());
         $state['ban'] = time() + $ttl;
 
         $entryTtl = $ttl;
         foreach ((array)self::config('firewall.limits') as $l)
             $entryTtl = max($entryTtl, (int)($l[1] ?? 0));
 
-        $cache->set($self->seal($state), $entryTtl);
+        $cache->set(self::seal($state), $entryTtl);
         self::fire('ban', $ip);
     }
 
@@ -492,8 +492,8 @@ final class Access {
         if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false)
             throw new \InvalidArgumentException("Access::unbanIp(): invalid IP '{$ip}'");
 
-        $cache = $self->cache->make(['access:fw', substr(hash('sha256', $self->salt().'|'.$ip), 0, 32)]);
-        $state = $self->unseal($cache->get());
+        $cache = $self->cache->make(['access:fw', substr(hash('sha256', self::salt().'|'.$ip), 0, 32)]);
+        $state = self::unseal($cache->get());
         if (!$state) return;
 
         unset($state['ban']);
@@ -505,7 +505,7 @@ final class Access {
             foreach ((array)self::config('firewall.limits') as $l)
                 $entryTtl = max($entryTtl, (int)($l[1] ?? 0));
 
-            $cache->set($self->seal($state), $entryTtl);
+            $cache->set(self::seal($state), $entryTtl);
         }
 
         self::fire('unban', $ip);
@@ -530,8 +530,8 @@ final class Access {
         if ($ptrOk === null) return false;
 
         $self   = self::getInstance();
-        $cache  = $self->cache->make(['access:bot', substr(hash('sha256', $self->salt().'|'.$ip.'|'.$ua), 0, 32)]);
-        $cached = $self->unseal($cache->get());
+        $cache  = $self->cache->make(['access:bot', substr(hash('sha256', self::salt().'|'.$ip.'|'.$ua), 0, 32)]);
+        $cached = self::unseal($cache->get());
 
         if (isset($cached['v'])) {
             $verified = (bool)$cached['v'];
@@ -559,7 +559,7 @@ final class Access {
         }
 
         if (!isset($cached['v']))
-            $cache->set($self->seal(['v' => $verified ? 1 : 0]), 3600);
+            $cache->set(self::seal(['v' => $verified ? 1 : 0]), 3600);
 
         if ($verified) self::fire('verifiedBot', $ip, $ua);
 
