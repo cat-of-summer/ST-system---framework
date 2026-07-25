@@ -10,8 +10,8 @@
 # ST_system
 
 Модульная PHP-библиотека (namespace `ST_system`): конфигурация, маршрутизация,
-HTTP, кэш, файловое хранилище, генерация структурированных данных (Schema.org /
-Яндекс), интеграции с внешними API и консольные команды.
+HTTP, кэш, капча, файловое хранилище, генерация структурированных данных
+(Schema.org / Яндекс), интеграции с внешними API и консольные команды.
 
 - **PHP:** `>= 7.4`
 - **Зависимости:** нет
@@ -115,7 +115,6 @@ use ST_system\HTTP\Request;
 | `Drivers\Geo\IpInfo` | Геоданные по IP-адресу | [src/API/Drivers/Geo/IpInfo.php.md](src/API/Drivers/Geo/IpInfo.php.md) |
 | `Drivers\Geo\SxGeo` | Геоданные по IP (Sypex Geo: локальная БД + REST API) | [src/API/Drivers/Geo/](src/API/Drivers/Geo/) |
 | `Drivers\Geo\GeoIP2` | Геоданные по IP (MaxMind GeoIP2/GeoLite2: .mmdb + web-service) | [src/API/Drivers/Geo/](src/API/Drivers/Geo/) |
-| `Drivers\SmartCaptcha` | Yandex SmartCaptcha (проверка токена) | [src/API/Drivers/SmartCaptcha.php.md](src/API/Drivers/SmartCaptcha.php.md) |
 | `Drivers\Telegraph` | Публикация статей в Telegra.ph | [src/API/Drivers/Telegraph.php.md](src/API/Drivers/Telegraph.php.md) |
 
 **Эквайринг (`API\Drivers\Acquiring`)**
@@ -183,6 +182,22 @@ use ST_system\HTTP\Request;
 | `Drivers\Memcached\MemcachedAdapterInterface` | Контракт Memcached-адаптера | [src/Cache/Drivers/Memcached/MemcachedAdapterInterface.php.md](src/Cache/Drivers/Memcached/MemcachedAdapterInterface.php.md) |
 | `Drivers\Memcached\MemcachedExtAdapter` | Адаптер расширения `Memcached` (libmemcached) | [src/Cache/Drivers/Memcached/MemcachedExtAdapter.php.md](src/Cache/Drivers/Memcached/MemcachedExtAdapter.php.md) |
 | `Drivers\Memcached\MemcacheExtAdapter` | Адаптер легаси-расширения `Memcache` | [src/Cache/Drivers/Memcached/MemcacheExtAdapter.php.md](src/Cache/Drivers/Memcached/MemcacheExtAdapter.php.md) |
+
+### Captcha
+
+| Класс | Назначение | Документация |
+|-------|------------|--------------|
+| `Captcha\CaptchaManager` | Фасад капчи, выбор и конфигурация драйвера | [src/Captcha/CaptchaManager.php.md](src/Captcha/CaptchaManager.php.md) |
+| `Captcha\CaptchaDriver` | Абстрактный драйвер капчи: состояние, HTML, JS, проверка | [src/Captcha/CaptchaDriver.php.md](src/Captcha/CaptchaDriver.php.md) |
+| `Captcha\Behavior` | Сбор и скоринг поведенческих факторов | [src/Captcha/Behavior.php.md](src/Captcha/Behavior.php.md) |
+| `Drivers\InvisibleCaptchaDriver` | Невидимая капча: только поведенческие факторы | [src/Captcha/Drivers/InvisibleCaptchaDriver.php.md](src/Captcha/Drivers/InvisibleCaptchaDriver.php.md) |
+| `Drivers\CheckboxCaptchaDriver` | Чекбокс + принудительные поведенческие факторы | [src/Captcha/Drivers/CheckboxCaptchaDriver.php.md](src/Captcha/Drivers/CheckboxCaptchaDriver.php.md) |
+| `Drivers\SwipeCaptchaDriver` | Свайп ручки слева направо | [src/Captcha/Drivers/SwipeCaptchaDriver.php.md](src/Captcha/Drivers/SwipeCaptchaDriver.php.md) |
+| `Drivers\TextCaptchaDriver` | Картинка со случайными шрифтами, ввод текста | [src/Captcha/Drivers/TextCaptchaDriver.php.md](src/Captcha/Drivers/TextCaptchaDriver.php.md) |
+| `Drivers\SmartCaptchaDriver` | Yandex SmartCaptcha под общим контрактом | [src/Captcha/Drivers/SmartCaptchaDriver.php.md](src/Captcha/Drivers/SmartCaptchaDriver.php.md) |
+| `Drivers\Image\ImageAdapterInterface` | Контракт адаптера отрисовки | [src/Captcha/Drivers/Image/ImageAdapterInterface.php.md](src/Captcha/Drivers/Image/ImageAdapterInterface.php.md) |
+| `Drivers\Image\GdAdapter` | Отрисовка через GD | [src/Captcha/Drivers/Image/GdAdapter.php.md](src/Captcha/Drivers/Image/GdAdapter.php.md) |
+| `Drivers\Image\ImagickAdapter` | Отрисовка через Imagick | [src/Captcha/Drivers/Image/ImagickAdapter.php.md](src/Captcha/Drivers/Image/ImagickAdapter.php.md) |
 
 ### Storage
 
