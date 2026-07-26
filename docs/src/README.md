@@ -5,6 +5,7 @@
 
 - [API](API/)
 - [Cache](Cache/)
+- [Captcha](Captcha/)
 - [CensorText](CensorText/)
 - [Console](Console/)
 - [HTTP](HTTP/)

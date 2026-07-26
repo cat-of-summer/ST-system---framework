@@ -15,7 +15,6 @@
 
 - [Isdayoff.php](Isdayoff.php.md)
 - [Sdek.php](Sdek.php.md)
-- [SmartCaptcha.php](SmartCaptcha.php.md)
 - [SmsRu.php](SmsRu.php.md)
 - [Telegraph.php](Telegraph.php.md)
 
