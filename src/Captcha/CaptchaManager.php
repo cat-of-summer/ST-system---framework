@@ -110,17 +110,20 @@ final class CaptchaManager {
             return;
         }
 
-        $requested = $config['driver'] ?? static::config('drivers.default');
-        $default   = static::config('drivers.default');
+        $explicit  = array_key_exists('driver', $config);
+        $requested = $explicit ? $config['driver'] : static::config('drivers.default');
         unset($config['driver']);
 
-        $primaryClass = static::config('drivers.available.'.$requested) ?: $requested;
-        $defaultClass = static::config('drivers.available.'.$default)   ?: $default;
+        $class = static::config('drivers.available.'.$requested) ?: $requested;
 
-        $this->driver = static::makeDriver($primaryClass, $key, $config);
+        $this->driver = static::makeDriver($class, $key, $config);
 
-        if (!$this->driver->isAvailable() && $primaryClass !== $defaultClass)
-            $this->driver = static::makeDriver($defaultClass, $key, $config);
+        if ($this->driver->isAvailable()) return;
+
+        throw new \RuntimeException(
+            "Captcha driver '{$requested}' ({$class}), "
+            .($explicit ? 'requested explicitly' : 'taken from drivers.default').', is not available'
+        );
     }
 
     private static function makeDriver($class, $key, array $config): CaptchaDriver {

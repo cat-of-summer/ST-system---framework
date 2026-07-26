@@ -95,7 +95,7 @@ window.STCaptcha && STCaptcha.register('swipe', class extends STCaptcha.Driver {
         }
 
         handle.addEventListener('pointerdown', function (e) {
-            if (e.isTrusted === false) return;
+            if (e.isTrusted === false || self.solvedFlag) return;
 
             dragging  = true;
             origin    = e.clientX - offset;
@@ -126,12 +126,25 @@ window.STCaptcha && STCaptcha.register('swipe', class extends STCaptcha.Driver {
                 return;
             }
 
+            handle.style.cursor = 'default';
+
             self.solve(JSON.stringify({ pct: percent, path: path }));
         }
 
         handle.addEventListener('pointerup', release);
         handle.addEventListener('pointercancel', release);
         handle.addEventListener('lostpointercapture', release);
+
+        this.onReset = function () {
+            place(0);
+            path = [];
+            handle.style.cursor = '';
+        };
+    }
+
+    reset() {
+        super.reset();
+        if (this.onReset) this.onReset();
     }
 });
 JS;

@@ -47,6 +47,10 @@ window.STCaptcha && STCaptcha.register('checkbox', class extends STCaptcha.Drive
 
         if (!box) return;
 
+        box.addEventListener('click', function (e) {
+            if (self.solvedFlag) e.preventDefault();
+        });
+
         box.addEventListener('change', function (e) {
             if (e.isTrusted === false) {
                 box.checked = false;
@@ -54,9 +58,23 @@ window.STCaptcha && STCaptcha.register('checkbox', class extends STCaptcha.Drive
                 return;
             }
 
-            if (box.checked) self.solve(self.cfg.nonce);
-            else             self.fail('unchecked');
+            if (box.checked) {
+                box.style.cursor = 'default';
+                self.solve(self.cfg.nonce);
+            } else {
+                self.fail('unchecked');
+            }
         });
+
+        this.onReset = function () {
+            box.checked = false;
+            box.style.cursor = '';
+        };
+    }
+
+    reset() {
+        super.reset();
+        if (this.onReset) this.onReset();
     }
 });
 JS;
