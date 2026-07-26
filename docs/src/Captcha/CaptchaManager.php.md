@@ -106,4 +106,27 @@ if (!$captcha->check(Request::post()))
 Неизвестное статическое имя, не совпадающее ни с одним драйвером, бросает
 `\BadMethodCallException`.
 
-См. также: `Captcha\CaptchaDriver`, `Captcha\Behavior`, `Cache\CacheManager`, `Access`.
+Два публичных статических метода менеджера не проксируются и не могут быть именами драйверов:
+`registerViewEvents()` и `markLive()` — см. ниже.
+
+## Контрибьютор `View`
+
+`CaptchaManager` — четвёртый встроенный контрибьютор [`View`](../View.php.md) (рядом с `Assets`,
+`Lang` и `Storage\File`), `View` зовёт его `registerViewEvents()` автоматически из конфига
+`contributors`. Подписка ровно одна:
+
+- на `render_open` — `CaptchaDriver::resetEmitted()`, то есть флаги «базовый JS/CSS уже выдан»
+  привязываются к рендеру, а не к процессу. Без этого второй запрос в долгоживущем воркере остался
+  бы без клиентской части капчи.
+
+Обратное направление — `markLive()`: его зовёт `CaptchaDriver::putCaptcha()`, чтобы объявить свой
+вывод некешируемым (`View::live()`). Гард `class_exists(View::class, false)` не даёт капче тянуть за
+собой `View` там, где она используется standalone; вне рендера вызов всё равно ничего не делает.
+
+Кеш-события (`cache_open`/`cache_close`/`cache_replay`/`cache_key`) менеджеру не нужны: в кеш `View`
+ничего связанного с капчей не попадает по построению, а каталог шрифтов `TextCaptchaDriver` в
+зависимости добавляет `Storage\File` — свой контрибьютор на тех же событиях.
+
+Подробности — в [CaptchaDriver](CaptchaDriver.php.md#капча-и-кеш-view).
+
+См. также: `Captcha\CaptchaDriver`, `Captcha\Behavior`, `Cache\CacheManager`, `Access`, `View`.

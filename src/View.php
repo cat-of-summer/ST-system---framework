@@ -29,6 +29,7 @@ final class View {
                 Assets::class,
                 Lang::class,
                 Storage\File::class,
+                Captcha\CaptchaManager::class,
             ],
         ];
     }
@@ -59,7 +60,7 @@ final class View {
         }
     }
 
-    private const RESERVED = ['template', 'get', 'set', 'slot', 'capture', 'config', 'setConfig', 'applyConfig', 'sources', 'name', 'path', 'deep', 'cache', 'cascade'];
+    private const RESERVED = ['template', 'get', 'set', 'slot', 'capture', 'config', 'setConfig', 'applyConfig', 'sources', 'name', 'path', 'deep', 'cache', 'cascade', 'live'];
 
     private const MAX_DEPTH = 50;
 
@@ -834,6 +835,13 @@ final class View {
         } elseif (is_array($children) && isset($children[$name])) {
             $children[$name]();
         }
+    }
+
+    public static function live(): void {
+        foreach (array_keys(self::$boundaries) as $i)
+            self::$boundaries[$i]['poisoned'] = true;
+
+        if (self::$compose !== null) self::$compose['composable'] = false;
     }
 
     public static function capture(callable $fn): string {

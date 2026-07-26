@@ -247,14 +247,17 @@ final class Assets {
     }
 
     private static function ensureBuffer(string $name): void {
-        if (!isset(self::$buffers[$name]))
-            self::$buffers[$name] = [
-                'content'      => [],
-                'started'      => false,
-                'seen_assets'  => [],
-                'seen_strings' => [],
-                'assets'       => ['css' => [], 'js' => [], 'fonts' => []],
-            ];
+        if (!isset(self::$buffers[$name])) self::flushBuffer($name);
+    }
+
+    private static function flushBuffer(string $name): void {
+        self::$buffers[$name] = [
+            'content'      => [],
+            'started'      => false,
+            'seen_assets'  => [],
+            'seen_strings' => [],
+            'assets'       => ['css' => [], 'js' => [], 'fonts' => []],
+        ];
     }
 
     private static function contentHtml(string $name): string {
@@ -297,7 +300,7 @@ final class Assets {
                     $captured = ob_get_clean();
                     if ($captured === false) continue;
                     $replacement = self::unpackBuffer($name) . self::buildAssetsHtml($name);
-                    self::$buffers[$name]['started'] = false;
+                    self::flushBuffer($name);
                     echo str_replace(self::placeholder($name), $replacement, $captured);
                 }
             });
@@ -328,8 +331,10 @@ final class Assets {
         }
 
         if (!in_array($buffer, self::$stack, true)) {
-            if (isset(self::$buffers[$buffer]))
+            if (isset(self::$buffers[$buffer])) {
                 echo self::unpackBuffer($buffer) . self::buildAssetsHtml($buffer);
+                self::flushBuffer($buffer);
+            }
             return;
         }
 
@@ -338,9 +343,10 @@ final class Assets {
 
         $captured = ob_get_clean();
         array_pop(self::$stack);
-        self::$buffers[$buffer]['started'] = false;
 
         $replacement = self::unpackBuffer($buffer) . self::buildAssetsHtml($buffer);
+        self::flushBuffer($buffer);
+
         echo str_replace(self::placeholder($buffer), $replacement, $captured);
     }
 
@@ -401,8 +407,7 @@ final class Assets {
             $replacement = self::contentHtml($name) . self::buildAssetsHtml($name);
             $html = str_replace(self::placeholder($name), $replacement, $html);
 
-            self::$buffers[$name]['started'] = false;
-            self::$buffers[$name]['content'] = [];
+            self::flushBuffer($name);
         }
 
         return $html;

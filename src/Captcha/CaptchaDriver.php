@@ -56,7 +56,7 @@ abstract class CaptchaDriver {
         $this->attributes['attempts']     = max(1, (int)($config['attempts'] ?? 3));
         $this->attributes['min_score']    = (float)($config['min_score'] ?? 0);
         $this->attributes['field_prefix'] = (string)($config['field_prefix'] ?? 'st-captcha');
-        $this->attributes['salt']         = (string)($config['salt'] ?? '');
+        $this->attributes['salt']         = self::assertSalt((string)($config['salt'] ?? ''));
         $this->attributes['cache']        = (array)($config['cache'] ?? []);
         $this->attributes['behavior']     = $this->resolveBehavior($config['behavior'] ?? true);
         $this->attributes['issued_id']    = '';
@@ -78,7 +78,7 @@ abstract class CaptchaDriver {
         if (isset($override['attempts']))     $clone->attributes['attempts']     = max(1, (int)$override['attempts']);
         if (isset($override['min_score']))    $clone->attributes['min_score']    = (float)$override['min_score'];
         if (isset($override['field_prefix'])) $clone->attributes['field_prefix'] = (string)$override['field_prefix'];
-        if (isset($override['salt']))         $clone->attributes['salt']         = (string)$override['salt'];
+        if (isset($override['salt']))         $clone->attributes['salt']         = self::assertSalt((string)$override['salt']);
         if (isset($override['cache']))        $clone->attributes['cache']        = (array)$override['cache'];
 
         if (array_key_exists('behavior', $override))
@@ -111,6 +111,8 @@ abstract class CaptchaDriver {
     }
 
     final public function putCaptcha(array $params = []): string {
+        CaptchaManager::markLive();
+
         $id       = bin2hex(random_bytes(16));
         $ttl      = max(1, (int)($params['ttl'] ?? $this->attributes['ttl']));
         $behavior = (array)$this->attributes['behavior'];
@@ -257,6 +259,11 @@ abstract class CaptchaDriver {
         ];
     }
 
+    public static function resetEmitted(): void {
+        self::$js_emitted  = [];
+        self::$css_emitted = [];
+    }
+
     final public function includeJs(): string {
         $js   = '';
         $name = static::name();
@@ -355,6 +362,15 @@ abstract class CaptchaDriver {
 
     private function writeState(string $id, array $state, int $ttl): void {
         $this->store($id)->set(Access::seal($state, (string)$this->attributes['salt']), max(1, $ttl));
+    }
+
+    private static function assertSalt(string $salt): string {
+        if ($salt !== '' || (string)Access::config('salt') !== '') return $salt;
+
+        throw new \LogicException(
+            static::class.': captcha salt is required; set CaptchaManager::config("default.salt"), '
+            .'the per-driver "salt" option, or a global Access::config("salt")'
+        );
     }
 
     private static function assertKey($key): void {

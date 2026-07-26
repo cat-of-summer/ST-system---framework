@@ -6,6 +6,7 @@ use ST_system\Traits\HasConfig;
 use ST_system\Captcha\CaptchaDriver;
 use ST_system\Cache\CacheManager as Cache;
 use ST_system\Main;
+use ST_system\View;
 
 final class CaptchaManager {
 
@@ -46,10 +47,23 @@ final class CaptchaManager {
                 ],
             ],
             'drivers' => [
-                'default'   => $drivers['checkbox'],
+                'default'   => $drivers['invisible'],
                 'available' => $drivers,
             ],
         ];
+    }
+
+    private static bool $view_events_registered = false;
+
+    public static function registerViewEvents(): void {
+        if (self::$view_events_registered) return;
+        self::$view_events_registered = true;
+
+        View::on('render_open', static function () { CaptchaDriver::resetEmitted(); });
+    }
+
+    public static function markLive(): void {
+        if (class_exists(View::class, false)) View::live();
     }
 
     public static function setConfig(array $config = []): void {
