@@ -121,11 +121,10 @@ final class File extends Resource {
 
     private static array $scanned_stack = [];
 
-    private static bool $view_events_registered = false;
-
     public static function registerViewEvents(): void {
-        if (self::$view_events_registered) return;
-        self::$view_events_registered = true;
+        static $initialized = false;
+        if ($initialized) return;
+        $initialized = true;
 
         \ST_system\View::on('cache_open',  static function () {
             self::$scanned_stack[] = [];

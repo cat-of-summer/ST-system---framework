@@ -42,11 +42,10 @@ final class View {
         ];
     }
 
-    private static bool $booted = false;
-
     private static function bootContributors(): void {
-        if (self::$booted) return;
-        self::$booted = true;
+        static $initialized = false;
+        if ($initialized) return;
+        $initialized = true;
 
         foreach ((array) static::config('contributors') as $class) {
             if ($class === null || $class === '') continue;

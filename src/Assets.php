@@ -34,7 +34,6 @@ final class Assets {
     private static bool $rendering = false;
     private static array $positions = [];
     private static array $recording = [];
-    private static bool $view_events_registered = false;
     private File $file;
     private string $buffer;
 
@@ -117,8 +116,9 @@ final class Assets {
     }
 
     public static function registerViewEvents(): void {
-        if (self::$view_events_registered) return;
-        self::$view_events_registered = true;
+        static $initialized = false;
+        if ($initialized) return;
+        $initialized = true;
 
         View::on('render_open',     static function () { self::$rendering = true; });
         View::on('render_finalize', static function (string &$html) { $html = self::finalize($html); });

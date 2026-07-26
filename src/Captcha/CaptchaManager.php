@@ -53,11 +53,10 @@ final class CaptchaManager {
         ];
     }
 
-    private static bool $view_events_registered = false;
-
     public static function registerViewEvents(): void {
-        if (self::$view_events_registered) return;
-        self::$view_events_registered = true;
+        static $initialized = false;
+        if ($initialized) return;
+        $initialized = true;
 
         View::on('render_open', static function () { CaptchaDriver::resetEmitted(); });
     }
