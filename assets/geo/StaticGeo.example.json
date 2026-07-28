@@ -1,0 +1,5 @@
+{
+    "127.0.0.1": {"country": "RU", "country_code": "RU", "region": "Moscow", "city": "Moscow"},
+    "10.0.0.0/8": {"country": "US", "country_code": "US", "region": "California", "city": "Los Angeles"},
+    "192.168.": {"country": "DE", "country_code": "DE", "region": "Berlin", "city": "Berlin"}
+}

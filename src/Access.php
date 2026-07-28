@@ -52,6 +52,7 @@ final class Access {
                         'ipinfo' => \ST_system\API\Drivers\Geo\IpInfo::class,
                         'sxgeo'  => \ST_system\API\Drivers\Geo\SxGeo::class,
                         'geoip2' => \ST_system\API\Drivers\Geo\GeoIP2::class,
+                        'static' => \ST_system\API\Drivers\Geo\StaticGeo::class,
                     ],
                 ],
             ],
