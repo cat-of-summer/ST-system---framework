@@ -159,6 +159,8 @@ final class GeoIP2 extends GeoDriver {
             $out['country_code'] = $iso;
         }
         if (!empty($data['country']['names']['en'])) $out['country_name'] = $data['country']['names']['en'];
+        if (!empty($data['subdivisions'][0]['iso_code']))    $out['region_code'] = $data['subdivisions'][0]['iso_code'];
+        if (!empty($data['subdivisions'][0]['names']['en'])) $out['region']      = $data['subdivisions'][0]['names']['en'];
         if (!empty($data['city']['names']['en']))    $out['city']         = $data['city']['names']['en'];
         if (isset($data['location']['latitude']))    $out['lat']          = $data['location']['latitude'];
         if (isset($data['location']['longitude']))   $out['lon']          = $data['location']['longitude'];

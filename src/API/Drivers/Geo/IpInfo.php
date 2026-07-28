@@ -6,6 +6,8 @@ use ST_system\Rule;
 
 final class IpInfo extends GeoDriver {
 
+    private const SERVICE_PATH = ['lite' => 'lite', 'core' => 'lookup'];
+
     protected static function getDefaultConfig(): array {
         return array_merge(parent::getDefaultConfig(), [
             'endpoint' => 'https://api.ipinfo.io/',
@@ -21,7 +23,7 @@ final class IpInfo extends GeoDriver {
     protected function __init(): void {
 
         $this->on('__construct', function(string $token, string $service = 'lite') {
-            Rule::create('string|in:lite|default:lite')->throwable()->check($service);
+            Rule::create('string|in:lite,core|default:lite')->throwable()->check($service);
 
             $this->token = $token;
             $this->service = $service;
@@ -29,7 +31,8 @@ final class IpInfo extends GeoDriver {
 
         $this->on('build_url', function(&$request_url, $endpoint, $method, &$params) {
             $params['token'] = $this->token;
-            $request_url = rtrim($this->getEndpoint(), '/') . '/' . $this->service . '/' . $params['ip'];
+            $path = self::SERVICE_PATH[$this->service] ?? $this->service;
+            $request_url = rtrim($this->getEndpoint(), '/') . '/' . $path . '/' . $params['ip'];
             unset($params['ip']);
         });
 

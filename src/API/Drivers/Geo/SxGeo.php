@@ -70,6 +70,7 @@ final class SxGeo extends GeoDriver {
             $out['country_code'] = $iso;
         }
         if (!empty($resp['country']['name_en'])) $out['country_name'] = $resp['country']['name_en'];
+        if (!empty($resp['region']['name_en']))  $out['region']       = $resp['region']['name_en'];
         if (!empty($resp['city']['name_en']))    $out['city']         = $resp['city']['name_en'];
         if (isset($resp['city']['lat']))         $out['lat']          = $resp['city']['lat'];
         if (isset($resp['city']['lon']))         $out['lon']          = $resp['city']['lon'];
@@ -114,13 +115,14 @@ final class SxGeo extends GeoDriver {
         if ($num === false || $num === 0) return [];
 
         if ($this->max_city) {
-            $parsed = $this->datParseCity($num);
+            $parsed = $this->datParseCity($num, true);
             $iso = $parsed['country']['iso'] ?? '';
             $out = $iso !== '' ? ['country' => $iso, 'country_code' => $iso] : [];
 
-            if (!empty($parsed['city']['name_en'])) $out['city'] = $parsed['city']['name_en'];
-            if (isset($parsed['city']['lat']))      $out['lat']  = $parsed['city']['lat'];
-            if (isset($parsed['city']['lon']))      $out['lon']  = $parsed['city']['lon'];
+            if (!empty($parsed['region']['name_en'])) $out['region'] = $parsed['region']['name_en'];
+            if (!empty($parsed['city']['name_en']))   $out['city']   = $parsed['city']['name_en'];
+            if (isset($parsed['city']['lat']))        $out['lat']    = $parsed['city']['lat'];
+            if (isset($parsed['city']['lon']))        $out['lon']    = $parsed['city']['lon'];
 
             return $out;
         }
