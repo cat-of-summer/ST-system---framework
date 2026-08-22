@@ -20,8 +20,28 @@ class ImageMime extends Mime {
             'convert' => [
                 'config' => [
                     'quality' => 90,
-                    'force' => false
+                    'force' => false,
+                    'metadata' => true
                 ]
+            ],
+            'metadata' => [
+                'binary' => 'exiftool',
+                'timeout' => 30,
+                'groups' => [
+                    'jpg'  => ['EXIF', 'IPTC', 'XMP'],
+                    'jpeg' => ['EXIF', 'IPTC', 'XMP'],
+                    'tif'  => ['EXIF', 'IPTC', 'XMP'],
+                    'tiff' => ['EXIF', 'IPTC', 'XMP'],
+                    'png'  => ['EXIF', 'XMP'],
+                    'webp' => ['EXIF', 'XMP'],
+                    'gif'  => ['XMP'],
+                ],
+                'exclude' => [
+                    'EXIF:ImageWidth',
+                    'EXIF:ImageHeight',
+                    'EXIF:ExifImageWidth',
+                    'EXIF:ExifImageHeight',
+                ],
             ],
             'formats' => [
                 'gd' => [
@@ -102,6 +122,25 @@ class ImageMime extends Mime {
     }
 
     private static string $IMAGE_DRIVER = '';
+    private static array $ON_CONVERTED = [];
+    private static ?bool $METADATA_TOOL = null;
+
+    public static function onConverted(callable $callback): void {
+        static::$ON_CONVERTED[] = $callback;
+    }
+
+    public static function metadataToolAvailable(): bool {
+        if (static::$METADATA_TOOL !== null) return static::$METADATA_TOOL;
+
+        $binary = (string)static::config('metadata.binary');
+
+        if ($binary === '') return static::$METADATA_TOOL = false;
+
+        $code = 1;
+        @exec(escapeshellarg($binary).' -ver 2>/dev/null', $out, $code);
+
+        return static::$METADATA_TOOL = ($code === 0);
+    }
 
     public static function config(string $key = '') {
         static $imagick_extended = false;
@@ -495,10 +534,45 @@ class ImageMime extends Mime {
                 break;
             }
 
+            $this->transferMetadata($old_file, $cache->file);
+
             $cache->setMeta(['stamp' => $instance->mtime]);
+
+            $regenerated = true;
         }
 
-        return $instance->make($cache->file);
+        $result = $instance->make($cache->file);
+
+        foreach (static::$ON_CONVERTED as $callback)
+            $callback($result, $instance, $regenerated ?? false);
+
+        return $result;
+    }
+
+    private function transferMetadata(string $source, string $target): void {
+        if (!static::config('convert.config.metadata')) return;
+        if ($source === $target || !is_file($source) || !is_file($target)) return;
+
+        $groups = static::config('metadata.groups')[mb_strtolower(pathinfo($target, PATHINFO_EXTENSION))] ?? [];
+
+        if (!$groups || !static::metadataToolAvailable()) return;
+
+        $args = [
+            escapeshellarg((string)static::config('metadata.binary')),
+            '-overwrite_original',
+            '-charset', 'filename=utf8',
+            '-TagsFromFile', escapeshellarg($source),
+        ];
+
+        foreach ($groups as $group)
+            $args[] = escapeshellarg('-'.$group.':all');
+
+        foreach ((array)static::config('metadata.exclude') as $tag)
+            $args[] = escapeshellarg('--'.$tag);
+
+        $args[] = escapeshellarg($target);
+
+        @exec(implode(' ', $args).' 2>/dev/null', $out, $code);
     }
 
     private function convertToSvgWrapper(File $instance, array $config): File {
