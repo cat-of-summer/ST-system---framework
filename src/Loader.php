@@ -8,20 +8,34 @@ use ST_system\Rule;
 
 final class Loader {
 
+    private static function includer(): \Closure {
+        static $includer = null;
+
+        return $includer ??= \Closure::bind(static function (string $__file, string $__action): void {
+            switch ($__action) {
+                case 'require': require $__file; break;
+                case 'require_once': require_once $__file; break;
+                case 'include': include $__file; break;
+                case 'include_once': include_once $__file; break;
+            }
+        }, null, null);
+    }
+
     private static function connect(string $realpath, string $action): void {
         switch ($action) {
-            case 'require': require $realpath; break;
-            case 'require_once': require_once $realpath; break;
+            case 'require':
+            case 'require_once':
+                static::includer()($realpath, $action);
+                break;
             case 'include':
             case 'include_once':
                 try {
                     if (Debug::linter($realpath)['code'] > 0) return;
 
-                    switch ($action) {
-                        case 'include': include $realpath; break;
-                        case 'include_once': include_once $realpath; break;
-                    }
-                } catch (\Throwable $th) {}
+                    static::includer()($realpath, $action);
+                } catch (\Throwable $th) {
+                    error_log(self::class."::{$action}('{$realpath}'): ".get_class($th).': '.$th->getMessage().' @ '.$th->getFile().':'.$th->getLine());
+                }
                 break;
             default:
                 throw new \Exception("Method {$action} not found");
