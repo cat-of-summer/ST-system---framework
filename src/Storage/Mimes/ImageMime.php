@@ -604,7 +604,7 @@ class ImageMime extends Mime {
         return $instance->make($cache->file);
     }
 
-    private function convertImage(object $image, array $config = []): object {
+    private function convertImage($image, array $config = []) {
         switch (static::$IMAGE_DRIVER) {
             case 'imagick':
                 $image->setImageFormat($config['extension']);
@@ -624,6 +624,8 @@ class ImageMime extends Mime {
 
                     imagealphablending($trueColor, false);
                     imagesavealpha($trueColor, true);
+
+                    imagefill($trueColor, 0, 0, imagecolorallocatealpha($trueColor, 0, 0, 0, 127));
 
                     imagecopy(
                         $trueColor,
@@ -650,7 +652,7 @@ class ImageMime extends Mime {
         return $image;
     }
 
-    private function resizeImage(object $image_src, array $resize_config): object {
+    private function resizeImage($image_src, array $resize_config) {
         [
             'canvas' => $canvas,
             'src' => $src,
