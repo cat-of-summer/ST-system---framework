@@ -296,19 +296,109 @@ final class Config {
     private static function getDefault(): array {
         static $values = null;
 
-        if ($values === null) {
-            $values = [
-                'COMPOSER_ROOT' => (function() {
-                    $dir = getcwd() ?: __DIR__;
-                    while (true) {
-                        if (file_exists($dir . DIRECTORY_SEPARATOR . 'composer.json')) return $dir;
-                        $parent = dirname($dir);
-                        if ($parent === $dir) return '';
-                        $dir = $parent;
-                    }
-                })()
-            ];
-        }
+        if ($values !== null) return $values;
+
+        $norm = static function ($path): string {
+            if (!is_string($path) || $path === '') return '';
+
+            $real = realpath($path);
+
+            return $real === false ? '' : rtrim(str_replace('\\', '/', $real), '/');
+        };
+
+        $vendorDir = (static function () use ($norm): string {
+            if (class_exists(\Composer\Autoload\ClassLoader::class, false)) {
+                try {
+                    $file = (new \ReflectionClass(\Composer\Autoload\ClassLoader::class))->getFileName();
+                } catch (\ReflectionException $e) {
+                    $file = false;
+                }
+
+                if ($file !== false) return $norm(dirname($file, 2));
+            }
+
+            if (isset($GLOBALS['_composer_autoload_path']))
+                return $norm(dirname((string) $GLOBALS['_composer_autoload_path']));
+
+            $self = str_replace('\\', '/', __DIR__);
+            $pos  = strrpos($self, '/vendor/');
+
+            return $pos !== false ? $norm(substr($self, 0, $pos) . '/vendor') : '';
+        })();
+
+        $isRoot = static function (string $dir) use ($vendorDir): bool {
+            if ($dir === '' || !is_file($dir . '/composer.json')) return false;
+
+            return $vendorDir === '' || strncmp($dir . '/', $vendorDir . '/', strlen($vendorDir) + 1) !== 0;
+        };
+
+        $climb = static function ($start) use ($norm, $isRoot): string {
+            $dir = $norm($start);
+
+            if ($dir !== '' && !is_dir($dir)) $dir = dirname($dir);
+
+            while ($dir !== '') {
+                if ($isRoot($dir)) return $dir;
+
+                $parent = dirname($dir);
+
+                if ($parent === $dir) return '';
+
+                $dir = $parent;
+            }
+
+            return '';
+        };
+
+        $composerRoot = (static function () use ($norm, $isRoot, $climb, $vendorDir): string {
+            if (class_exists(\Composer\InstalledVersions::class)) {
+                try {
+                    $path = \Composer\InstalledVersions::getRootPackage()['install_path'] ?? '';
+                } catch (\Throwable $e) {
+                    $path = '';
+                }
+
+                $root = $norm($path);
+
+                if ($root !== '' && is_file($root . '/composer.json')) return $root;
+            }
+
+            if (isset($GLOBALS['_composer_autoload_path'])) {
+                $root = $norm(dirname((string) $GLOBALS['_composer_autoload_path'], 2));
+
+                if ($isRoot($root)) return $root;
+            }
+
+            if ($vendorDir !== '') {
+                $root = $norm(dirname($vendorDir));
+
+                if ($isRoot($root)) return $root;
+            }
+
+            $manifest = getenv('COMPOSER');
+
+            if (is_string($manifest) && $manifest !== '' && is_file($manifest)) {
+                $root = $norm(dirname($manifest));
+
+                if ($root !== '') return $root;
+            }
+
+            foreach ([$_SERVER['SCRIPT_FILENAME'] ?? null, $_SERVER['argv'][0] ?? null, $_SERVER['DOCUMENT_ROOT'] ?? null] as $entry) {
+                $root = $climb($entry);
+
+                if ($root !== '') return $root;
+            }
+
+            $root = $climb(__DIR__);
+
+            if ($root !== '') return $root;
+
+            return $climb(getcwd());
+        })();
+
+        $values = [
+            'COMPOSER_ROOT' => $composerRoot
+        ];
 
         return $values;
     }
