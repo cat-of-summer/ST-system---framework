@@ -20,7 +20,8 @@ final class CaptchaManager {
             'checkbox'  => \ST_system\Captcha\Drivers\CheckboxCaptchaDriver::class,
             'swipe'     => \ST_system\Captcha\Drivers\SwipeCaptchaDriver::class,
             'text'      => \ST_system\Captcha\Drivers\TextCaptchaDriver::class,
-            'smart'     => \ST_system\Captcha\Drivers\SmartCaptchaDriver::class,
+            'smart'     => \ST_system\Captcha\Drivers\Service\SmartCaptchaDriver::class,
+            'recaptcha' => \ST_system\Captcha\Drivers\Service\ReCaptchaDriver::class,
         ];
 
         return [

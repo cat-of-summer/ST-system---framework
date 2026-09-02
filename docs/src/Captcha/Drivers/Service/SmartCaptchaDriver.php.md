@@ -2,7 +2,7 @@
 # SmartCaptchaDriver.php
 <!-- DOCGEN:END -->
 
-`ST_system\Captcha\Drivers\SmartCaptchaDriver` — Yandex SmartCaptcha под общим контрактом
+`ST_system\Captcha\Drivers\Service\SmartCaptchaDriver` — Yandex SmartCaptcha под общим контрактом
 подсистемы. Виджет и проверка токена живут на стороне Яндекса, но снаружи драйвер выглядит как
 любой другой: тот же `putCaptcha()` / `check()` / `includeJs()`, тот же формат полей формы,
 та же защита от повтора и тот же счётчик попыток.
@@ -10,6 +10,9 @@
 Имя драйвера — `smart`. Пришёл на смену `API\Drivers\SmartCaptcha`, который был удалён:
 класс не мог одновременно наследовать `IntegrationDriver` и `CaptchaDriver`, поэтому HTTP-вызов
 теперь делается напрямую через `HTTP\WebClient`.
+
+Общая с `ReCaptchaDriver` обвязка — разбор и проверка ключей, перепривязка в `spawn()`,
+`isAvailable()`, POST-запрос к сервису — вынесена в `Service\ServiceCaptchaDriver`.
 
 ## Конфигурация
 
@@ -28,8 +31,9 @@
 | `class` / `style` | `''` | дополнительные класс и стиль контейнера |
 
 Ключи проверяются регулярным выражением `/^[a-zA-Z0-9_-]{20,100}$/`; неверный формат — сразу
-`\InvalidArgumentException`. Пустые ключи исключением не считаются: `isAvailable()` вернёт
-`false`, и `CaptchaManager` молча переключится на драйвер по умолчанию.
+`\InvalidArgumentException`. Пустые ключи исключением не считаются, но `isAvailable()` вернёт
+`false`, и `CaptchaManager` откажется отдать такой драйвер (`\RuntimeException`, подмены на
+`drivers.default` нет).
 
 ```php
 CaptchaManager::setConfig([
@@ -69,4 +73,5 @@ CaptchaManager::smart('login_form', ['behavior' => ['basic', 'env']]);
 `verify()` шлёт `POST` на `<endpoint>/validate` через `HTTP\WebClient` с `secret`, `token` и
 `ip` (`Access::getClientIp()`), с включённой проверкой TLS. Успех — `status === 'ok'`.
 
-См. также: `Captcha\CaptchaDriver`, `Captcha\CaptchaManager`, `HTTP\WebClient`, `Access`.
+См. также: `Service\ServiceCaptchaDriver`, `Service\ReCaptchaDriver`, `Captcha\CaptchaDriver`,
+`Captcha\CaptchaManager`, `HTTP\WebClient`, `Access`.

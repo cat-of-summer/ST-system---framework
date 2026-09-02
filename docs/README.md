@@ -194,7 +194,9 @@ use ST_system\HTTP\Request;
 | `Drivers\CheckboxCaptchaDriver` | Чекбокс + принудительные поведенческие факторы | [src/Captcha/Drivers/CheckboxCaptchaDriver.php.md](src/Captcha/Drivers/CheckboxCaptchaDriver.php.md) |
 | `Drivers\SwipeCaptchaDriver` | Свайп ручки слева направо | [src/Captcha/Drivers/SwipeCaptchaDriver.php.md](src/Captcha/Drivers/SwipeCaptchaDriver.php.md) |
 | `Drivers\TextCaptchaDriver` | Картинка со случайными шрифтами, ввод текста | [src/Captcha/Drivers/TextCaptchaDriver.php.md](src/Captcha/Drivers/TextCaptchaDriver.php.md) |
-| `Drivers\SmartCaptchaDriver` | Yandex SmartCaptcha под общим контрактом | [src/Captcha/Drivers/SmartCaptchaDriver.php.md](src/Captcha/Drivers/SmartCaptchaDriver.php.md) |
+| `Drivers\Service\ServiceCaptchaDriver` | Общий базис капч внешних сервисов | [src/Captcha/Drivers/Service/ServiceCaptchaDriver.php.md](src/Captcha/Drivers/Service/ServiceCaptchaDriver.php.md) |
+| `Drivers\Service\SmartCaptchaDriver` | Yandex SmartCaptcha под общим контрактом | [src/Captcha/Drivers/Service/SmartCaptchaDriver.php.md](src/Captcha/Drivers/Service/SmartCaptchaDriver.php.md) |
+| `Drivers\Service\ReCaptchaDriver` | Google reCAPTCHA v2/v3 под общим контрактом | [src/Captcha/Drivers/Service/ReCaptchaDriver.php.md](src/Captcha/Drivers/Service/ReCaptchaDriver.php.md) |
 | `Drivers\Image\ImageAdapterInterface` | Контракт адаптера отрисовки | [src/Captcha/Drivers/Image/ImageAdapterInterface.php.md](src/Captcha/Drivers/Image/ImageAdapterInterface.php.md) |
 | `Drivers\Image\GdAdapter` | Отрисовка через GD | [src/Captcha/Drivers/Image/GdAdapter.php.md](src/Captcha/Drivers/Image/GdAdapter.php.md) |
 | `Drivers\Image\ImagickAdapter` | Отрисовка через Imagick | [src/Captcha/Drivers/Image/ImagickAdapter.php.md](src/Captcha/Drivers/Image/ImagickAdapter.php.md) |

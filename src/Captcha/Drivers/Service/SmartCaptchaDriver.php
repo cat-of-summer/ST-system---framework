@@ -1,26 +1,14 @@
 <?php
 
-namespace ST_system\Captcha\Drivers;
+namespace ST_system\Captcha\Drivers\Service;
 
-use ST_system\Captcha\CaptchaDriver;
-use ST_system\Captcha\CaptchaManager;
-use ST_system\HTTP\WebClient;
 use ST_system\Access;
 
-class SmartCaptchaDriver extends CaptchaDriver {
-
-    private const KEY_REGEX = '/^[a-zA-Z0-9_-]{20,100}$/';
-
-    private string $endpoint  = '';
-    private string $clientKey = '';
-    private string $secret    = '';
-    private array  $widget    = [];
+class SmartCaptchaDriver extends ServiceCaptchaDriver {
 
     protected static function getDefaultConfig(): array {
-        return array_merge(static::baseConfig(), [
+        return static::serviceConfig([
             'endpoint'       => 'https://smartcaptcha.yandexcloud.net/',
-            'client_key'     => '',
-            'secret'         => '',
             'mode'           => 'js',
             'hl'             => 'ru',
             'invisible'      => false,
@@ -28,30 +16,16 @@ class SmartCaptchaDriver extends CaptchaDriver {
             'test'           => false,
             'webview'        => false,
             'shieldPosition' => '',
-            'class'          => '',
-            'style'          => '',
-            'behavior'       => array_merge(
-                (array)CaptchaManager::config('default.behavior'),
-                ['signals' => []]
-            ),
         ]);
     }
 
-    protected function __init(array $config): void {
-        $this->endpoint  = (string)($config['endpoint'] ?? '');
-        $this->clientKey = (string)($config['client_key'] ?? '');
-        $this->secret    = (string)($config['secret'] ?? '');
-
-        foreach (['client_key' => $this->clientKey, 'secret' => $this->secret] as $name => $value)
-            if ($value !== '' && !preg_match(self::KEY_REGEX, $value))
-                throw new \InvalidArgumentException("SmartCaptchaDriver: invalid {$name} format");
-
+    protected function initWidget(array $config): array {
         $mode = strtolower((string)($config['mode'] ?? 'js'));
 
         if (!in_array($mode, ['js', 'html'], true))
             throw new \InvalidArgumentException("SmartCaptchaDriver: mode must be 'js' or 'html'");
 
-        $this->widget = [
+        return [
             'mode'           => $mode,
             'hl'             => (string)($config['hl'] ?? 'ru'),
             'invisible'      => (bool)($config['invisible'] ?? false),
@@ -59,36 +33,7 @@ class SmartCaptchaDriver extends CaptchaDriver {
             'test'           => (bool)($config['test'] ?? false),
             'webview'        => (bool)($config['webview'] ?? false),
             'shieldPosition' => (string)($config['shieldPosition'] ?? ''),
-            'class'          => (string)($config['class'] ?? ''),
-            'style'          => (string)($config['style'] ?? ''),
         ];
-    }
-
-    protected function __rebind(array $override): void {
-        foreach (['endpoint', 'client_key', 'secret'] as $key) {
-            if (!isset($override[$key])) continue;
-
-            $value = (string)$override[$key];
-
-            if ($key !== 'endpoint' && $value !== '' && !preg_match(self::KEY_REGEX, $value))
-                throw new \InvalidArgumentException("SmartCaptchaDriver: invalid {$key} format");
-
-            if ($key === 'endpoint')   $this->endpoint  = $value;
-            if ($key === 'client_key') $this->clientKey = $value;
-            if ($key === 'secret')     $this->secret    = $value;
-        }
-
-        foreach (array_keys($this->widget) as $key)
-            if (isset($override[$key]))
-                $this->widget[$key] = is_bool($this->widget[$key]) ? (bool)$override[$key] : (string)$override[$key];
-    }
-
-    public function isAvailable(): bool {
-        return $this->clientKey !== '' && $this->secret !== '' && $this->endpoint !== '';
-    }
-
-    protected function forcedSignals(): array {
-        return [];
     }
 
     protected function issue(array $params): array {
@@ -114,12 +59,10 @@ class SmartCaptchaDriver extends CaptchaDriver {
     }
 
     protected function render(array $public, string $id): string {
-        $host  = 'sc_'.$id;
-        $class = $this->widget['class'] !== '' ? ' '.self::esc($this->widget['class']) : '';
-        $style = $this->widget['style'] !== '' ? ' style="'.self::esc($this->widget['style']).'"' : '';
+        $host = 'sc_'.$id;
 
         if ($this->widget['mode'] === 'html')
-            return '<div id="'.self::esc($host).'" class="smart-captcha'.$class.'"'
+            return '<div id="'.self::esc($host).'"'.$this->hostClass('smart-captcha')
                  . ' data-sitekey="'.self::esc($this->clientKey).'"'
                  . ' data-hl="'.self::esc($this->widget['hl']).'"'
                  . ($this->widget['invisible']  ? ' data-invisible="true"'    : '')
@@ -128,9 +71,9 @@ class SmartCaptchaDriver extends CaptchaDriver {
                  . ($this->widget['webview']    ? ' data-webview="true"'      : '')
                  . ($this->widget['shieldPosition'] !== ''
                      ? ' data-shield-position="'.self::esc($this->widget['shieldPosition']).'"' : '')
-                 . $style.'></div>';
+                 . $this->hostStyle().'></div>';
 
-        return '<div id="'.self::esc($host).'" class="smart-captcha'.$class.'"'.$style.'></div>';
+        return '<div id="'.self::esc($host).'"'.$this->hostClass('smart-captcha').$this->hostStyle().'></div>';
     }
 
     protected function verify(array $payload, array $state): bool {
@@ -139,22 +82,13 @@ class SmartCaptchaDriver extends CaptchaDriver {
         if ($token === '') $token = (string)($payload['smart-token'] ?? '');
         if ($token === '') return false;
 
-        $results = WebClient::create(rtrim($this->endpoint, '/').'/validate', [
-            'method'        => 'POST',
-            'verify'        => true,
-            'response_type' => 'json',
-            'headers'       => ['Content-Type' => 'application/x-www-form-urlencoded'],
-        ])->fill([
+        $body = $this->ask($this->url('validate'), [
             'secret' => $this->secret,
             'token'  => $token,
             'ip'     => Access::getClientIp(),
-        ])->send();
+        ]);
 
-        $body = $results[0]['body'] ?? null;
-
-        if (is_string($body)) $body = @json_decode($body, true);
-
-        return is_array($body) && (string)($body['status'] ?? '') === 'ok';
+        return (string)($body['status'] ?? '') === 'ok';
     }
 
     protected function driverJs(): string {
