@@ -536,6 +536,24 @@ JS;
             api.flush();
         },
 
+        unmount: function (id) {
+            var instance = api.instances[id];
+
+            if (!instance) return;
+
+            var form = instance.form;
+
+            if (form && form.__stCaptcha)
+                form.__stCaptcha = form.__stCaptcha.filter(function (item) { return item !== instance; });
+
+            delete api.instances[id];
+
+            var queue = global.STCaptchaQueue || [];
+
+            for (var i = queue.length - 1; i >= 0; i--)
+                if (queue[i] && queue[i][0] === id) queue.splice(i, 1);
+        },
+
         flush: function () {
             var queue = global.STCaptchaQueue = global.STCaptchaQueue || [];
 
