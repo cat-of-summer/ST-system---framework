@@ -9,6 +9,11 @@
 - **`service_type`** (обязательное) → `serviceType`.
 - **`name`**, **`description`**, **`url`**, **`image`**, **`area_served`** (→ `areaServed`) — опциональные скаляры.
 - **`provider`** (опционально) — ссылка `@provider`, резолвится в `Service\Provider`.
+- **`provider_id`** (опционально) — альтернатива предыдущему полю: `@id` уже объявленной
+  на странице организации. Печатается как `"provider": {"@id": "…"}` и используется только
+  тогда, когда `provider` не задан. Нужно, когда на странице уже есть блок `Organization`
+  с собственным `@id` — повторять его поля вторым описанием той же компании не надо,
+  достаточно сослаться (см. `Common/Reference.php.md`).
 - **`offers`** (опционально) — ссылка `@offer`, резолвится в `Service\Offer`.
 - **`has_offer_catalog`** (опционально) → `hasOfferCatalog`, ссылка `@offer-catalog`, резолвится в `Service\OfferCatalog`.
 
@@ -16,7 +21,7 @@
 
 ## Вывод
 
-`print()` собирает JSON-LD с `@type: "Service"`; `provider`/`offers`/`has_offer_catalog`, если заданы, встраиваются через `->toArray()` соответствующей вложенной схемы.
+`print()` собирает JSON-LD с `@type: "Service"`; `provider`/`offers`/`has_offer_catalog`, если заданы, встраиваются через `->toArray()` соответствующей вложенной схемы. Если `provider` не задан, но задан `provider_id`, в `provider` уходит одна ссылка `{"@id": …}`.
 
 ## Пример
 

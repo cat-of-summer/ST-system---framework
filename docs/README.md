@@ -235,6 +235,15 @@ use ST_system\HTTP\Request;
 
 | Класс | Назначение | Документация |
 |-------|------------|--------------|
+| `SchemaOrg\Organization` | Организация — якорь графа (`@id`) | [src/Schemas/SchemaOrg/Organization.php.md](src/Schemas/SchemaOrg/Organization.php.md) |
+| `SchemaOrg\WebSite` | Сайт целиком | [src/Schemas/SchemaOrg/WebSite.php.md](src/Schemas/SchemaOrg/WebSite.php.md) |
+| `SchemaOrg\BreadcrumbList` | Хлебные крошки | [src/Schemas/SchemaOrg/BreadcrumbList.php.md](src/Schemas/SchemaOrg/BreadcrumbList.php.md) |
+| `SchemaOrg\BreadcrumbList\ListItem` | Звено хлебных крошек | [src/Schemas/SchemaOrg/BreadcrumbList/ListItem.php.md](src/Schemas/SchemaOrg/BreadcrumbList/ListItem.php.md) |
+| `SchemaOrg\Product` | Товар | [src/Schemas/SchemaOrg/Product.php.md](src/Schemas/SchemaOrg/Product.php.md) |
+| `SchemaOrg\Product\Offer` | Цена и наличие товара | [src/Schemas/SchemaOrg/Product/Offer.php.md](src/Schemas/SchemaOrg/Product/Offer.php.md) |
+| `SchemaOrg\Article` | Статья, новость, кейс (подтип через `type`) | [src/Schemas/SchemaOrg/Article.php.md](src/Schemas/SchemaOrg/Article.php.md) |
+| `SchemaOrg\WebPage` | Страница (`WebPage`/`AboutPage`/`ContactPage`) | [src/Schemas/SchemaOrg/WebPage.php.md](src/Schemas/SchemaOrg/WebPage.php.md) |
+| `SchemaOrg\CollectionPage` | Страница-листинг с вложенным `ItemList` | [src/Schemas/SchemaOrg/CollectionPage.php.md](src/Schemas/SchemaOrg/CollectionPage.php.md) |
 | `SchemaOrg\FaqPage` | Разметка FAQPage | [src/Schemas/SchemaOrg/FaqPage.php.md](src/Schemas/SchemaOrg/FaqPage.php.md) |
 | `SchemaOrg\FaqPage\Question` | Вопрос FAQPage | [src/Schemas/SchemaOrg/FaqPage/Question.php.md](src/Schemas/SchemaOrg/FaqPage/Question.php.md) |
 | `SchemaOrg\ItemList` | Разметка ItemList | [src/Schemas/SchemaOrg/ItemList.php.md](src/Schemas/SchemaOrg/ItemList.php.md) |
@@ -245,6 +254,23 @@ use ST_system\HTTP\Request;
 | `SchemaOrg\Service\Provider` | Поставщик услуги | [src/Schemas/SchemaOrg/Service/Provider.php.md](src/Schemas/SchemaOrg/Service/Provider.php.md) |
 | `SchemaOrg\Service\PostalAddress` | Почтовый адрес | [src/Schemas/SchemaOrg/Service/PostalAddress.php.md](src/Schemas/SchemaOrg/Service/PostalAddress.php.md) |
 | `SchemaOrg\MedicalProcedure` | Медицинская процедура | [src/Schemas/SchemaOrg/MedicalProcedure.php.md](src/Schemas/SchemaOrg/MedicalProcedure.php.md) |
+
+**Общие вложенные схемы (`Schemas\SchemaOrg\Common`)** — не печатаются сами, встраиваются через `toArray()`
+
+| Класс | Назначение | Документация |
+|-------|------------|--------------|
+| `Common\Reference` | Ссылка `{"@id": …}` — связывает блоки в граф | [src/Schemas/SchemaOrg/Common/Reference.php.md](src/Schemas/SchemaOrg/Common/Reference.php.md) |
+| `Common\PostalAddress` | Почтовый адрес | [src/Schemas/SchemaOrg/Common/PostalAddress.php.md](src/Schemas/SchemaOrg/Common/PostalAddress.php.md) |
+| `Common\GeoCoordinates` | Координаты точки | [src/Schemas/SchemaOrg/Common/GeoCoordinates.php.md](src/Schemas/SchemaOrg/Common/GeoCoordinates.php.md) |
+| `Common\ContactPoint` | Точка контакта организации | [src/Schemas/SchemaOrg/Common/ContactPoint.php.md](src/Schemas/SchemaOrg/Common/ContactPoint.php.md) |
+| `Common\PropertyValue` | Пара «название — значение» | [src/Schemas/SchemaOrg/Common/PropertyValue.php.md](src/Schemas/SchemaOrg/Common/PropertyValue.php.md) |
+| `Common\ImageObject` | Изображение с размерами | [src/Schemas/SchemaOrg/Common/ImageObject.php.md](src/Schemas/SchemaOrg/Common/ImageObject.php.md) |
+
+**Open Graph (`Schemas\OpenGraph`)**
+
+| Класс | Назначение | Документация |
+|-------|------------|--------------|
+| `OpenGraph\Meta` | Meta-теги Open Graph и Twitter Card | [src/Schemas/OpenGraph/Meta.php.md](src/Schemas/OpenGraph/Meta.php.md) |
 
 **Яндекс (`Schemas\Yandex`)**
 

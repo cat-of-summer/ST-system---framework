@@ -16,6 +16,7 @@ final class Service extends DefaultSchema
             'image'             => 'sometimes|url',
             'area_served'       => 'sometimes|string',
             'provider'          => 'sometimes|@provider',
+            'provider_id'       => 'sometimes|string',
             'offers'            => 'sometimes|@offer',
             'has_offer_catalog' => 'sometimes|@offer-catalog',
         ];
@@ -52,6 +53,10 @@ final class Service extends DefaultSchema
 
             if ($s->field('provider') !== null) {
                 $data['provider'] = $s->field('provider')->toArray();
+            } elseif ($s->field('provider_id') !== null) {
+                //поставщик уже объявлен отдельным блоком Organization — ссылаемся на него,
+                //а не повторяем его поля вторым описанием той же компании
+                $data['provider'] = ['@id' => $s->field('provider_id')];
             }
 
             if ($s->field('offers') !== null) {
