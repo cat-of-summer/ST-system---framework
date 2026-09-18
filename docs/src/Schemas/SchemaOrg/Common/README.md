@@ -6,6 +6,7 @@
 - [ContactPoint.php](ContactPoint.php.md)
 - [GeoCoordinates.php](GeoCoordinates.php.md)
 - [ImageObject.php](ImageObject.php.md)
+- [Place.php](Place.php.md)
 - [PostalAddress.php](PostalAddress.php.md)
 - [PropertyValue.php](PropertyValue.php.md)
 - [Reference.php](Reference.php.md)

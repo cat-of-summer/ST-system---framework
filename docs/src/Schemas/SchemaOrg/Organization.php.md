@@ -24,7 +24,8 @@
 | `logo` | `Common\ImageObject` | `logo` |
 | `telephone`, `email` | строка / e-mail | как есть |
 | `address` | `Common\PostalAddress` | `address` |
-| `geo` | `Common\GeoCoordinates` | `geo` |
+| `geo` | `Common\GeoCoordinates` | внутрь `location` — см. «Координаты» ниже |
+| `location` | `Common\Place` | `location` — место, где организация находится |
 | `area_served` | строка | `areaServed` — оборачивается в `{"@type": "Country", "name": …}` |
 | `contact_points` | `arrayOf(Common\ContactPoint)` | `contactPoint` |
 | `same_as` | массив | `sameAs` — профили в соцсетях и справочниках |
@@ -60,6 +61,26 @@ echo Organization::create()->fill([
     'same_as' => ['https://vk.ru/example'],
 ])->print();
 ```
+
+## Координаты
+
+`geo` в schema.org объявлен только у `Place`: и на `Organization`, и на `PostalAddress`
+валидаторы (в том числе Яндекса) отбивают его как чужое свойство. Поэтому заданные `geo`
+печатаются не полем организации, а её `location` — `Place` с теми же координатами и адресом:
+
+```json
+"location": {
+  "@type": "Place",
+  "address": { "@type": "PostalAddress", "streetAddress": "…", "addressLocality": "Москва" },
+  "geo": { "@type": "GeoCoordinates", "latitude": "55.65336", "longitude": "37.53811" }
+}
+```
+
+Адрес при этом остаётся и собственным полем организации: `address` у `Organization` валиден
+и описывает её почтовый адрес, а `location` — точку на карте.
+
+Когда у места есть название или своя страница, его задают полем `location` напрямую
+(`Common\Place`); тогда `geo` организации не используется.
 
 Вложенные схемы коэрсятся автоматически — передавать готовые объекты `PostalAddress`,
 `ImageObject` и т.д. не нужно, достаточно ассоциативных массивов.

@@ -6,6 +6,7 @@ use ST_system\Schemas\DefaultSchema;
 use ST_system\Schemas\SchemaOrg\Common\ContactPoint;
 use ST_system\Schemas\SchemaOrg\Common\GeoCoordinates;
 use ST_system\Schemas\SchemaOrg\Common\ImageObject;
+use ST_system\Schemas\SchemaOrg\Common\Place;
 use ST_system\Schemas\SchemaOrg\Common\PostalAddress;
 use ST_system\Schemas\SchemaOrg\Common\PropertyValue;
 
@@ -26,6 +27,7 @@ final class Organization extends DefaultSchema
             'email'          => 'sometimes|email',
             'address'        => [PostalAddress::class, 'sometimes'],
             'geo'            => [GeoCoordinates::class, 'sometimes'],
+            'location'       => [Place::class, 'sometimes'],
             'area_served'    => 'sometimes|string',
             'contact_points' => [self::arrayOf(ContactPoint::class), 'sometimes'],
             'same_as'        => 'sometimes|array',
@@ -76,8 +78,17 @@ final class Organization extends DefaultSchema
                 $data['address'] = $s->field('address')->toArray();
             }
 
-            if ($s->field('geo') !== null) {
-                $data['geo'] = $s->field('geo')->toArray();
+            $location = $s->field('location');
+
+            if ($location === null && $s->field('geo') !== null) {
+                $location = Place::create()->fill(array_filter([
+                    'address' => $s->field('address'),
+                    'geo'     => $s->field('geo'),
+                ], static fn ($value) => $value !== null));
+            }
+
+            if ($location !== null) {
+                $data['location'] = $location->toArray();
             }
 
             if ($s->field('area_served') !== null) {
