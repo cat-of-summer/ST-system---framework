@@ -1,0 +1,1 @@
+# SvgMimeTest.php

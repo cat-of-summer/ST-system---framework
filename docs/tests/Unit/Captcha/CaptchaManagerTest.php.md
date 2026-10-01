@@ -1,0 +1,1 @@
+# CaptchaManagerTest.php
