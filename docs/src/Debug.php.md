@@ -18,8 +18,10 @@
         'output' => 'json_encode',       // дефолтный "дампер" содержимого
     ],
     'filesystem' => [
-        'dir'  => '~logs',               // куда пишет toFile() и куда handleError() шлёт error_log
-        'file' => 'log.html',
+        'dir'      => '~logs',           // куда пишет toFile() и куда handleError() шлёт error_log
+        'file'     => 'log.html',
+        'max_size' => 2 * 1024 * 1024,   // потолок файла toFile(), байт; <= 0 — без ротации
+        'keep'     => 0.5,               // какая доля max_size остаётся после обрезки
     ],
     'handle_error' => [
         'reporting' => ['level' => E_ALL],
@@ -112,12 +114,12 @@ $r = Debug::linter('modules/Foo/index.php');
 
 Приватный метод-ядро, который использует каждый dump-метод. Собирает вывод из:
 
-1. дампера, выбранного по `output_type` (`print_r`, `var_export`, `var_dump`, либо дефолт `json_encode` c `JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES`); вывод `var_dump` перехватывается через `ob_start()`, так как эта функция эхо-ит, а не возвращает строку;
+1. дампера, выбранного по `output_type` (`print_r`, `var_export`, `var_dump`, `json` — компактный JSON в одну строку, либо дефолт `json_encode` c `JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES`); вывод `var_dump` перехватывается через `ob_start()`, так как эта функция эхо-ит, а не возвращает строку;
 2. отформатированного timestamp (`format.timestamp.output`);
 3. backtrace — полная цепочка, если `config['backtrace'] === true`, иначе короткая однострочная версия (`chain => false`);
 4. опциональной обёртки в `<pre>...</pre>` (`config['pre']`, по умолчанию `true`).
 
-Управляющие ключи конфига, общие для всех dump-методов: `output_type`, `backtrace` (default `false`), `pre` (default `true`), `timestamp_format_output`.
+Управляющие ключи конфига, общие для всех dump-методов: `output_type`, `backtrace` (default `false`), `pre` (default `true`), `timestamp_format_output`. Схема этих ключей одна, `outputSchema()`. Dump-метод с собственной схемой `applyConfig` обязан её подмешать (`$schema + static::outputSchema()`): `applyConfig` отбрасывает необъявленные ключи, и без этого `pre`/`backtrace`/`output_type` из вызова до вывода не дойдут.
 
 ## Dump-методы
 
@@ -169,6 +171,31 @@ Debug::toFile(['error' => 'oops'], [
 - на **все последующие** записи в тот же путь **в этом же запуске** всегда используется `config['merge']` (по умолчанию `true` — дописывать), а `append` больше не перепроверяется.
 
 То есть при нескольких вызовах `toFile()` в один и тот же файл за один запрос первый вызов решает "перезаписать или дописать к тому, что было от прошлых запросов", а все следующие в рамках этого же запроса всегда дописываются (если не выставить `merge => false`).
+
+#### Ротация
+
+Файл не растёт выше `max_size` байт (по умолчанию `filesystem.max_size`, 2 МБ). Лимит задаётся и на вызов: `Debug::toFile($x, ['max_size' => 512 * 1024])`. Архивов нет: если очередная запись не помещается, от файла остаётся хвост примерно `max_size * keep` байт вместе с новой записью, остальное срезается.
+
+- Хвост начинается с целой записи: с строки `<pre>` при `pre => true`, иначе со строки-метки времени той же формы, что у новой записи (цифры обобщаются, так что подходит формат `format.timestamp.output` по умолчанию).
+- Дорогая операция (перечитать хвост и переписать файл) случается раз на ~`max_size * (1 - keep)` записанных байт. Остальные вставки — обычный append.
+- Запись идёт под `flock(LOCK_EX)`, поэтому параллельные процессы не рвут друг другу записи и обрезку.
+- Обрезается только файл, в который идёт текущая запись. С `timestamp => true` имя файла меняется каждую секунду, и ротацию по времени задаёт уже имя.
+- `max_size <= 0` отключает ротацию.
+
+Нативные записи PHP, которые `handleError()` направляет через `ini_set('error_log', …)` в тот же каталог, мимо `toFile()` и ротации не проходят.
+
+### `Debug::toStream($content, $config = [])` — в поток процесса (docker logs)
+
+```php
+Debug::toStream(['order' => $id, 'status' => 'failed']);
+// 01-10-2026 12:03:01 App\Orders->pay() in /app/Orders.php on line 42. {"order":17,"status":"failed"}
+
+Debug::setConfig(['handle_error.output.method' => 'toStream']); // ошибки из handleError() — в docker logs
+```
+
+Одна запись — одна строка: по умолчанию `output_type => 'json'` (компактный JSON), `pre => false`, оставшиеся переводы строк схлопываются в пробел. Сборщики логов (docker, journald, Loki) режут поток по строкам, и многострочный дамп иначе распался бы на отдельные события.
+
+`stream` — `stderr` (по умолчанию), `stdout` или любой URI потока PHP (`php://stdout`, путь к файлу). По умолчанию выбран stderr: в web-SAPI stdout FPM-воркера попадает в docker logs только при `catch_workers_output = yes` (в официальных образах `php:*-fpm` включено, и stderr идёт туда же), а у mod_php stderr попадает в error log Apache, который в образах `php:*-apache` выведен в docker logs. `php://output` для этого не годится: это тело ответа. В CLI оба потока выходят в терминал, их можно разделить перенаправлением.
 
 ### `Debug::toEmail($content, $config = [])` — пример кастомного dump-метода
 

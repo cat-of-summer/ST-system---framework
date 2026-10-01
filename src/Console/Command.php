@@ -21,10 +21,67 @@ abstract class Command {
 
     final public static function fetch(...$args): static { return new static(...$args); }
 
-    abstract public function handle(): void;
+    /**
+     * Возвращённый int становится кодом выхода процесса, всё остальное — 0.
+     */
+    abstract public function handle();
 
     protected function line(string $text): void {
-        echo $text . PHP_EOL;
+        fwrite(STDOUT, $text . PHP_EOL);
+    }
+
+    protected function error(string $text): void {
+        fwrite(STDERR, $text . PHP_EOL);
+    }
+
+    /**
+     * Вопросы задаются только при живом терминале: с -n/--no-interaction или при
+     * перенаправленном STDIN ask()/confirm()/secret() сразу отдают значение по умолчанию.
+     */
+    protected function isInteractive(): bool {
+        return empty($this->options['no-interaction']) && stream_isatty(STDIN);
+    }
+
+    protected function ask(string $question, ?string $default = null): ?string {
+        if (!$this->isInteractive()) return $default;
+
+        fwrite(STDOUT, $question . ($default !== null ? " [{$default}]" : '') . ': ');
+        $answer = fgets(STDIN);
+        $answer = $answer === false ? '' : trim($answer);
+
+        return $answer !== '' ? $answer : $default;
+    }
+
+    protected function confirm(string $question, bool $default = false): bool {
+        $answer = $this->ask($question . ($default ? ' (Y/n)' : ' (y/N)'));
+        if ($answer === null) return $default;
+
+        return in_array(mb_strtolower($answer), ['y', 'yes', 'д', 'да'], true);
+    }
+
+    protected function secret(string $question): ?string {
+        if (!$this->isInteractive()) return null;
+
+        $hide = DIRECTORY_SEPARATOR === '/' && trim((string)shell_exec('stty -g 2>/dev/null')) !== '';
+
+        fwrite(STDOUT, $question . ': ');
+        if ($hide) shell_exec('stty -echo');
+        $answer = fgets(STDIN);
+        if ($hide) { shell_exec('stty echo'); fwrite(STDOUT, PHP_EOL); }
+
+        $answer = $answer === false ? '' : rtrim($answer, "\r\n");
+
+        return $answer !== '' ? $answer : null;
+    }
+
+    /**
+     * Содержимое, переданное в команду пайпом или перенаправлением (`cat x | php cli cmd`).
+     * При вводе с терминала — пустая строка, чтобы команда не повисла в ожидании.
+     */
+    protected function stdin(): string {
+        static $cache = null;
+
+        return $cache ??= stream_isatty(STDIN) ? '' : (string)stream_get_contents(STDIN);
     }
 
     
@@ -105,6 +162,14 @@ abstract class Command {
     }
 
     private static function resolveOptions(array $rawOptions, array $optDefs): array {
+        $aliases = array_column($optDefs, 'alias');
+        $optDefs += ['no-interaction' => [
+            'name'    => 'no-interaction',
+            'alias'   => in_array('n', $aliases, true) ? null : 'n',
+            'flag'    => true,
+            'default' => false,
+        ]];
+
         $aliasMap = [];
         foreach ($optDefs as $def) {
             if ($def['alias'] !== null) {

@@ -28,8 +28,10 @@ final class Debug {
                 'output' => 'json_encode',
             ],
             'filesystem' => [
-                'dir'  => '~logs',
-                'file' => 'log.html',
+                'dir'      => '~logs',
+                'file'     => 'log.html',
+                'max_size' => 2 * 1024 * 1024,
+                'keep'     => 0.5,
             ],
             'handle_error' => [
                 'reporting' => [
@@ -197,20 +199,29 @@ final class Debug {
 
     private function __construct() {}
 
+    /**
+     * Ключи getOutput(). Dump-метод со своей схемой обязан включать их: applyConfig
+     * отбрасывает необъявленные ключи, и без этого pre/backtrace/output_type не доходят до вывода.
+     */
+    private static function outputSchema(): array {
+        return [
+            'output_type'             => 'nullable|string|@format.output',
+            'backtrace'               => ['nullable|bool', Rule::default(false)],
+            'pre'                     => ['nullable|bool', Rule::default(true)],
+            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
+        ];
+    }
+
     private function getOutput($content, array $config): string {
         $dumpers = [
             'print_r'     => fn($c) => print_r($c, true),
             'var_export'  => fn($c) => var_export($c, true),
             'var_dump'    => fn($c) => var_dump($c),
-            'json_encode' => fn($c) => json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            'json_encode' => fn($c) => json_encode($c, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'json'        => fn($c) => json_encode($c, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ];
 
-        static::applyConfig($config, [
-            'output_type'             => 'nullable|string|@format.output',
-            'backtrace'               => ['nullable|bool', Rule::default(false)],
-            'pre'                     => ['nullable|bool', Rule::default(true)],
-            'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
-        ]);
+        static::applyConfig($config, static::outputSchema());
 
         $dumper = $dumpers[$config['output_type']] ?? $dumpers['json_encode'];
 
@@ -251,7 +262,9 @@ final class Debug {
             'timestamp_format_file' => 'nullable|string|@format.timestamp.file',
             'merge'                 => ['nullable|bool', Rule::default(true)],
             'append'                => ['nullable|bool', Rule::default(false)],
-        ]);
+            'max_size'              => 'int|@filesystem.max_size',
+            'keep'                  => 'float|@filesystem.keep',
+        ] + static::outputSchema());
 
         $dir  = Main::preparePath($config['dir'], 3);
         $file = trim($config['file'], '/');
@@ -269,11 +282,79 @@ final class Debug {
 
         static::$dumper_counter[$path] = (static::$dumper_counter[$path] ?? 0) + 1;
 
-        return file_put_contents($path, $this->getOutput($content, $config), (
-            (static::$dumper_counter[$path] ?? 0) === 1
-                ? ($config['append'] && file_exists($path))
-                : $config['merge']
-        ) ? FILE_APPEND : 0);
+        $entry  = $this->getOutput($content, $config);
+        $append = static::$dumper_counter[$path] === 1
+            ? ($config['append'] && file_exists($path))
+            : $config['merge'];
+
+        if (!$fp = fopen($path, 'c+b')) return false;
+        flock($fp, LOCK_EX);
+
+        if (!$append)
+            ftruncate($fp, 0);
+        else
+            static::trimHead($fp, strlen($entry), $config['max_size'], $config['keep'], $config['pre']
+                ? '/^<pre>$/m'
+                : '/^'.preg_replace('/\d/', '\d', preg_quote(strtok($entry, "\n"), '/')).'$/m');
+
+        fseek($fp, 0, SEEK_END);
+        $written = fwrite($fp, $entry);
+
+        fflush($fp);
+        flock($fp, LOCK_UN);
+        fclose($fp);
+
+        return $written;
+    }
+
+    /**
+     * Ротация лога без архивов: если запись не помещается в $max байт, от файла остаётся хвост
+     * около $max * $keep (вместе с новой записью), начиная с ближайшей границы записи: `<pre>`
+     * или строки-метки времени, совпадающей по форме с первой строкой новой записи. Перезапись
+     * файла случается раз на ~$max * (1 - $keep) байт, остальные вставки — обычный append.
+     * $max <= 0 отключает ротацию. Вызывается под flock.
+     */
+    private static function trimHead($fp, int $incoming, int $max, float $keep, string $boundary): void {
+        if ($max <= 0) return;
+
+        $size = fstat($fp)['size'];
+        if ($size + $incoming <= $max) return;
+
+        $tail = '';
+        $len  = (int)min($size, $max * $keep - $incoming);
+
+        if ($len > 0) {
+            fseek($fp, -$len, SEEK_END);
+            $tail = (string)stream_get_contents($fp);
+
+            $tail = preg_match($boundary, $tail, $m, PREG_OFFSET_CAPTURE) ? substr($tail, $m[0][1]) : '';
+        }
+
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, $tail);
+    }
+
+    /**
+     * Запись в поток процесса — для docker logs и подобных сборщиков. По умолчанию stderr:
+     * stdout в web-SAPI либо пропадает (FPM без catch_workers_output), либо уходит в ответ.
+     * Одна запись — одна строка: компактный JSON, без <pre>, переводы строк схлопываются.
+     */
+    private function toStream($content, array $config = []) {
+        static::applyConfig($config, [
+            'stream'      => ['nullable|string', Rule::default('stderr')],
+            'pre'         => ['nullable|bool', Rule::default(false)],
+            'output_type' => ['nullable|string', Rule::default('json')],
+        ] + static::outputSchema());
+
+        $stream = in_array($config['stream'], ['stdout', 'stderr'], true) ? 'php://'.$config['stream'] : $config['stream'];
+        $line   = preg_replace('/\s*\R\s*/', ' ', trim($this->getOutput($content, $config))).PHP_EOL;
+
+        if (!$fp = fopen($stream, 'ab')) return false;
+        $written = fwrite($fp, $line);
+        fclose($fp);
+
+        return $written;
     }
 
     public static function handleError(array $config = []): void {

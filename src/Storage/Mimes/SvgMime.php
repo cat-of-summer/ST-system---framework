@@ -16,19 +16,55 @@ class SvgMime extends Mime {
         if (!$this->file->is_uri && !$this->file->exists())
             throw new \InvalidArgumentException("File not found: {$this->file->getPathname()}");
 
-        $attr_str = '';
-
-        foreach ($config as $k => $v)
-            $attr_str .= sprintf(' %s="%s"', $k, $v);
-        
-        return sprintf('<svg %s><use xlink:href="%s"></use></svg>', $attr_str, $this->file->getRelativePath().'#'.$id);
+        return sprintf('<svg%s><use xlink:href="%s"></use></svg>',
+            $config ? ' '.static::getAttrString($config) : '',
+            htmlspecialchars($this->file->getRelativePath().'#'.$id, ENT_QUOTES)
+        );
     }
 
+    /**
+     * Символ спрайта как самостоятельный <svg>: атрибуты <symbol> (кроме id) переносятся
+     * на корень и перекрываются $config, внутренние id получают суффикс вставки, чтобы
+     * повторная вставка одной иконки не плодила дубли id масок и clipPath.
+     */
     public function extractSprite(string $id, array $config = []): string {
+        $symbol = $this->spriteSymbols()[$id] ?? null;
+        if ($symbol === null) return '';
+
+        static $counter = 0; $counter++;
+
+        $body = $symbol['body'];
+        if ($symbol['ids']) {
+            $own  = array_flip($symbol['ids']);
+            $body = preg_replace_callback(
+                '/((?<![\w:-])id\s*=\s*["\']|url\(\s*#|(?<![\w-])href\s*=\s*["\']#)([^"\')\s]+)/',
+                fn($m) => $m[1].$m[2].(isset($own[$m[2]]) ? '_'.$counter : ''),
+                $body
+            );
+        }
+
+        $attrs = array_merge(['xmlns' => 'http://www.w3.org/2000/svg'], $symbol['attrs'], $config);
+
+        return '<svg '.static::getAttrString($attrs).'>'.$body.'</svg>';
+    }
+
+    /**
+     * Символы спрайта: id => ['attrs' => [...], 'body' => '...', 'ids' => [...]].
+     * Генераторы спрайтов выносят градиенты, маски и clipPath из <symbol> в общий <defs>;
+     * такие элементы, на которые ссылается символ, дописываются в его body отдельным <defs>.
+     * Файл разбирается один раз за запрос (ключ — путь и mtime).
+     */
+    private function spriteSymbols(): array {
+        static $cache = [];
+
         if (!$this->file->is_uri && !$this->file->exists())
             throw new \InvalidArgumentException("File not found: {$this->file->getPathname()}");
 
+        $key = $this->file->getPathname().'|'.$this->file->mtime;
+        if (isset($cache[$key])) return $cache[$key];
+
         $content = $this->file->getRaw();
+        $raw = [];
 
         if (class_exists('DOMDocument')) {
             $dom = new \DOMDocument();
@@ -36,76 +72,86 @@ class SvgMime extends Mime {
             libxml_use_internal_errors(true);
             $dom->loadXML($content, LIBXML_NOWARNING | LIBXML_NOERROR);
             libxml_clear_errors();
-            
-            $rootElement = $dom->documentElement;
-            
-            if (!$rootElement || $rootElement->nodeName !== 'svg') 
-                return '';
-            
+
+            $root = $dom->documentElement;
+            if (!$root || $root->localName !== 'svg') return $cache[$key] = [];
+
             $xpath = new \DOMXPath($dom);
-            
-            $svgNamespace = $rootElement->namespaceURI;
-            
-            if (empty($svgNamespace))
-                $svgNamespace = 'http://www.w3.org/2000/svg';
-                        
-            $xpath->registerNamespace('svg', $svgNamespace);
-            
-            $symbol = $xpath->query("//svg:symbol[@id='$id']")->item(0);
+            $xpath->registerNamespace('svg', $root->namespaceURI ?: 'http://www.w3.org/2000/svg');
 
-            if (!$symbol) return '';
-            
-            $newSvg = new \DOMDocument('1.0', 'UTF-8');
-            $svgRoot = $newSvg->createElementNS('http://www.w3.org/2000/svg', 'svg');
+            foreach ($xpath->query('//svg:symbol[@id]') as $node) {
+                $attrs = [];
+                foreach ($node->attributes as $attr)
+                    if ($attr->nodeName !== 'id') $attrs[$attr->nodeName] = $attr->nodeValue;
 
-            if ($symbol->hasAttribute('viewBox'))
-                $svgRoot->setAttribute('viewBox', $symbol->getAttribute('viewBox'));
-                            
-            foreach ($config as $k => $v)
-                $svgRoot->setAttribute($k, $v);
-                            
-            while ($symbol->firstChild) {
-                $node = $symbol->removeChild($symbol->firstChild);
-                $svgRoot->appendChild($newSvg->importNode($node, true));
+                $body = '';
+                foreach ($node->childNodes as $child)
+                    $body .= $dom->saveXML($child);
+
+                $raw[$node->getAttribute('id')] = [$attrs, trim($body)];
             }
 
-            $newSvg->appendChild($svgRoot);
-            
-            return $newSvg->saveXML($svgRoot);
+            $lookup = static function (string $ref) use ($xpath, $dom): ?string {
+                if (strpbrk($ref, '"\'') !== false) return null;
+                $el = $xpath->query('//*[@id="'.$ref.'"][not(ancestor-or-self::svg:symbol)]')->item(0);
+                return $el ? $dom->saveXML($el) : null;
+            };
         } else {
-            $idQuoted = preg_quote($id, '/');
+            preg_match_all('/<symbol\b([^>]*)>(.*?)<\/symbol>/is', $content, $matches, PREG_SET_ORDER);
 
-            $pattern = '/(<symbol\s+[^>]*?id\s*=\s*["\']' . $idQuoted . '["\'][^>]*>)(.*?)<\/symbol>/is';
+            foreach ($matches as [, $attr_str, $body]) {
+                preg_match_all('/([\w:-]+)\s*=\s*(["\'])(.*?)\2/s', $attr_str, $pairs, PREG_SET_ORDER);
 
-            if (preg_match($pattern, $content, $matches)) {
-                
-                $openTag = $matches[1];
-                $innerContent = trim($matches[2]);
-                
-                if (preg_match('/(viewBox\s*=\s*["\'][^"\']*["\'])/i', $openTag, $viewBoxMatch)) {
-                    $viewBoxAttr = $viewBoxMatch[1];
-                } else {
-                    $viewBoxAttr = '';
-                }
+                $attrs = [];
+                foreach ($pairs as [, $k, , $v]) $attrs[$k] = html_entity_decode($v, ENT_QUOTES | ENT_XML1);
 
-                $configAttrs = '';
-                foreach ($config as $k => $v) {
-                    $configAttrs .= sprintf(' %s="%s"', $k, htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE));
-                }
-                
-                
-                $newSvg = sprintf(
-                    '<svg xmlns="http://www.w3.org/2000/svg"%s%s>%s</svg>',
-                    ($viewBoxAttr ? ' ' . $viewBoxAttr : ''),
-                    $configAttrs,
-                    $innerContent
-                );
+                $id = $attrs['id'] ?? '';
+                if ($id === '') continue;
+                unset($attrs['id']);
 
-                return $newSvg;
+                $raw[$id] = [$attrs, trim($body)];
             }
 
-            return '';
+            $outside = preg_replace('/<symbol\b.*?<\/symbol>/is', '', $content);
+            $lookup = static function (string $ref) use ($outside): ?string {
+                $q = preg_quote($ref, '/');
+                return preg_match('/<([\w:-]+)\b[^>]*(?<![\w:-])id\s*=\s*["\']'.$q.'["\'][^>]*?(?:\/>|>.*?<\/\1>)/s', $outside, $m) ? $m[0] : null;
+            };
         }
+
+        $symbols = [];
+        foreach ($raw as $id => [$attrs, $body]) {
+            $defs  = '';
+            $queue = [$body];
+            $ids   = [];
+            $seen  = [];
+
+            while ($queue) {
+                $xml = array_shift($queue);
+
+                preg_match_all('/(?<![\w:-])id\s*=\s*["\']([^"\']+)["\']/', $xml, $m);
+                foreach ($m[1] as $inner) $ids[$inner] = true;
+
+                preg_match_all('/url\(\s*#([^)\s]+)\s*\)|(?<![\w-])href\s*=\s*["\']#([^"\']+)["\']/', $xml, $m, PREG_SET_ORDER);
+                foreach ($m as $ref) {
+                    $ref = ($ref[2] ?? '') !== '' ? $ref[2] : $ref[1];
+                    if (isset($ids[$ref]) || isset($seen[$ref])) continue;
+                    $seen[$ref] = true;
+
+                    if (($dep = $lookup($ref)) === null) continue;
+                    $defs   .= $dep;
+                    $queue[] = $dep;
+                }
+            }
+
+            $symbols[$id] = [
+                'attrs' => $attrs,
+                'body'  => $body.($defs !== '' ? '<defs>'.$defs.'</defs>' : ''),
+                'ids'   => array_keys($ids),
+            ];
+        }
+
+        return $cache[$key] = $symbols;
     }
 
     public function toImg(array $config = []): string {

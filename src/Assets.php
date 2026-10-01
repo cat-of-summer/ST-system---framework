@@ -57,6 +57,7 @@ final class Assets {
             case 'setManifest':
             case 'svg':
             case 'sprite':
+            case 'bySprite':
                 return static::$name(...$args);
         }
 
@@ -79,11 +80,11 @@ final class Assets {
                 return static::svg(...$args);
 
             case 'sprite':
-                $args[0] = $args[0] ?? '';
+            case 'bySprite':
                 $path = ($args[2] ?? '') !== ''
                     ? $this->file->make($args[2])->getPathname()
                     : $this->file->getPathname();
-                return static::sprite($path, $args[0], $args[1] ?? []);
+                return static::$name($path, $args[0] ?? '', $args[1] ?? []);
 
             case 'addCss':
             case 'addJs':
@@ -519,12 +520,20 @@ final class Assets {
     }
 
     private static function sprite(string $path, string $icon_id, array $attrs = []): string {
+        return self::spriteFile($path, __FUNCTION__)->extractSprite($icon_id, $attrs);
+    }
+
+    private static function bySprite(string $path, string $icon_id, array $attrs = []): string {
+        return self::spriteFile($path, __FUNCTION__)->bySprite($icon_id, $attrs);
+    }
+
+    private static function spriteFile(string $path, string $method): File {
         if ($path === '')
-            throw new \InvalidArgumentException('Assets::sprite() requires a sprite file path.');
+            throw new \InvalidArgumentException("Assets::{$method}() requires a sprite file path.");
 
         if (pathinfo($path, PATHINFO_EXTENSION) === '') $path .= '.svg';
 
-        return File::make($path)->bySprite($icon_id, $attrs);
+        return File::make($path);
     }
 
     private static function addResource($path, array $attrs = [], string $buffer = ''): void {

@@ -39,13 +39,28 @@ final public static function fetch(array $positional = [], array $rawOptions = [
 
 Объявлен `final` — подклассы не переопределяют конструктор, а получают уже разобранные значения через `argument()`/`option()`. Внутри: парсится `static::getSignature()` (`parseSignature()`), затем резолвятся позиционные аргументы (`resolveArguments()` — печатает сообщение об ошибке в STDERR и завершает процесс кодом `1`, если обязательный аргумент не передан) и опции (`resolveOptions()` — учитывает алиасы и значения по умолчанию).
 
-## handle(): void
+Каждая команда, помимо своих опций, принимает глобальный флаг `--no-interaction` (алиас `-n`, если команда не заняла `-n` своей опцией). Он виден и в `option()`.
 
-Абстрактный метод — единственное, что обязана реализовать конкретная команда. Вся бизнес-логика команды пишется здесь.
+## handle()
 
-## line(string $text): void
+Абстрактный метод — единственное, что обязана реализовать конкретная команда. Вся бизнес-логика команды пишется здесь. Тип возврата в базовом классе не объявлен: если `handle()` вернёт `int`, [`Kernel`](Kernel.php.md) сделает его кодом выхода процесса, иначе код будет `0`. Команды с `handle(): void` совместимы и завершаются с `0`.
 
-Печатает строку в stdout с переводом строки (`echo $text . PHP_EOL`) — единообразный вывод вместо голого `echo`.
+## Вывод
+
+- **`line(string $text): void`** — строка в STDOUT с переводом строки.
+- **`error(string $text): void`** — строка в STDERR. Диагностика не смешивается с полезным выводом, который могут перенаправлять в файл или пайп.
+
+## Ввод
+
+Устроен как в Laravel (Symfony Console): вопросы задаются только при живом терминале, а в скриптах и CI команда не зависает.
+
+- **`isInteractive(): bool`** — `false`, если передан `-n`/`--no-interaction` или STDIN не терминал (пайп, перенаправление, `docker run` без `-t`, cron).
+- **`ask(string $question, ?string $default = null): ?string`** — задаёт вопрос и читает строку из STDIN. Пустой ответ и неинтерактивный режим дают `$default`.
+- **`confirm(string $question, bool $default = false): bool`** — да/нет. Принимаются `y`, `yes`, `д`, `да` в любом регистре, любой другой ответ даёт `false`. Пустой ответ и неинтерактивный режим дают `$default`.
+- **`secret(string $question): ?string`** — как `ask()`, но на *nix ввод не отображается (`stty -echo`). На Windows ввод виден. В неинтерактивном режиме возвращает `null`.
+- **`stdin(): string`** — всё, что передано в команду пайпом или перенаправлением (`cat dump.sql | php console.php db:import`). При вводе с терминала возвращает пустую строку, а не ждёт EOF. Поток читается один раз, повторные вызовы отдают то же содержимое.
+
+`stdin()` и вопросы делят один поток: если команда читает пайп, `isInteractive()` уже `false`, и `ask()` отдаёт значения по умолчанию.
 
 ## option(string $key = '', $default = null)
 
@@ -67,15 +82,21 @@ use ST_system\Console\Command;
 class UserCreateCommand extends Command {
     protected static string $signature = 'user:create {name} {email?} {--role=user} {--f|force}';
 
-    public function handle(): void {
+    public function handle(): int {
         $name  = $this->argument('name');
         $email = $this->argument('email', 'не указан');
         $role  = $this->option('role');
         $force = $this->option('force');
 
+        if (!$force && !$this->confirm("Создать пользователя {$name}?", true)) {
+            $this->error('Отменено');
+            return 1;
+        }
+
         $this->line("Создаю пользователя: {$name} <{$email}>, роль: {$role}" . ($force ? ' (force)' : ''));
 
         // ... бизнес-логика создания пользователя
+        return 0;
     }
 }
 ```

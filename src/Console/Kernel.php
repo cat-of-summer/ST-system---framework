@@ -62,8 +62,8 @@ final class Kernel {
         }
 
         if (!isset(self::$commands[$name])) {
-            echo 'Unknown command: ' . $name . PHP_EOL;
-            echo 'Available: ' . implode(', ', array_keys(self::getAvailableCommands())) . PHP_EOL;
+            fwrite(STDERR, 'Unknown command: ' . $name . PHP_EOL);
+            fwrite(STDERR, 'Available: ' . implode(', ', array_keys(self::getAvailableCommands())) . PHP_EOL);
             exit(1);
         }
 
@@ -88,9 +88,9 @@ final class Kernel {
             }
         }
 
-        (new self::$commands[$name]($positional, $rawOptions))->handle();
+        $code = (new self::$commands[$name]($positional, $rawOptions))->handle();
 
-        exit(0);
+        exit(is_int($code) ? $code : 0);
     }
 
     public static function getAvailableCommands(): array {
