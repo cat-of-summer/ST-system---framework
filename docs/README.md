@@ -4,6 +4,11 @@
 ## Папки
 
 - [src](src/)
+- [tests](tests/)
+
+## Файлы
+
+- [phpunit.xml.dist](phpunit.xml.dist.md)
 
 <!-- DOCGEN:END -->
 

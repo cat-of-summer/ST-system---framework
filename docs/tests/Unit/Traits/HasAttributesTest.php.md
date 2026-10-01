@@ -1,0 +1,1 @@
+# HasAttributesTest.php
