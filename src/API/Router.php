@@ -51,7 +51,7 @@ class Router {
                 }
         
         $this->params['methods'] = (isset($PARAMS['methods']) && is_array($PARAMS['methods']))
-            ? array_intersect_key($PARAMS['methods'], self::$methods)
+            ? array_values(array_intersect(array_map('strtoupper', $PARAMS['methods']), self::$methods))
             : self::$methods;
     }
 
@@ -91,6 +91,7 @@ class Router {
             throw new \Exception("Метод {$_SERVER['REQUEST_METHOD']} не доступен");
         
         $PARSER_PARAMS = [];
+        $URL_PARAMS = [];
         $max_priority = 0;
         $rules_counter = 0;
 
@@ -99,11 +100,15 @@ class Router {
             $regexp = $this->get_regexp($rule_param[0]);
 
             if (preg_match($regexp['string'], $request_url, $matches)) {
-                if ($max_priority < isset($rule_param[2]) ? (int)$rule_param[2] : 0 ) {
+                $priority = isset($rule_param[2]) ? (int)$rule_param[2] : 0;
+
+                if ($priority < $max_priority) continue;
+
+                if ($priority > $max_priority) {
                     $PARSER_PARAMS = [];
                     $URL_PARAMS = [];
                     $rules_counter = 0;
-                    $max_priority = (int)$rule_param[2];
+                    $max_priority = $priority;
                 }
 
                 if ($this->params['apply_once'] && $rules_counter > 0) continue;

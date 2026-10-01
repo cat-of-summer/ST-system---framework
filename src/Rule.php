@@ -598,11 +598,11 @@ final class Rule {
 
         return self::create([
             'string',
-            self::create(fn(&$v) => @preg_match($pattern, $v) === 1),
+            self::create(fn(&$v) => @preg_match($pattern, $v) === 1)
+                ->handleError(fn($v) => 'Invalid format'),
         ])
         ->order(700)
-        ->seesSentinel()
-        ->handleError(fn($v) => 'Invalid format');
+        ->seesSentinel();
     }
 
     public static function isSentinel($value): bool {

@@ -19,7 +19,8 @@ abstract class Command {
         $this->options   = static::resolveOptions($rawOptions, $optDefs);
     }
 
-    final public static function fetch(...$args): static { return new static(...$args); }
+    /** @return static */
+    final public static function fetch(...$args) { return new static(...$args); }
 
     /**
      * Возвращённый int становится кодом выхода процесса, всё остальное — 0.

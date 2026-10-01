@@ -69,6 +69,12 @@ class DefaultSchema
 
     protected static function _init(): void {}
 
+    /** Значение для текста или атрибута XML; готовые сущности (`&amp;`) не экранируются повторно. */
+    protected static function xml($value): string
+    {
+        return htmlspecialchars((string) $value, ENT_XML1 | ENT_QUOTES, 'UTF-8', false);
+    }
+
     final public static function name(): string
     {
         $class = static::class;

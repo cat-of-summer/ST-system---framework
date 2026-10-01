@@ -226,8 +226,8 @@ final class Route {
             ? str_replace('//', '/', '/'.trim($base->prefix, '/').'/'.trim($uri, '/').'/')
             : str_replace('//', '/', trim($base->prefix, '/').'/'.trim($uri, '/'));
             
-        foreach (self::$routes as $uri => $r)
-            if ($uri === $full && array_intersect($r->methods, $methods))
+        foreach (self::$routes as $r)
+            if ($r->pattern === $full && array_intersect($r->methods, $methods))
                 throw new \RuntimeException("Duplicate route: {$full}");
 
         self::$routes[] = (object)[

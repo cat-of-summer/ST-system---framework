@@ -35,40 +35,40 @@ final class Doctor extends DefaultSchema
     {
         return function (DefaultSchema $s): string {
             $internalId = $s->field('internal_id') ?? $s->field('id');
-            $xml  = '<doctor id="' . $s->field('id') . '">';
-            $xml .= '<name>' . $s->field('name') . '</name>';
-            $xml .= '<url>' . $s->field('url') . '</url>';
+            $xml  = '<doctor id="' . self::xml($s->field('id')) . '">';
+            $xml .= '<name>' . self::xml($s->field('name')) . '</name>';
+            $xml .= '<url>' . self::xml($s->field('url')) . '</url>';
 
             if ($s->field('description') !== null) {
-                $xml .= '<description>' . trim($s->field('description')) . '</description>';
+                $xml .= '<description>' . self::xml(trim($s->field('description'))) . '</description>';
             }
-            $xml .= '<internal_id>' . $internalId . '</internal_id>';
+            $xml .= '<internal_id>' . self::xml($internalId) . '</internal_id>';
             if ($s->field('first_name') !== null) {
-                $xml .= '<first_name>' . $s->field('first_name') . '</first_name>';
+                $xml .= '<first_name>' . self::xml($s->field('first_name')) . '</first_name>';
             }
             if ($s->field('surname') !== null) {
-                $xml .= '<surname>' . $s->field('surname') . '</surname>';
+                $xml .= '<surname>' . self::xml($s->field('surname')) . '</surname>';
             }
             if ($s->field('patronymic') !== null) {
-                $xml .= '<patronymic>' . $s->field('patronymic') . '</patronymic>';
+                $xml .= '<patronymic>' . self::xml($s->field('patronymic')) . '</patronymic>';
             }
             if ($s->field('experience_years') !== null) {
-                $xml .= '<experience_years>' . $s->field('experience_years') . '</experience_years>';
+                $xml .= '<experience_years>' . self::xml($s->field('experience_years')) . '</experience_years>';
             }
             if ($s->field('career_start_date') !== null) {
-                $xml .= '<career_start_date>' . $s->field('career_start_date') . '</career_start_date>';
+                $xml .= '<career_start_date>' . self::xml($s->field('career_start_date')) . '</career_start_date>';
             }
             if ($s->field('picture') !== null) {
-                $xml .= '<picture>' . $s->field('picture') . '</picture>';
+                $xml .= '<picture>' . self::xml($s->field('picture')) . '</picture>';
             }
             if ($s->field('degree') !== null) {
-                $xml .= '<degree>' . $s->field('degree') . '</degree>';
+                $xml .= '<degree>' . self::xml($s->field('degree')) . '</degree>';
             }
             if ($s->field('rank') !== null) {
-                $xml .= '<rank>' . $s->field('rank') . '</rank>';
+                $xml .= '<rank>' . self::xml($s->field('rank')) . '</rank>';
             }
             if ($s->field('category') !== null) {
-                $xml .= '<category>' . $s->field('category') . '</category>';
+                $xml .= '<category>' . self::xml($s->field('category')) . '</category>';
             }
             foreach ($s->field('education') ?? [] as $e) {
                 $xml .= $e->print();
@@ -80,7 +80,7 @@ final class Doctor extends DefaultSchema
                 $xml .= $c->print();
             }
             if ($s->field('reviews_total_count') !== null) {
-                $xml .= '<reviews_total_count>' . $s->field('reviews_total_count') . '</reviews_total_count>';
+                $xml .= '<reviews_total_count>' . self::xml($s->field('reviews_total_count')) . '</reviews_total_count>';
             }
             foreach ($s->field('review') ?? [] as $r) {
                 $xml .= $r->print();

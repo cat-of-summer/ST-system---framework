@@ -193,43 +193,43 @@ final class Offer extends DefaultSchema
     protected static function getPrint(): \Closure
     {
         return function (DefaultSchema $s): string {
-            $xml  = '<offer id="' . $s->field('id') . '">';
-            $xml .= '<url>' . $s->field('url') . '</url>';
+            $xml  = '<offer id="' . self::xml($s->field('id')) . '">';
+            $xml .= '<url>' . self::xml($s->field('url')) . '</url>';
 
             if ($s->field('oms') !== null) {
-                $xml .= '<oms>' . $s->field('oms') . '</oms>';
+                $xml .= '<oms>' . self::xml($s->field('oms')) . '</oms>';
             }
             if ($s->field('online_schedule') !== null) {
-                $xml .= '<online_schedule>' . $s->field('online_schedule') . '</online_schedule>';
+                $xml .= '<online_schedule>' . self::xml($s->field('online_schedule')) . '</online_schedule>';
             }
             if ($s->field('appointment') !== null) {
-                $xml .= '<appointment>' . $s->field('appointment') . '</appointment>';
+                $xml .= '<appointment>' . self::xml($s->field('appointment')) . '</appointment>';
             }
             if ($s->field('price') !== null) {
                 $xml .= $s->field('price')->print();
             }
 
-            $xml .= '<service id="' . $s->field('service_id') . '"/>';
-            $xml .= '<clinic id="' . $s->field('clinic_id') . '">';
-            $xml .= '<doctor id="' . $s->field('doctor_id') . '">';
+            $xml .= '<service id="' . self::xml($s->field('service_id')) . '"/>';
+            $xml .= '<clinic id="' . self::xml($s->field('clinic_id')) . '">';
+            $xml .= '<doctor id="' . self::xml($s->field('doctor_id')) . '">';
 
             if ($s->field('speciality') !== null) {
-                $xml .= '<speciality>' . $s->field('speciality') . '</speciality>';
+                $xml .= '<speciality>' . self::xml($s->field('speciality')) . '</speciality>';
             }
             if ($s->field('children_appointment') !== null) {
-                $xml .= '<children_appointment>' . $s->field('children_appointment') . '</children_appointment>';
+                $xml .= '<children_appointment>' . self::xml($s->field('children_appointment')) . '</children_appointment>';
             }
             if ($s->field('adult_appointment') !== null) {
-                $xml .= '<adult_appointment>' . $s->field('adult_appointment') . '</adult_appointment>';
+                $xml .= '<adult_appointment>' . self::xml($s->field('adult_appointment')) . '</adult_appointment>';
             }
             if ($s->field('house_call') !== null) {
-                $xml .= '<house_call>' . $s->field('house_call') . '</house_call>';
+                $xml .= '<house_call>' . self::xml($s->field('house_call')) . '</house_call>';
             }
             if ($s->field('telemed') !== null) {
-                $xml .= '<telemed>' . $s->field('telemed') . '</telemed>';
+                $xml .= '<telemed>' . self::xml($s->field('telemed')) . '</telemed>';
             }
             if ($s->field('is_base_service') !== null) {
-                $xml .= '<is_base_service>' . $s->field('is_base_service') . '</is_base_service>';
+                $xml .= '<is_base_service>' . self::xml($s->field('is_base_service')) . '</is_base_service>';
             }
 
             $xml .= '</doctor>';

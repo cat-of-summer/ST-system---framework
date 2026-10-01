@@ -69,6 +69,55 @@ use ST_system\HTTP\Request;
 
 ---
 
+## Тесты
+
+PHPUnit 9.6 — последняя ветка, которая работает на заявленном минимуме PHP 7.4 и на всех
+версиях до 8.4. Тесты лежат в `tests/` и повторяют структуру `src/`:
+
+```bash
+composer install
+vendor/bin/phpunit                    # или composer test
+vendor/bin/phpunit --filter RuleTest  # один класс
+```
+
+Без локального PHP — в контейнере (`composer install` нужен один раз):
+
+```bash
+docker run --rm -v "$PWD:/app" -w /app composer:2 install
+docker run --rm -v "$PWD:/app" -w /app php:7.4-cli vendor/bin/phpunit
+docker run --rm -v "$PWD:/app" -w /app php:8.3-cli vendor/bin/phpunit
+```
+
+Как устроено:
+
+- `tests/bootstrap.php` направляет `DOCUMENT_ROOT` во временную папку процесса, поэтому кэш,
+  шаблоны и языковые файлы, которые пишут тесты, не попадают в репозиторий.
+- Классы с неснимаемым статическим состоянием или с `exit` (`Config::init()`, `Lang::lockLocale()`,
+  `Route::handleRequest()`, `Command` без обязательного аргумента) проверяются в отдельном процессе.
+- HTTP-клиенты (`IntegrationDriver`, `WebClient`) ходят во встроенный сервер `php -S` на
+  `127.0.0.1` (`tests/Support/StubServer.php`) — внешняя сеть не нужна.
+- Нужны расширения `mbstring`, `json`, `dom`, `curl`, `pdo_sqlite`, `fileinfo`. Без `pdo_sqlite`
+  или `curl` соответствующие тесты пропускаются. Redis, Memcached, MySQL/PostgreSQL,
+  GD/Imagick и внешние API в набор не входят.
+
+### CI
+
+Шаг `ci` общего воркфлоу `cat-of-summer/git_toolkit` берёт команды из переменных репозитория
+(Settings → Secrets and variables → Actions → Variables):
+
+| Переменная | Значение |
+|------------|----------|
+| `TOOLCHAIN` | `php@7.4` |
+| `BUILD_COMMAND` | `composer install --no-interaction --no-progress --prefer-dist` |
+| `CI_COMMAND` | `vendor/bin/phpunit` |
+| `CACHE_PATHS` | `vendor` |
+| `CACHE_KEY_FILES` | `composer.json` |
+
+`composer.lock` в репозиторий не коммитится — это библиотека, версии зависимостей выбирает
+проект-потребитель. Ключ кэша зависимостей поэтому строится по `composer.json`.
+
+---
+
 ## Перечень классов
 
 Каждая ссылка ведёт на страницу с описанием класса.
@@ -262,6 +311,7 @@ use ST_system\HTTP\Request;
 | `Common\Reference` | Ссылка `{"@id": …}` — связывает блоки в граф | [src/Schemas/SchemaOrg/Common/Reference.php.md](src/Schemas/SchemaOrg/Common/Reference.php.md) |
 | `Common\PostalAddress` | Почтовый адрес | [src/Schemas/SchemaOrg/Common/PostalAddress.php.md](src/Schemas/SchemaOrg/Common/PostalAddress.php.md) |
 | `Common\GeoCoordinates` | Координаты точки | [src/Schemas/SchemaOrg/Common/GeoCoordinates.php.md](src/Schemas/SchemaOrg/Common/GeoCoordinates.php.md) |
+| `Common\Place` | Место: адрес и координаты, `location` организации | [src/Schemas/SchemaOrg/Common/Place.php.md](src/Schemas/SchemaOrg/Common/Place.php.md) |
 | `Common\ContactPoint` | Точка контакта организации | [src/Schemas/SchemaOrg/Common/ContactPoint.php.md](src/Schemas/SchemaOrg/Common/ContactPoint.php.md) |
 | `Common\PropertyValue` | Пара «название — значение» | [src/Schemas/SchemaOrg/Common/PropertyValue.php.md](src/Schemas/SchemaOrg/Common/PropertyValue.php.md) |
 | `Common\ImageObject` | Изображение с размерами | [src/Schemas/SchemaOrg/Common/ImageObject.php.md](src/Schemas/SchemaOrg/Common/ImageObject.php.md) |

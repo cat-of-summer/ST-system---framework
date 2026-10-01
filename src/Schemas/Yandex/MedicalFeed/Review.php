@@ -37,35 +37,35 @@ final class Review extends DefaultSchema
     {
         return function (DefaultSchema $s): string {
             $xml  = '<review>';
-            $xml .= '<date>' . $s->field('date') . '</date>';
+            $xml .= '<date>' . self::xml($s->field('date')) . '</date>';
             if ($s->field('checked') !== null) {
-                $xml .= '<checked>' . $s->field('checked') . '</checked>';
+                $xml .= '<checked>' . self::xml($s->field('checked')) . '</checked>';
             }
             if ($s->field('used_in_rating') !== null) {
-                $xml .= '<used_in_rating>' . $s->field('used_in_rating') . '</used_in_rating>';
+                $xml .= '<used_in_rating>' . self::xml($s->field('used_in_rating')) . '</used_in_rating>';
             }
-            $xml .= '<author>' . $s->field('author') . '</author>';
+            $xml .= '<author>' . self::xml($s->field('author')) . '</author>';
             if ($s->field('author_id') !== null) {
-                $xml .= '<author_id>' . $s->field('author_id') . '</author_id>';
+                $xml .= '<author_id>' . self::xml($s->field('author_id')) . '</author_id>';
             }
             if ($s->field('author_picture') !== null) {
-                $xml .= '<author_picture>' . $s->field('author_picture') . '</author_picture>';
+                $xml .= '<author_picture>' . self::xml($s->field('author_picture')) . '</author_picture>';
             }
             if ($s->field('url') !== null) {
-                $xml .= '<url>' . $s->field('url') . '</url>';
+                $xml .= '<url>' . self::xml($s->field('url')) . '</url>';
             }
-            $xml .= '<comment>' . $s->field('comment') . '</comment>';
+            $xml .= '<comment>' . self::xml($s->field('comment')) . '</comment>';
             if ($s->field('grade') !== null) {
-                $xml .= '<grade>' . $s->field('grade') . '</grade>';
+                $xml .= '<grade>' . self::xml($s->field('grade')) . '</grade>';
             }
             if ($s->field('positive') !== null) {
-                $xml .= '<positive>' . $s->field('positive') . '</positive>';
+                $xml .= '<positive>' . self::xml($s->field('positive')) . '</positive>';
             }
             if ($s->field('negative') !== null) {
-                $xml .= '<negative>' . $s->field('negative') . '</negative>';
+                $xml .= '<negative>' . self::xml($s->field('negative')) . '</negative>';
             }
             if ($s->field('response') !== null) {
-                $xml .= '<response>' . $s->field('response') . '</response>';
+                $xml .= '<response>' . self::xml($s->field('response')) . '</response>';
             }
             $xml .= '</review>';
             return $xml;

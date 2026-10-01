@@ -129,7 +129,20 @@ final class CacheManager {
         if ($file !== null) $config['file'] = (string)$file;
         if ($ttl  !== null) $config['ttl']  = (int)$ttl;
 
-        return static::make($key, $config)->{$name}(...$args);
+        $cache = static::make($key, $config);
+
+        // Порядок аргументов ярлыка ($data, $file, $ttl) не совпадает с методами драйвера
+        // ($data, $ttl, $file): file и ttl уже ушли в конфиг, сюда передаётся остальное.
+        switch ($name) {
+            case 'set':
+                return $cache->set($args[0] ?? null);
+            case 'setMeta':
+                return $cache->setMeta((array)($args[0] ?? []), (int)$ttl);
+            case 'remember':
+                return $cache->remember($args[0] ?? null, (int)$ttl, (string)$file, $args[3] ?? null);
+            default:
+                return $cache->{$name}(...$args);
+        }
     }
 
     public function __call(string $name, array $args) {

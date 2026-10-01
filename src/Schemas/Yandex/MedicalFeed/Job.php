@@ -19,12 +19,12 @@ final class Job extends DefaultSchema
     {
         return function (DefaultSchema $s): string {
             $xml  = '<job>';
-            $xml .= '<organization>' . $s->field('organization') . '</organization>';
+            $xml .= '<organization>' . self::xml($s->field('organization')) . '</organization>';
             if ($s->field('period_years') !== null) {
-                $xml .= '<period_years>' . $s->field('period_years') . '</period_years>';
+                $xml .= '<period_years>' . self::xml($s->field('period_years')) . '</period_years>';
             }
             if ($s->field('position') !== null) {
-                $xml .= '<position>' . $s->field('position') . '</position>';
+                $xml .= '<position>' . self::xml($s->field('position')) . '</position>';
             }
             $xml .= '</job>';
             return $xml;

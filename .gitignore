@@ -2,3 +2,4 @@ vendor/
 .env
 .phpunit.cache/
 *.log
+composer.lock

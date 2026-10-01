@@ -118,7 +118,7 @@ class Request {
                 case 'headers':
                     foreach ($_SERVER as $param_name => $param_value)
                         if (substr($param_name, 0, 5) == 'HTTP_')
-                            $this->data['headers'][str_replace(' ', '-', ucwords(str_replace('_', ' ', substr($param_name, 5))))] = $param_value;
+                            $this->data['headers'][str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($param_name, 5)))))] = $param_value;
                     break;
                 case '_get': $this->data['_get'] = $_GET; break;
                 case 'get': $this->data['get'] = $this->_get(); break;

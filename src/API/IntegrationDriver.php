@@ -106,7 +106,7 @@ abstract class IntegrationDriver {
                 if (!array_key_exists($param_name, $config['params']))
                     $config['params'][$param_name] = Rule::create(fn(&$v) => is_string($v) && $v !== '')
                         ->handleError(fn($v) => "Не передан обязательный параметр {$param_name}!")
-                        ->after(fn(&$v) => $v = trim($v, '/\\'))
+                        ->after(fn(&$v) => $v = is_string($v) ? trim($v, '/\\') : $v)
                         ->skip(true);
             });
         }

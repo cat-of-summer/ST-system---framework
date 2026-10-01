@@ -26,21 +26,21 @@ final class MedicalFeed extends DefaultSchema
     {
         return function (DefaultSchema $s): string {
             $xml  = '<?xml version="1.0" encoding="UTF-8"?>';
-            $xml .= '<shop version="2.0" date="' . $s->field('date') . '">';
-            $xml .= '<name>' . $s->field('name') . '</name>';
+            $xml .= '<shop version="2.0" date="' . self::xml($s->field('date')) . '">';
+            $xml .= '<name>' . self::xml($s->field('name')) . '</name>';
 
             if ($s->field('company') !== null) {
-                $xml .= '<company>' . $s->field('company') . '</company>';
+                $xml .= '<company>' . self::xml($s->field('company')) . '</company>';
             }
 
-            $xml .= '<url>' . $s->field('url') . '</url>';
+            $xml .= '<url>' . self::xml($s->field('url')) . '</url>';
 
             if ($s->field('picture') !== null) {
-                $xml .= '<picture>' . $s->field('picture') . '</picture>';
+                $xml .= '<picture>' . self::xml($s->field('picture')) . '</picture>';
             }
 
             if ($s->field('email') !== null) {
-                $xml .= '<email>' . $s->field('email') . '</email>';
+                $xml .= '<email>' . self::xml($s->field('email')) . '</email>';
             }
 
             if ($s->field('doctors')) {

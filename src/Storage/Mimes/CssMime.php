@@ -19,13 +19,40 @@ class CssMime extends Mime {
     }
 
     public static function __minify(string $content, array $config): string {
-        $content = preg_replace('!/\*[\s\S]*?\*/!', '', $content);
-        $content = preg_replace('/\s*([{};:>,+~])\s*/', '$1', $content);
-        $content = preg_replace('/\s+/', ' ', $content);
-        $content = preg_replace('/;}/', '}', $content);
-        $content = preg_replace('/:\s+/', ':', $content);
+        // Строки и url(...) без кавычек вынимаются целиком, комментарии выбрасываются —
+        // одним проходом, чтобы кавычка внутри комментария и наоборот не сбили разбор.
+        $kept    = [];
+        $content = preg_replace_callback(
+            '~/\*[\s\S]*?\*/|"(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\'|url\(\s*[^)\'"\s]*\s*\)~',
+            static function (array $m) use (&$kept): string {
+                if (strncmp($m[0], '/*', 2) === 0) return '';
+                $kept["\0".count($kept)."\0"] = strncmp($m[0], 'url(', 4) === 0
+                    ? 'url('.trim(substr($m[0], 4, -1)).')'
+                    : $m[0];
+                return array_key_last($kept);
+            },
+            $content
+        );
 
-        return trim($content);
+        $content = preg_replace('/\s+/', ' ', $content);
+        $content = preg_replace('/ ?([{};,>~]) ?/', '$1', $content);
+        $content = str_replace(['( ', ' )'], ['(', ')'], $content);
+
+        // Пробел вокруг `+` и перед `:` значим не везде: в селекторе `+` — комбинатор,
+        // а `.a :hover` и `.a:hover` — разные селекторы; в объявлении `+` живёт в calc(),
+        // где пробелы обязательны, а `:` отделяет свойство от значения.
+        $content = preg_replace_callback('/([^{};]*)([{};]|$)/', static function (array $m): string {
+            if ($m[2] === '{')
+                $part = preg_replace(['/ ?\+ ?/', '/: /'], ['+', ':'], $m[1]);
+            else
+                $part = preg_replace('/ ?: ?/', ':', $m[1], 1);
+
+            return $part.$m[2];
+        }, $content);
+
+        $content = str_replace(';}', '}', $content);
+
+        return trim(strtr($content, $kept));
     }
 
     protected function __combine(array $files, array $config): string {

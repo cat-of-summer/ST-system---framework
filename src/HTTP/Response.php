@@ -117,7 +117,7 @@ final class Response {
 
         $this->header('Content-Length', (string)filesize($full_path));
         $this->header('ETag', '"'.md5($full_path.'|'.filemtime($full_path).'|'.filesize($full_path)).'"');
-        $this->header('Last-Modified', (new \DateTime())->setTimestamp(filemtime($full_path))->format('D, d M Y H:i:s').' GMT');
+        $this->header('Last-Modified', gmdate('D, d M Y H:i:s', filemtime($full_path)).' GMT');
 
         return $this;
     }

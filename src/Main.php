@@ -199,7 +199,7 @@ final class Main {
 
             default: 
                 $ms = (int)(microtime(true) * 1000);
-                $data = substr(pack('J', $ms), 0, 6) . random_bytes(10);
+                $data = substr(pack('J', $ms), 2, 6) . random_bytes(10);
                 $data[6] = chr((ord($data[6]) & 0x0f) | 0x70);
                 break;
         }

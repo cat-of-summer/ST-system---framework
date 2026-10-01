@@ -19,11 +19,11 @@ final class Certificate extends DefaultSchema
     {
         return function (DefaultSchema $s): string {
             $xml  = '<certificate>';
-            $xml .= '<organization>' . $s->field('organization') . '</organization>';
+            $xml .= '<organization>' . self::xml($s->field('organization')) . '</organization>';
             if ($s->field('finish_year') !== null) {
-                $xml .= '<finish_year>' . $s->field('finish_year') . '</finish_year>';
+                $xml .= '<finish_year>' . self::xml($s->field('finish_year')) . '</finish_year>';
             }
-            $xml .= '<name>' . $s->field('name') . '</name>';
+            $xml .= '<name>' . self::xml($s->field('name')) . '</name>';
             $xml .= '</certificate>';
             return $xml;
         };

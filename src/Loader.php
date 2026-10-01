@@ -57,10 +57,9 @@ final class Loader {
             case 'include_once':
                 $input = array_shift($args);
 
-                foreach (File::find($input, [
-                    ...(array_shift($args) ?? []),
+                foreach (File::find($input, array_merge(array_shift($args) ?? [], [
                     'extension' => 'php'
-                ]) as $file)
+                ])) as $file)
                     static::connect($file->getPathname(), $name);
 
                 return;
@@ -86,10 +85,9 @@ final class Loader {
                 if ($input == '' && $this->file->isFile())
                     $input = $this->file->getFilename();
 
-                foreach ($this->file->find($input, [
-                    ...(array_shift($args) ?? []),
+                foreach ($this->file->find($input, array_merge(array_shift($args) ?? [], [
                     'extension' => 'php'
-                ]) as $file)
+                ])) as $file)
                     static::connect($file->getPathname(), $name);
 
                 return;

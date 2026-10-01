@@ -12,7 +12,7 @@ final class Price extends DefaultSchema
         return [
             'base_price'       => 'required|float',
             'currency'         => 'required|string',
-            'discounts'        => ['sometimes', Rule::object(['name' => 'required|string', 'amount' => 'required|float'])],
+            'discounts'        => ['sometimes', Rule::forEach(Rule::object(['name' => 'required|string', 'amount' => 'required|float']))],
             'free_appointment' => ['sometimes', Rule::forEach('string')],
         ];
     }
@@ -21,13 +21,13 @@ final class Price extends DefaultSchema
     {
         return function (DefaultSchema $s): string {
             $xml  = '<price>';
-            $xml .= '<base_price>' . $s->field('base_price') . '</base_price>';
-            $xml .= '<currency>' . $s->field('currency') . '</currency>';
+            $xml .= '<base_price>' . self::xml($s->field('base_price')) . '</base_price>';
+            $xml .= '<currency>' . self::xml($s->field('currency')) . '</currency>';
             foreach ((array) ($s->field('discounts') ?? []) as $d) {
-                $xml .= '<discount name="' . ($d['name'] ?? '') . '">' . ($d['amount'] ?? 0) . '</discount>';
+                $xml .= '<discount name="' . self::xml($d['name'] ?? '') . '">' . self::xml($d['amount'] ?? 0) . '</discount>';
             }
             foreach ((array) ($s->field('free_appointment') ?? []) as $fa) {
-                $xml .= '<free_appointment>' . $fa . '</free_appointment>';
+                $xml .= '<free_appointment>' . self::xml($fa) . '</free_appointment>';
             }
             $xml .= '</price>';
             return $xml;

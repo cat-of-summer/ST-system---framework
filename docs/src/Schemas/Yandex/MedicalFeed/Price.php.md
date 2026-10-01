@@ -8,7 +8,7 @@
 
 - **`base_price`** (обязательное) — float, базовая цена.
 - **`currency`** (обязательное) — строка (например `RUB`).
-- **`discounts`** (опционально) — массив объектов `{name: string, amount: float}`, валидируется inline-схемой `Rule::object(['name' => 'required|string', 'amount' => 'required|float'])` (не отдельный класс `DefaultSchema`, а обычная `Rule`-схема).
+- **`discounts`** (опционально) — массив объектов `{name: string, amount: float}`, каждый элемент валидируется `Rule::forEach(Rule::object(['name' => 'required|string', 'amount' => 'required|float']))` (не отдельный класс `DefaultSchema`, а обычная `Rule`-схема).
 - **`free_appointment`** (опционально) — массив строк (`Rule::forEach('string')`) — условия, при которых приём бесплатный.
 
 ## Вывод

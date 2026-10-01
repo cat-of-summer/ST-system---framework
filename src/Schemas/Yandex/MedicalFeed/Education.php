@@ -20,15 +20,15 @@ final class Education extends DefaultSchema
     {
         return function (DefaultSchema $s): string {
             $xml  = '<education>';
-            $xml .= '<organization>' . $s->field('organization') . '</organization>';
+            $xml .= '<organization>' . self::xml($s->field('organization')) . '</organization>';
             if ($s->field('finish_year') !== null) {
-                $xml .= '<finish_year>' . $s->field('finish_year') . '</finish_year>';
+                $xml .= '<finish_year>' . self::xml($s->field('finish_year')) . '</finish_year>';
             }
             if ($s->field('type') !== null) {
-                $xml .= '<type>' . $s->field('type') . '</type>';
+                $xml .= '<type>' . self::xml($s->field('type')) . '</type>';
             }
             if ($s->field('specialization') !== null) {
-                $xml .= '<specialization>' . $s->field('specialization') . '</specialization>';
+                $xml .= '<specialization>' . self::xml($s->field('specialization')) . '</specialization>';
             }
             $xml .= '</education>';
             return $xml;
