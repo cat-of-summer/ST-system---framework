@@ -17,6 +17,7 @@
 - [AccessTest.php](AccessTest.php.md)
 - [CensorTextTest.php](CensorTextTest.php.md)
 - [ConfigTest.php](ConfigTest.php.md)
+- [DebugTest.php](DebugTest.php.md)
 - [LangTest.php](LangTest.php.md)
 - [LoaderTest.php](LoaderTest.php.md)
 - [MainTest.php](MainTest.php.md)

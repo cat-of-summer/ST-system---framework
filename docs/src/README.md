@@ -8,6 +8,7 @@
 - [Captcha](Captcha/)
 - [CensorText](CensorText/)
 - [Console](Console/)
+- [Exceptions](Exceptions/)
 - [HTTP](HTTP/)
 - [Schemas](Schemas/)
 - [Storage](Storage/)
