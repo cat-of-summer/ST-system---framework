@@ -141,6 +141,19 @@ final class ConfigTest extends TestCase {
      * @runInSeparateProcess
      * @preserveGlobalState disabled
      */
+    public function testNamespacedKeyIsNestedDirectory(): void {
+        $dir = $this->tmpDir('config');
+        $this->writeFile("{$dir}/ST_system/View.php", '<?php return ["cache" => ["use" => true]];');
+
+        Config::init(['config_path' => $dir, 'dotenv_path' => $this->tmpDir('noenv')]);
+
+        $this->assertTrue(Config::config('ST_system\View.cache.use'));
+    }
+
+    /**
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
     public function testInitWithSingleConfigFile(): void {
         $file = $this->writeFile($this->tmpDir('config').'/settings.json', '{"a": {"b": 1}, "c": 2}');
 

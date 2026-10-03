@@ -7,6 +7,12 @@ use ST_system\HTTP\WebClient;
 use ST_system\Cache\CacheManager;
 use ST_system\Storage\Traits\HasMime;
 
+/**
+ * @method static self make(string $path, array $config = [])
+ * @method static self fetch(string $path, bool $force = false, array $config = [])
+ * @method static array find(mixed $input, array $config = [])
+ * @method static bool exists(string $path)
+ */
 final class File extends Resource {
 
     use HasMime;

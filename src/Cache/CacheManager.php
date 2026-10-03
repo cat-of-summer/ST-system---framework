@@ -5,6 +5,21 @@ namespace ST_system\Cache;
 use ST_system\Traits\HasConfig;
 use ST_system\Cache\CacheDriver;
 
+/**
+ * Статические ярлыки: get($key, $file), set($key, $data, $file, $ttl), remember($key, $cb, $file, $ttl),
+ * getMeta($key, $file), setMeta($key, $data, $file, $ttl). На экземпляре те же имена
+ * проксируются в драйвер с его сигнатурами (см. CacheDriver).
+ *
+ * @method static self make(mixed $key, array $config = [])
+ * @method static mixed get(mixed $key = null, mixed $file = null)
+ * @method static void set(mixed $key, mixed $data = null, mixed $file = null, mixed $ttl = null, array $meta = [])
+ * @method static mixed remember(mixed $key, mixed $callback = null, mixed $file = null, mixed $ttl = null, mixed $stamp = null)
+ * @method static array getMeta(mixed $key = null, mixed $file = null)
+ * @method static void setMeta(mixed $key, mixed $data = [], mixed $file = null, mixed $ttl = null, mixed $append = true)
+ * @method static void purgeBase(bool $storage = true)
+ * @method static void purgeExpiredBase()
+ * @mixin CacheDriver
+ */
 final class CacheManager {
 
     use HasConfig {

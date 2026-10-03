@@ -40,7 +40,7 @@ Rule::object([
 ])->throwable()->apply($data);
 ```
 
-Если `age` меньше 18 — будет брошено `\Exception` с текстом ошибок, объединённых через перевод строки. Если правила проходят, `$data` мутируется на месте: `age` станет `(int) 17`, лишние ключи (не описанные в схеме) будут отброшены.
+Если `age` меньше 18 — будет брошено `ST_system\Exceptions\ValidationException` (наследник `\Exception`, код `422`): `getMessage()` — ошибки через перевод строки, `getErrors()` — они же по полям, `['age' => ['Value is too small']]`. Если правила проходят, `$data` мутируется на месте: `age` станет `(int) 17`, лишние ключи (не описанные в схеме) будут отброшены.
 
 Без исключений, с получением списка ошибок:
 
@@ -193,7 +193,7 @@ $errors = Rule::create('int')->check($value); // $value всё ещё '42' (stri
 - **`before(\Closure $fn): self`** — хук перед основным callback, выполняется всегда (`$fn($data, $params)`).
 - **`after(\Closure $fn): self`** — хук после основного callback; выполняется **даже если** callback бросил исключение.
 - **`handleError(\Closure $fn): self`** — трансформирует/генерирует сообщение(я) об ошибке при провале. `$fn($value, $errors)`; если вернула строку — она **заменяет собой весь массив ошибок** этого шага.
-- **`throwable(): self`** — сахар над `handleError`: ставит замыкание, которое бросает `\Exception` с текстом ошибок, объединённых через `PHP_EOL`, вместо их возврата. Самый частый паттерн: `Rule::object($schema)->throwable()->apply($data)`.
+- **`throwable(): self`** — сахар над `handleError`: ставит замыкание, которое бросает `ST_system\Exceptions\ValidationException` (код `422`, текст ошибок через `PHP_EOL`, `getErrors()` — ошибки по полям, см. [ValidationException.php.md](Exceptions/ValidationException.php.md)) вместо их возврата. Самый частый паттерн: `Rule::object($schema)->throwable()->apply($data)`.
 - **`order(int $o): self`** — порядок выполнения внутри composite-правила (меньше = раньше). См. таблицу ниже.
 - **`skip(bool $s = true): self`** — если это суб-правило провалилось, **остальные правила того же пайплайна пропускаются целиком**. На этом механизме держатся `sometimes`, `nullable`, `required`, `default`, `excludeIf`, `requiredIf`, `prohibitedIf` — короткое замыкание валидации, когда значение легитимно отсутствует/невалидно рано.
 - **`seesSentinel(bool $s = true): self`** — правило получает сырой сентинел вместо авто-маскировки в `null` (см. раздел выше).
@@ -381,7 +381,7 @@ file, mime / mimes, extension, filesize
 - **с `required` (strict-режим)** — если после фильтрации ничего не осталось, правило даёт
   **англоязычную ошибку** своей проверки (`The file failed to upload or is invalid`,
   `The file extension is not allowed`, `The file MIME type is not allowed`,
-  `The file exceeds the allowed size`). Под `Request` с `$throwable = true` это исключение → JSON.
+  `The file exceeds the allowed size`). Под `Request` с `$throwable = true` это `ValidationException` → JSON с кодом 422 и полем `errors`.
 
 `required` (order 100) ловит **полное отсутствие** поля («This field is required»), а
 strict-режим файловых правил — случай «файлы прислали, но валидных не осталось». Битые файлы

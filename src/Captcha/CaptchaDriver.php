@@ -36,6 +36,7 @@ abstract class CaptchaDriver {
             'salt'         => CaptchaManager::config('default.salt'),
             'cache'        => CaptchaManager::config('default.cache'),
             'behavior'     => CaptchaManager::config('default.behavior'),
+            'enabled'      => CaptchaManager::config('default.enabled'),
         ];
     }
 
@@ -59,6 +60,7 @@ abstract class CaptchaDriver {
         $this->attributes['salt']         = self::assertSalt((string)($config['salt'] ?? ''));
         $this->attributes['cache']        = (array)($config['cache'] ?? []);
         $this->attributes['behavior']     = $this->resolveBehavior($config['behavior'] ?? true);
+        $this->attributes['enabled']      = self::flag($config['enabled'] ?? true);
         $this->attributes['issued_id']    = '';
 
         $this->purgeResult();
@@ -80,6 +82,7 @@ abstract class CaptchaDriver {
         if (isset($override['field_prefix'])) $clone->attributes['field_prefix'] = (string)$override['field_prefix'];
         if (isset($override['salt']))         $clone->attributes['salt']         = self::assertSalt((string)$override['salt']);
         if (isset($override['cache']))        $clone->attributes['cache']        = (array)$override['cache'];
+        if (isset($override['enabled']))      $clone->attributes['enabled']      = self::flag($override['enabled']);
 
         if (array_key_exists('behavior', $override))
             $clone->attributes['behavior'] = $clone->resolveBehavior($override['behavior']);
@@ -111,6 +114,8 @@ abstract class CaptchaDriver {
     }
 
     final public function putCaptcha(array $params = []): string {
+        if (!$this->attributes['enabled']) return '';
+
         CaptchaManager::markLive();
 
         $id       = bin2hex(random_bytes(16));
@@ -174,6 +179,11 @@ abstract class CaptchaDriver {
 
     final public function check($payload): bool {
         $this->purgeResult();
+
+        if (!$this->attributes['enabled']) {
+            $this->attributes['passed'] = true;
+            return true;
+        }
 
         $prefix = (string)$this->attributes['field_prefix'];
 
@@ -265,6 +275,8 @@ abstract class CaptchaDriver {
     }
 
     final public function includeJs(): string {
+        if (!$this->attributes['enabled']) return '';
+
         $js   = '';
         $name = static::name();
 
@@ -285,6 +297,8 @@ abstract class CaptchaDriver {
     }
 
     final public function includeCss(): string {
+        if (!$this->attributes['enabled']) return '';
+
         $css  = '';
         $name = static::name();
 
@@ -371,6 +385,13 @@ abstract class CaptchaDriver {
             static::class.': captcha salt is required; set CaptchaManager::config("default.salt"), '
             .'the per-driver "salt" option, or a global Access::config("salt")'
         );
+    }
+
+    /** Флаг из конфига или окружения: строки "false"/"0"/"off" выключают, непонятное значение — нет. */
+    private static function flag($value): bool {
+        if (is_bool($value)) return $value;
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
     }
 
     private static function assertKey($key): void {
@@ -486,7 +507,6 @@ JS;
             form.__stCaptchaBound = true;
 
             function finish() {
-                form.__stCaptcha.forEach(function (item) { item.collect(); });
                 form.__stCaptchaPassed = true;
                 if (form.requestSubmit) form.requestSubmit();
                 else form.submit();
@@ -495,12 +515,8 @@ JS;
             form.addEventListener('submit', function (ev) {
                 if (form.__stCaptchaPassed) { form.__stCaptchaPassed = false; return; }
 
-                var pending = form.__stCaptcha.filter(function (item) {
-                    return (item.deferSubmit && !item.solvedFlag) || !item.behavior.isReady();
-                });
-
-                if (!pending.length) {
-                    form.__stCaptcha.forEach(function (item) { item.collect(); });
+                if (!pending(form).length) {
+                    collect(form);
                     return;
                 }
 
@@ -508,13 +524,28 @@ JS;
                 ev.stopImmediatePropagation();
                 ev.stopPropagation();
 
-                Promise.all(pending.map(function (item) {
-                    return Promise
-                        .resolve(item.deferSubmit && !item.solvedFlag ? item.execute() : null)
-                        .then(function () { return item.behavior.ready(); });
-                })).then(finish, finish);
+                api.prepare(form).then(finish);
             }, true);
         }
+    }
+
+    function pending(form) {
+        return (form.__stCaptcha || []).filter(function (item) {
+            return (item.deferSubmit && !item.solvedFlag) || !item.behavior.isReady();
+        });
+    }
+
+    function collect(form) {
+        (form.__stCaptcha || []).forEach(function (item) { item.collect(); });
+    }
+
+    function runScripts(root) {
+        Array.prototype.slice.call(root.querySelectorAll('script')).forEach(function (old) {
+            var script = document.createElement('script');
+            Array.prototype.slice.call(old.attributes).forEach(function (a) { script.setAttribute(a.name, a.value); });
+            script.text = old.text;
+            old.parentNode.replaceChild(script, old);
+        });
     }
 
     var api = {
@@ -530,6 +561,54 @@ JS;
         },
 
         get: function (id) { return api.instances[id] || null; },
+
+        /**
+         * Готовит капчи формы к отправке без submit (fetch/XHR): дожидается отложенных
+         * драйверов и сбора поведения, затем раскладывает данные по скрытым полям.
+         * Промис не отклоняется: проверку всё равно делает сервер.
+         */
+        prepare: function (form) {
+            var done = function () { collect(form); return form; };
+
+            return Promise.all(pending(form).map(function (item) {
+                return Promise
+                    .resolve(item.deferSubmit && !item.solvedFlag ? item.execute() : null)
+                    .then(function () { return item.behavior.ready(); });
+            })).then(done, done);
+        },
+
+        /**
+         * Заменяет виджет в slot новым. source — ответ PHP-метода refresh() ({html}) или URL:
+         * туда уходит POST с id старого виджета, ожидается JSON с полем html.
+         */
+        refresh: function (slot, source) {
+            var old = slot.querySelector('.st-captcha');
+            var idField = old ? old.querySelector('input[name$="-id"]') : null;
+
+            var load = typeof source === 'string'
+                ? fetch(source, {
+                    method:      'POST',
+                    headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    credentials: 'same-origin',
+                    body:        JSON.stringify({ id: idField ? idField.value : '' })
+                }).then(function (r) {
+                    if (!r.ok) throw new Error('STCaptcha.refresh: HTTP ' + r.status);
+                    return r.json();
+                })
+                : Promise.resolve(source || {});
+
+            return load.then(function (data) {
+                Array.prototype.slice.call(slot.querySelectorAll('.st-captcha[id]')).forEach(function (el) {
+                    api.unmount(el.id);
+                });
+
+                slot.innerHTML = data.html || '';
+                runScripts(slot);
+                api.flush();
+
+                return data;
+            });
+        },
 
         mount: function (id, cfg) {
             (global.STCaptchaQueue = global.STCaptchaQueue || []).push([id, cfg]);

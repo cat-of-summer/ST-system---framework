@@ -8,6 +8,24 @@ use ST_system\Cache\CacheManager as Cache;
 use ST_system\Main;
 use ST_system\View;
 
+/**
+ * Статические фабрики: make() берёт драйвер из конфига (`driver` или drivers.default),
+ * вызов по имени драйвера из drivers.available — этот драйвер. Остальные вызовы на
+ * экземпляре проксируются в драйвер.
+ *
+ * @method static self make(mixed $key, array $config = [])
+ * @method static self invisible(mixed $key, array $config = [])
+ * @method static self checkbox(mixed $key, array $config = [])
+ * @method static self swipe(mixed $key, array $config = [])
+ * @method static self text(mixed $key, array $config = [])
+ * @method static self smart(mixed $key, array $config = [])
+ * @method static self recaptcha(mixed $key, array $config = [])
+ * @method string putCaptcha(array $params = [])
+ * @method bool check(mixed $payload)
+ * @method array refresh(string $id = '')
+ * @method string includeJs()
+ * @method string includeCss()
+ */
 final class CaptchaManager {
 
     use HasConfig {
@@ -29,6 +47,7 @@ final class CaptchaManager {
                 'ttl'          => 300,
                 'attempts'     => 3,
                 'min_score'    => 0.5,
+                'enabled'      => true,
                 'field_prefix' => 'st-captcha',
                 'salt'         => '',
                 'cache'        => [
@@ -118,7 +137,7 @@ final class CaptchaManager {
 
         $this->driver = static::makeDriver($class, $key, $config);
 
-        if ($this->driver->isAvailable()) return;
+        if (!$this->driver->enabled || $this->driver->isAvailable()) return;
 
         throw new \RuntimeException(
             "Captcha driver '{$requested}' ({$class}), "

@@ -33,6 +33,21 @@ final class RuleTest extends TestCase {
         Rule::object(['age' => 'required|int|min:18'])->throwable()->apply($data);
     }
 
+    public function testThrowableGroupsErrorsByField(): void {
+        $data = ['age' => '17'];
+
+        try {
+            Rule::object(['age' => 'required|int|min:18', 'name' => 'required|string'])->throwable()->apply($data);
+            $this->fail('ValidationException expected');
+        } catch (\ST_system\Exceptions\ValidationException $e) {
+            $this->assertSame(422, $e->getCode());
+            $this->assertSame([
+                'age'  => ['Value is too small'],
+                'name' => ['This field is required'],
+            ], $e->getErrors());
+        }
+    }
+
     public function testApplyMutatesCheckDoesNot(): void {
         $value = '42';
         $this->assertSame([], Rule::create('int')->apply($value));

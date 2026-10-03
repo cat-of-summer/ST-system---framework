@@ -107,6 +107,18 @@ final class CaptchaManagerTest extends TestCase {
         $this->assertSame(['no_behavior_data'], $check->reasons);
     }
 
+    public function testDisabledCaptchaRendersNothingAndPasses(): void {
+        $captcha = $this->captcha('login', ['enabled' => 'false']);
+
+        $this->assertSame('', $captcha->putCaptcha());
+        $this->assertSame('', $captcha->includeJs());
+        $this->assertSame('', $captcha->includeCss());
+        $this->assertTrue($captcha->check([]));
+        $this->assertTrue($captcha->passed);
+
+        $this->assertTrue($captcha->make('other', ['enabled' => true])->driver->enabled);
+    }
+
     public function testEmptyKeyIsRejected(): void {
         $this->expectException(\InvalidArgumentException::class);
 

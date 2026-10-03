@@ -228,7 +228,9 @@ final class Config {
         if (is_dir(static::$configPath)) {
             $fileKey = explode('.', $key)[0];
             if (!array_key_exists($fileKey, static::$cache[static::configKey()] ?? [])) {
-                $base = rtrim(static::$configPath, '/\\') . DIRECTORY_SEPARATOR . $fileKey;
+                // Ключ с неймспейсом (`ST_system\View`) — вложенные папки на любой ОС.
+                $base = rtrim(static::$configPath, '/\\') . DIRECTORY_SEPARATOR
+                      . str_replace(['\\', '/'], DIRECTORY_SEPARATOR, $fileKey);
                 foreach ([$base . '.php', $base . '.json', $base] as $path) {
                     if (file_exists($path) && is_file($path)) {
                         static::$cache[static::configKey()][$fileKey] = static::parseFile($path);

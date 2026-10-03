@@ -57,7 +57,7 @@ final class Rule {
 
     public function throwable(): self {
         $this->handleError(function ($v, $errors) {
-            throw new \Exception(implode(PHP_EOL, $errors));
+            throw new Exceptions\ValidationException($errors);
         });
         return $this;
     }

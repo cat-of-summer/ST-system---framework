@@ -180,16 +180,42 @@ STCaptcha.register('text', class extends STCaptcha.Driver {
 `window.STCaptchaQueue`, а `STCaptcha.flush()` разбирает очередь при загрузке базового класса,
 при регистрации каждого драйвера и на `DOMContentLoaded`.
 
-Разметку, пришедшую от `refresh()`, вставляют вместо старого узла, а сам старый экземпляр
-отпускают через `STCaptcha.unmount(id)`: он убирает его из `instances`, из списка капч формы
-(`form.__stCaptcha`) и из очереди монтирования. Без этого форма продолжает ждать решения
-виджета, которого уже нет в документе, — отправка повисает до таймаута `execute()`.
+### Отправка через fetch и замена виджета
+
+Перехват `submit` (см. ниже) не срабатывает, когда форма уходит через `fetch`/XHR. Для этого
+есть два метода:
+
+- `STCaptcha.prepare(form): Promise<form>` — то же, что делает перехват `submit`: дожидается
+  `execute()` у не решённых `deferSubmit`-капч и подсчёта PoW, затем раскладывает поведение по
+  скрытым полям всех капч формы. Промис не отклоняется: решение всё равно принимает сервер.
+- `STCaptcha.refresh(slot, source): Promise<data>` — заменяет виджет внутри элемента `slot`.
+  `source` — URL или уже полученный ответ PHP-метода `refresh()` (`{id, html}`). На URL уходит
+  `POST` с JSON `{"id": "<id старого виджета>"}`, ответ ожидается JSON с полем `html`. Старые
+  экземпляры внутри `slot` отпускаются через `STCaptcha.unmount()`, новые `<script>`
+  пересоздаются (через `innerHTML` они не выполняются) и монтируются.
 
 ```js
-STCaptcha.unmount(oldRoot.id);
-oldRoot.outerHTML = html;   // html из refresh(), со своим инлайновым скриптом
-STCaptcha.flush();
+const form = document.querySelector('#login');
+const slot = form.querySelector('.captcha-slot');   // обёртка вокруг putCaptcha()
+
+await STCaptcha.prepare(form);
+const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+
+if (!res.ok) await STCaptcha.refresh(slot, '/api/captcha/refresh');
 ```
+
+```php
+// /api/captcha/refresh — тот же ключ и драйвер, что у формы
+Route::post('captcha/refresh', fn(Request $r) =>
+    CaptchaManager::make('login')->refresh((string)$r->post('id')));
+```
+
+Новый виджет нужен после любой проверки: удачный `id` погашен, неудачный тратит попытки.
+
+Если виджет меняют вручную, старый экземпляр нужно отпустить через `STCaptcha.unmount(id)`: он
+убирает его из `instances`, из списка капч формы (`form.__stCaptcha`) и из очереди монтирования.
+Без этого форма продолжает ждать решения виджета, которого уже нет в документе, — отправка
+повисает до таймаута `execute()`. `refresh()` делает это сам.
 
 Хуки подкласса: `onMount()` — навесить свои обработчики; `execute()` — вернуть `Promise` для
 драйверов, которым нужен токен до отправки формы (геттер `deferSubmit`). Готовые методы:

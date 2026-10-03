@@ -6,7 +6,18 @@ use ST_system\HTTP\Request;
 use ST_system\HTTP\Response;
 use ST_system\Access;
 use ST_system\Config;
+use ST_system\Exceptions\ValidationException;
 
+/**
+ * @method static void get(string $uri, callable|array $controller, array $PARAMS = [])
+ * @method static void post(string $uri, callable|array $controller, array $PARAMS = [])
+ * @method static void put(string $uri, callable|array $controller, array $PARAMS = [])
+ * @method static void patch(string $uri, callable|array $controller, array $PARAMS = [])
+ * @method static void delete(string $uri, callable|array $controller, array $PARAMS = [])
+ * @method static void options(string $uri, callable|array $controller, array $PARAMS = [])
+ * @method static void any(string $uri, callable|array $controller, array $PARAMS = [])
+ * @method static void match(string[] $methods, string $uri, callable|array $controller, array $PARAMS = [])
+ */
 final class Route {
     private static $API_POINT = '';
     private static $routes = [];
@@ -36,47 +47,12 @@ final class Route {
             while (ob_get_level() > 1) ob_end_clean();
         }
 
-        $query_params = [];
-        $route = null;
-
-        foreach (self::routes() as $r) {
-            $query_params = [];
-            $slots = [];
-            $n = 0;
-
-            $tmp = preg_replace_callback('#(/)?\{(\.\.\.)?(\w+)(\?)?(?::([^{}]+))?\}#', function ($matches) use (&$query_params, &$slots, &$n) {
-                $slash    = $matches[1] ?? '';
-                $name     = $matches[3];
-                $optional = ($matches[4] ?? '') === '?';
-
-                $query_params[] = $name;
-
-                $sub = ($matches[5] ?? '') !== '' ? $matches[5]
-                     : ($matches[2] === '...'    ? '.+'
-                     :                             '[^/]+');
-
-                $key = 'STtok'.$n.'STtok'; $n++;
-
-                $slots[$key] = $optional
-                    ? '(?:'.$slash.'(?P<'.$name.'>'.$sub.'))?'
-                    : $slash.'(?P<'.$name.'>'.$sub.')';
-
-                return $key;
-            }, $r->pattern);
-
-            if ($r->strict_mode)
-                $tmp = preg_quote($tmp, '#');
-
-            $regexp = str_replace('//', '/', "#^".strtr($tmp, $slots).'/?$#');
-
-            if (preg_match($regexp, Request::uri(), $matches)) {
-                $route = $r;
-                $query_params = array_intersect_key($matches, array_flip($query_params));
-                break;
-            }
-        }
+        [$route, $query_params, $allowed] = self::match((string)Request::uri(), (string)Request::method());
 
         try {
+            if (!$route && $allowed)
+                Response::status(405)->header('Allow', implode(', ', $allowed))->send();
+
             if (!$route)
                 Access::throw(404);
 
@@ -133,16 +109,7 @@ final class Route {
             
         } catch (\Throwable $th) {
             ob_clean();
-            Response::json(['message' => Config::env('DEBUG_MODE')
-                ? sprintf(
-                    "Ошибка: %s\nФайл: %s\nСтрока: %d\n%s",
-                    $th->getMessage(),
-                    $th->getFile(),
-                    $th->getLine(),
-                    $th->getTraceAsString()
-                )
-                : $th->getMessage()
-            ])->status(!$th->getCode() ? 403 : $th->getCode())->send();
+            self::errorResponse($th, 403)->send();
         }
 
         try {
@@ -157,20 +124,85 @@ final class Route {
                 $response = Response::json($response);
 
         } catch (\Throwable $th) {
-            $response = Response::json(['message' => Config::env('DEBUG_MODE')
-                ? sprintf(
-                    "Ошибка: %s\nФайл: %s\nСтрока: %d\n%s",
-                    $th->getMessage(),
-                    $th->getFile(),
-                    $th->getLine(),
-                    $th->getTraceAsString()
-                )
-                : $th->getMessage()
-            ])->status(!$th->getCode() ? 500 : $th->getCode());
+            $response = self::errorResponse($th, 500);
         } finally {
             ob_clean();
             $response->send();
         }
+    }
+
+    /**
+     * Подбор маршрута по URI и методу. Шаблон совпал, а метод нет — методы маршрута копятся
+     * в $allowed и поиск идёт дальше: у одного пути может быть несколько маршрутов.
+     * HEAD обслуживается GET-маршрутом.
+     *
+     * @return array{0: ?object, 1: array, 2: string[]} [маршрут, параметры пути, допустимые методы]
+     */
+    private static function match(string $uri, string $method): array {
+        $method  = strtoupper($method);
+        $allowed = [];
+
+        foreach (self::routes() as $r) {
+            $query_params = [];
+            $slots = [];
+            $n = 0;
+
+            $tmp = preg_replace_callback('#(/)?\{(\.\.\.)?(\w+)(\?)?(?::([^{}]+))?\}#', function ($matches) use (&$query_params, &$slots, &$n) {
+                $slash    = $matches[1] ?? '';
+                $name     = $matches[3];
+                $optional = ($matches[4] ?? '') === '?';
+
+                $query_params[] = $name;
+
+                $sub = ($matches[5] ?? '') !== '' ? $matches[5]
+                     : ($matches[2] === '...'    ? '.+'
+                     :                             '[^/]+');
+
+                $key = 'STtok'.$n.'STtok'; $n++;
+
+                $slots[$key] = $optional
+                    ? '(?:'.$slash.'(?P<'.$name.'>'.$sub.'))?'
+                    : $slash.'(?P<'.$name.'>'.$sub.')';
+
+                return $key;
+            }, $r->pattern);
+
+            if ($r->strict_mode)
+                $tmp = preg_quote($tmp, '#');
+
+            $regexp = str_replace('//', '/', "#^".strtr($tmp, $slots).'/?$#');
+
+            if (!preg_match($regexp, $uri, $matches))
+                continue;
+
+            if (in_array($method, $r->methods, true) || ($method === 'HEAD' && in_array('GET', $r->methods, true)))
+                return [$r, array_intersect_key($matches, array_flip($query_params)), []];
+
+            $allowed = array_merge($allowed, $r->methods);
+
+            if (in_array('GET', $r->methods, true))
+                $allowed[] = 'HEAD';
+        }
+
+        return [null, [], array_values(array_unique($allowed))];
+    }
+
+    private static function errorResponse(\Throwable $th, int $fallback): Response {
+        $body = ['message' => Config::env('DEBUG_MODE')
+            ? sprintf(
+                "Ошибка: %s\nФайл: %s\nСтрока: %d\n%s",
+                $th->getMessage(),
+                $th->getFile(),
+                $th->getLine(),
+                $th->getTraceAsString()
+            )
+            : $th->getMessage()
+        ];
+
+        if ($th instanceof ValidationException)
+            $body['errors'] = $th->getErrors();
+
+        return Response::json($body)->status(!$th->getCode() ? $fallback : $th->getCode());
     }
 
     public static function point(string $point): self {

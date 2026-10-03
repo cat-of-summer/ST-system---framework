@@ -139,6 +139,54 @@ final class RouteTest extends TestCase {
         $this->assertSame(['message' => 'Сломалось'], $body);
     }
 
+    public function testMatchPicksRouteByMethod(): void {
+        Route::point('api');
+        Route::get('blocks/{id}', fn() => 'show');
+        Route::delete('blocks/{id}', fn() => 'delete');
+
+        [$route, $params, $allowed] = self::callPrivate(Route::class, 'match', '/api/blocks/7', 'DELETE');
+        $this->assertSame(['DELETE'], $route->methods);
+        $this->assertSame(['id' => '7'], $params);
+        $this->assertSame([], $allowed);
+
+        [$route] = self::callPrivate(Route::class, 'match', '/api/blocks/7', 'head');
+        $this->assertSame(['GET'], $route->methods);
+
+        [$route, $params, $allowed] = self::callPrivate(Route::class, 'match', '/api/blocks/7', 'PUT');
+        $this->assertNull($route);
+        $this->assertSame([], $params);
+        $this->assertSame(['GET', 'HEAD', 'DELETE'], $allowed);
+
+        $this->assertSame([null, [], []], self::callPrivate(Route::class, 'match', '/api/nowhere', 'GET'));
+    }
+
+    public function testDispatchByMethodAnd405(): void {
+        $routes = '
+            Route::point("api");
+            Route::get("blocks/{id}", fn(Request $r) => ["show" => $r->query("id")]);
+            Route::delete("blocks/{id}", fn(Request $r) => ["deleted" => $r->query("id")]);
+        ';
+
+        $this->assertSame([200, ['deleted' => '7']], $this->dispatch('DELETE', '/api/blocks/7', $routes));
+        $this->assertSame([200, ['show' => '7']], $this->dispatch('GET', '/api/blocks/7', $routes));
+        $this->assertSame(405, $this->dispatch('PUT', '/api/blocks/7', $routes)[0]);
+    }
+
+    public function testValidationErrorIs422WithFieldErrors(): void {
+        [$status, $body] = $this->dispatch('POST', '/api/users', '
+            Route::point("api");
+            Route::post("users", function (Request $r) {
+                $r->throwable()->validate(["email" => "required|email", "age" => "required|int"]);
+                return "ok";
+            });
+        ');
+
+        $this->assertSame(422, $status);
+        $this->assertSame(['email', 'age'], array_keys($body['errors']));
+        $this->assertSame(['This field is required'], $body['errors']['email']);
+        $this->assertStringContainsString('email.This field is required', $body['message']);
+    }
+
     public function testMiddlewareCanRejectRequest(): void {
         [$status, $body] = $this->dispatch('GET', '/api/admin', '
             Route::point("api");

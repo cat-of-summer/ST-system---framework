@@ -2,6 +2,24 @@
 
 namespace ST_system\HTTP;
 
+/**
+ * Билдер ответа: статический вызов создаёт экземпляр, дальше — цепочка на нём.
+ * 320 у json() — JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES (выражение в @method не разбирается).
+ *
+ * @method static self header(string $key, string $value)
+ * @method static self headers(array $headers)
+ * @method static self status(int $code)
+ * @method static self redirect(string $url, int $status = 302)
+ * @method static self raw(mixed $data, ?int $status = null)
+ * @method static self text(string $text, ?int $status = null)
+ * @method static self html(string $html, ?int $status = null)
+ * @method static self json(mixed $data, ?int $status = null, int $json_options = 320)
+ * @method static self file(string $full_path, string $file_name = '', bool $download = false)
+ * @method static self download(string $full_path, string $file_name = '')
+ * @method static self stream(callable $callback, int $status = 200)
+ * @method static self stream_download(callable $callback, string $file_name, int $status = 200)
+ * @method static self cookie(string $name, string $value = '', array $options = [])
+ */
 final class Response {
     private $status = 200;
     private $headers = [];

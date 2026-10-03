@@ -9,6 +9,23 @@ use ST_system\Main;
 use ST_system\Storage\Mimes\ImageMime;
 use ST_system\Cache\CacheManager;
 
+/**
+ * Те же имена работают на экземпляре (`Assets::create($dir)`): пути резолвятся от его
+ * каталога, буфер по умолчанию — его собственный.
+ *
+ * @method static void mount(string $name)
+ * @method static void render(string $buffer)
+ * @method static string finalize(string $html)
+ * @method static void addCss(mixed $href, array $attrs = [], string $buffer = '')
+ * @method static void addJs(mixed $src, array $attrs = [], string $buffer = '')
+ * @method static void addFont(mixed $src, array $attrs = [], string $buffer = '')
+ * @method static void addResource(mixed $path, array $attrs = [], string $buffer = '')
+ * @method static void addString(mixed $string, string $buffer = '')
+ * @method static void setManifest(array $params = [], string $buffer = '')
+ * @method static string svg(string $path, array $attrs = [], bool $return_path = false)
+ * @method static string sprite(string $path, string $icon_id, array $attrs = [])
+ * @method static string bySprite(string $path, string $icon_id, array $attrs = [])
+ */
 final class Assets {
 
     use HasConfig;

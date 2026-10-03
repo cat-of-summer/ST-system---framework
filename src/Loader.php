@@ -6,6 +6,14 @@ use ST_system\Storage\File;
 use ST_system\Debug;
 use ST_system\Rule;
 
+/**
+ * @method static void registerDir(string $path, array $config = [])
+ * @method static void registerClass(string $path, string $class_name, string $file_path, string $prefix = '')
+ * @method static void require(mixed $input, array $config = [])
+ * @method static void include(mixed $input, array $config = [])
+ * @method static void require_once(mixed $input, array $config = [])
+ * @method static void include_once(mixed $input, array $config = [])
+ */
 final class Loader {
 
     private static function includer(): \Closure {

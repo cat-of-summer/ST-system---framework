@@ -4,6 +4,29 @@ namespace ST_system\HTTP;
 
 use ST_system\Rule;
 
+/**
+ * Статический вызов идёт в текущий экземпляр (созданный fetch()). Аксессоры данных
+ * без аргумента возвращают весь массив, с ключом — одно значение или null.
+ *
+ * @method static string uri()
+ * @method static string host()
+ * @method static string port()
+ * @method static string scheme()
+ * @method static string origin()
+ * @method static string url()
+ * @method static string method()
+ * @method static mixed headers(string $key = '')
+ * @method static mixed get(string $key = '')
+ * @method static mixed post(string $key = '')
+ * @method static mixed cookie(string $key = '')
+ * @method static mixed query(string $key = '')
+ * @method static mixed files(string $key = '')
+ * @method static mixed data(string $key = '')
+ * @method static static throwable(bool $bool = true)
+ * @method static static pattern(string $route_template, bool $strict_mode = true)
+ * @method static string[] validate(array $schema)
+ * @method static string[] check(array $schema)
+ */
 class Request {
 
     private static $instance;

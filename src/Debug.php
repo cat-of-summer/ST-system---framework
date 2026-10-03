@@ -8,6 +8,17 @@ use ST_system\Traits\HasConfig;
 use ST_system\Traits\Events\HasStaticEvents;
 use ST_system\Traits\HasInstance;
 
+/**
+ * Dump-методы — приватные методы экземпляра, вызываются статически через __callStatic.
+ * Методы из конфига `dump_methods` (по умолчанию toEmail) получают уже отформатированный вывод.
+ *
+ * @method static void here(mixed $content, array $config = [])
+ * @method static void toConsole(mixed $content, array $config = [])
+ * @method static int|false toFile(mixed $content, array $config = [])
+ * @method static int|false toStream(mixed $content, array $config = [])
+ * @method static void exception(mixed $content, array $config = [])
+ * @method static bool toEmail(mixed $content, array $config = [])
+ */
 final class Debug {
 
     use HasInstance;
@@ -206,10 +217,21 @@ final class Debug {
     private static function outputSchema(): array {
         return [
             'output_type'             => 'nullable|string|@format.output',
-            'backtrace'               => ['nullable|bool', Rule::default(false)],
+            'backtrace'               => [Rule::create(function (&$v): bool {
+                $v = static::backtraceMode($v);
+                return true;
+            })->seesSentinel()],
             'pre'                     => ['nullable|bool', Rule::default(true)],
+            'time'                    => ['nullable|bool', Rule::default(true)],
             'timestamp_format_output' => 'nullable|string|@format.timestamp.output',
         ];
+    }
+
+    /** `true`/`'full'` — вся цепочка вызовов, `false`/`'none'` — без строки места, иначе `'short'`. */
+    private static function backtraceMode($v) {
+        if ($v === true || $v === 'full') return true;
+        if ($v === false || $v === 'none') return false;
+        return 'short';
     }
 
     private function getOutput($content, array $config): string {
@@ -229,13 +251,17 @@ final class Debug {
         echo $dumper($content);
         $output = ob_get_clean();
 
-        $inner = sprintf("%s\n%s\n%s",
-            Main::timestamp($config['timestamp_format_output']),
-            $config['backtrace']
-                ? static::backtrace()
-                : static::backtrace(['chain' => false]),
-            $output
-        );
+        $head = [];
+
+        if ($config['time'])
+            $head[] = Main::timestamp($config['timestamp_format_output']);
+
+        if ($config['backtrace'] === true)
+            $head[] = static::backtrace();
+        elseif ($config['backtrace'] === 'short')
+            $head[] = static::backtrace(['chain' => false]);
+
+        $inner = implode("\n", array_merge($head, [$output]));
 
         return $config['pre']
             ? sprintf("<pre>\n%s\n</pre>", $inner)
@@ -261,7 +287,7 @@ final class Debug {
             'timestamp'             => ['nullable|bool', Rule::default(false)],
             'timestamp_format_file' => 'nullable|string|@format.timestamp.file',
             'merge'                 => ['nullable|bool', Rule::default(true)],
-            'append'                => ['nullable|bool', Rule::default(false)],
+            'append'                => ['nullable|bool', Rule::default(true)],
             'max_size'              => 'int|@filesystem.max_size',
             'keep'                  => 'float|@filesystem.keep',
         ] + static::outputSchema());
@@ -295,7 +321,9 @@ final class Debug {
         else
             static::trimHead($fp, strlen($entry), $config['max_size'], $config['keep'], $config['pre']
                 ? '/^<pre>$/m'
-                : '/^'.preg_replace('/\d/', '\d', preg_quote(strtok($entry, "\n"), '/')).'$/m');
+                : ($config['time']
+                    ? '/^'.preg_replace('/\d/', '\d', preg_quote(strtok($entry, "\n"), '/')).'$/m'
+                    : '/(?<=\n)/'));
 
         fseek($fp, 0, SEEK_END);
         $written = fwrite($fp, $entry);
