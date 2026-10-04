@@ -15,7 +15,8 @@ use ST_system\Rule;
  * - items у массивов, properties у вложенных объектов, additionalProperties.
  *
  * Неизвестные параметры отклоняются, если схема не разрешает их явно
- * (additionalProperties: true): опечатку в имени модель увидит и исправит, а не получит
+ * (additionalProperties: true) — на любой глубине, в том числе в объектах-элементах массивов
+ * (ftp.0.pasword): опечатку в имени модель увидит и исправит, а не получит
  * молча проигнорированный аргумент. Отсутствующий необязательный параметр и null
  * равнозначны: подставляется default, если он есть, иначе ключа нет.
  */
@@ -184,9 +185,18 @@ final class Args {
                 throw new \InvalidArgumentException('Неизвестные параметры: '.implode(', ', array_map(function ($n) use ($path) { return $path.$n; }, $unknown)).'.');
         }
 
-        foreach ($properties as $name => $property)
-            if (isset($property['properties'], $args[$name]) && is_array($args[$name]) && !self::isList($args[$name]))
+        foreach ($properties as $name => $property) {
+            if (!isset($args[$name]) || !is_array($args[$name])) continue;
+
+            if (isset($property['properties']) && !self::isList($args[$name]))
                 self::rejectUnknown((array)$property, $args[$name], "{$path}{$name}.");
+
+            // Элементы-объекты массива: опечатка в поле элемента — тоже ошибка, а не тихая потеря.
+            if (isset($property['items']['properties']) && self::isList($args[$name]))
+                foreach ($args[$name] as $i => $item)
+                    if (is_array($item) && !self::isList($item))
+                        self::rejectUnknown((array)$property['items'], $item, "{$path}{$name}.{$i}.");
+        }
     }
 
     private static function isList(array $array): bool {

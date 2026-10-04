@@ -115,6 +115,18 @@ final class ArgsTest extends TestCase {
         $this->assertSame('Неизвестные параметры: props.extra.', self::error($schema, ['props' => ['name' => 'db', 'extra' => 1]]));
     }
 
+    public function testUnknownFieldsInArrayItemsAreRejected(): void {
+        $schema = ['type' => 'object', 'properties' => [
+            'ftp' => ['type' => 'array', 'items' => [
+                'type'       => 'object',
+                'properties' => ['host' => ['type' => 'string'], 'password' => ['type' => 'string']],
+            ]],
+        ]];
+
+        $this->assertSame(['ftp' => [['host' => 'h', 'password' => 'p']]], Args::validate($schema, ['ftp' => [['host' => 'h', 'password' => 'p']]]));
+        $this->assertSame('Неизвестные параметры: ftp.0.pasword.', self::error($schema, ['ftp' => [['host' => 'h', 'pasword' => 'p']]]));
+    }
+
     public function testAdditionalPropertiesAreKeptWhenAllowed(): void {
         $schema = ['type' => 'object', 'properties' => [
             'free' => ['type' => 'object', 'additionalProperties' => ['type' => 'string']],

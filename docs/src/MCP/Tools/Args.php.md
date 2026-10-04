@@ -28,7 +28,7 @@ $args = Args::validate($tool->inputSchema(), $arguments, $tool->rules());
 | `pattern` | `Rule::regex('/…/u')` |
 | `items` | каждый элемент по своей схеме, ошибка с номером: `ids.1.…` |
 | `properties` у вложенного `object` | вложенный `Rule::object` |
-| `additionalProperties` | `false` или нет ключа — неизвестные параметры отклоняются до проверки; `true`/схема — сохраняются как есть |
+| `additionalProperties` | `false` или нет ключа — неизвестные параметры отклоняются до проверки, в том числе во вложенных объектах и в объектах-элементах массивов (`ftp.0.pasword`); `true`/схема — сохраняются как есть |
 
 Остальные ключевые слова (`format`, `oneOf`, `exclusiveMinimum`…) не проверяются. Нужное из
 них задаётся правилами `Rule`.
