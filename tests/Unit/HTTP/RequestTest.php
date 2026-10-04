@@ -70,6 +70,15 @@ final class RequestTest extends TestCase {
         $this->assertSame('example.com', $headers['Host']);
     }
 
+    /** CLI и тесты: в $_SERVER нет ни одного HTTP_* — заголовков нет, а не notice. */
+    public function testHeadersWithoutHttpHeadersAreEmpty(): void {
+        foreach (array_keys($_SERVER) as $name)
+            if (strncmp($name, 'HTTP_', 5) === 0) unset($_SERVER[$name]);
+
+        $this->assertSame([], Request::fetch()->headers());
+        $this->assertNull(Request::fetch()->headers('Host'));
+    }
+
     public function testStaticAccessUsesLastFetchedInstance(): void {
         Request::fetch(['id' => '9']);
 

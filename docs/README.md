@@ -15,8 +15,8 @@
 # ST_system
 
 Модульная PHP-библиотека (namespace `ST_system`): конфигурация, маршрутизация,
-HTTP, кэш, капча, файловое хранилище, генерация структурированных данных
-(Schema.org / Яндекс), интеграции с внешними API и консольные команды.
+HTTP, MCP-сервер для агентов, кэш, капча, файловое хранилище, генерация структурированных
+данных (Schema.org / Яндекс), интеграции с внешними API и консольные команды.
 
 - **PHP:** `>= 7.4`
 - **Зависимости:** нет
@@ -100,7 +100,10 @@ docker run --rm -v "$PWD:/app" -w /app php:8.3-cli vendor/bin/phpunit
 - Классы с неснимаемым статическим состоянием или с `exit` (`Config::init()`, `Lang::lockLocale()`,
   `Route::handleRequest()`, `Command` без обязательного аргумента) проверяются в отдельном процессе.
 - HTTP-клиенты (`IntegrationDriver`, `WebClient`) ходят во встроенный сервер `php -S` на
-  `127.0.0.1` (`tests/Support/StubServer.php`) — внешняя сеть не нужна.
+  `127.0.0.1` (`tests/Support/StubServer.php`) — внешняя сеть не нужна. Сквозной тест MCP
+  (`tests/Unit/MCP/McpHttpTest.php`) поднимает так же мини-приложение `tests/Support/mcp-app.php`
+  с несколькими воркерами (`PHP_CLI_SERVER_WORKERS`): ответ человека приходит встречным POST,
+  пока открыт SSE-поток. На Windows такой режим недоступен, и тест пропускается.
 - Нужны расширения `mbstring`, `json`, `dom`, `curl`, `pdo_sqlite`, `fileinfo`. Без `pdo_sqlite`
   или `curl` соответствующие тесты пропускаются. Redis, Memcached, MySQL/PostgreSQL,
   GD/Imagick и внешние API в набор не входят.
@@ -150,6 +153,19 @@ docker run --rm -v "$PWD:/app" -w /app php:8.3-cli vendor/bin/phpunit
 | `HTTP\Request` | Обёртка HTTP-запроса | [src/HTTP/Request.php.md](src/HTTP/Request.php.md) |
 | `HTTP\Response` | Построение HTTP-ответа | [src/HTTP/Response.php.md](src/HTTP/Response.php.md) |
 | `HTTP\Route` | Определение маршрутов с префиксами и middleware | [src/HTTP/Route.php.md](src/HTTP/Route.php.md) |
+
+### MCP
+
+| Класс | Назначение | Документация |
+|-------|------------|--------------|
+| `MCP\Server` | MCP-сервер в синтаксисе `Route`: `Server::route()`, инструменты, группы, middleware, конфиг | [src/MCP/Server.php.md](src/MCP/Server.php.md) |
+| `MCP\Dispatcher` | Собранный сервер: реестр инструментов, `initialize` / `tools/list` / `tools/call` | [src/MCP/Dispatcher.php.md](src/MCP/Dispatcher.php.md) |
+| `MCP\Context` | Обстановка вызова инструмента, вопросы человеку, `confirm()` | [src/MCP/Context.php.md](src/MCP/Context.php.md) |
+| `MCP\Tools\Tool` | База инструмента-класса | [src/MCP/Tools/Tool.php.md](src/MCP/Tools/Tool.php.md) |
+| `MCP\Tools\Args` | Проверка аргументов: JSON Schema → `Rule` | [src/MCP/Tools/Args.php.md](src/MCP/Tools/Args.php.md) |
+| `MCP\Transport\HttpTransport` | Streamable HTTP под php-fpm: сессии, JSON и SSE | [src/MCP/Transport/HttpTransport.php.md](src/MCP/Transport/HttpTransport.php.md) |
+
+Остальные классы модуля — в [src/MCP/](src/MCP/).
 
 ### API
 

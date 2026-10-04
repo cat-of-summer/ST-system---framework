@@ -139,6 +139,7 @@ class Request {
                 case 'url': $this->data['url'] = "{$this->origin()}{$this->uri()}"; break;
                 case 'method': $this->data['method'] = $this->post('_method') ?: $_SERVER['REQUEST_METHOD']; break;
                 case 'headers':
+                    $this->data['headers'] = [];
                     foreach ($_SERVER as $param_name => $param_value)
                         if (substr($param_name, 0, 5) == 'HTTP_')
                             $this->data['headers'][str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($param_name, 5)))))] = $param_value;

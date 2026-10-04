@@ -10,6 +10,7 @@
 - [Console](Console/)
 - [Exceptions](Exceptions/)
 - [HTTP](HTTP/)
+- [MCP](MCP/)
 - [Schemas](Schemas/)
 - [Storage](Storage/)
 - [Traits](Traits/)
@@ -60,6 +61,7 @@
 - **CensorText/** — фильтр нецензурной лексики.
 - **Console/** — CLI-команды.
 - **HTTP/** — запрос/ответ/роутинг/HTTP-клиент.
+- **MCP/** — сервер Model Context Protocol поверх `Route`: инструменты для агентов, вопросы человеку.
 - **Schemas/** — структурированные данные schema.org/Яндекс.
 - **Storage/** — файлы/ресурсы/MIME.
 - **Traits/** — общие примеси `HasConfig`/`HasEvents`/`HasInstance`/`HasAttributes`.
