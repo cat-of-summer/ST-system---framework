@@ -8,6 +8,7 @@
 - [Captcha](Captcha/)
 - [Console](Console/)
 - [HTTP](HTTP/)
+- [MCP](MCP/)
 - [Schemas](Schemas/)
 - [Storage](Storage/)
 - [Traits](Traits/)
