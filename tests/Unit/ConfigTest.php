@@ -27,27 +27,41 @@ final class ConfigTest extends TestCase {
         $name = $this->name('ORDER');
 
         putenv("{$name}=from-getenv");
+        $_ENV[$name]    = 'from-env';
+        $_SERVER[$name] = 'from-server';
         $this->assertSame('from-getenv', Config::env($name));
 
-        Config::reload();
-        $_SERVER[$name] = 'from-server';
+        putenv($name);
+        $this->assertSame('from-env', Config::env($name));
+
+        unset($_ENV[$name]);
         $this->assertSame('from-server', Config::env($name));
 
-        Config::reload();
-        $_ENV[$name] = 'from-env';
-        $this->assertSame('from-env', Config::env($name));
+        unset($_SERVER[$name]);
+        $this->assertSame('fallback', Config::env($name, 'fallback'));
     }
 
-    public function testEnvIsCachedUntilReload(): void {
-        $name = $this->name('CACHE');
+    /** Значение не кешируется: изменения окружения видны без reload(). */
+    public function testEnvReadsLiveValue(): void {
+        $name = $this->name('LIVE');
 
         $this->assertSame('fallback', Config::env($name, 'fallback'));
 
-        $_ENV[$name] = 'late';
-        $this->assertSame('fallback', Config::env($name, 'fallback'));
-
-        Config::reload();
+        putenv("{$name}=late");
         $this->assertSame('late', Config::env($name, 'fallback'));
+
+        putenv($name);
+        $this->assertSame('fallback', Config::env($name, 'fallback'));
+    }
+
+    /** В CLI $_SERVER — снимок окружения на старте, putenv() его не обновляет. */
+    public function testPutenvOverridesStaleServerSnapshot(): void {
+        $name = $this->name('STALE');
+
+        $_SERVER[$name] = 'stale';
+        putenv("{$name}=fresh");
+
+        $this->assertSame('fresh', Config::env($name));
     }
 
     public function testComposerRootIsDetected(): void {

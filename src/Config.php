@@ -173,33 +173,27 @@ final class Config {
                     return $m[0];
                 if (array_key_exists($name, $vars))
                     return $vars[$name];
+                $g = getenv($name);
+                if ($g !== false)
+                    return $g;
                 if (array_key_exists($name, $_ENV))
                     return (string)$_ENV[$name];
-                if (array_key_exists($name, $_SERVER))
-                    return (string)$_SERVER[$name];
-                $g = getenv($name);
-                return $g !== false ? $g : '';
+                return array_key_exists($name, $_SERVER) ? (string)$_SERVER[$name] : '';
             },
             $value
         );
     }
 
     public static function reload(): void {
-        static::$cache[static::envKey()]    = [];
         static::$cache[static::configKey()] = [];
         static::$cache[static::iniKey()]    = [];
     }
 
     public static function env(string $name, $default = ''): string {
-        if (array_key_exists($name, static::$cache[static::envKey()] ?? []))
-            return static::$cache[static::envKey()][$name];
-
         $g = getenv($name);
-        $value = $_ENV[$name] ?? $_SERVER[$name] ?? ($g !== false ? $g : null) ?? static::getDefault()[$name] ?? null;
-        $result = $value !== null ? (string)$value : (string)$default;
+        $value = ($g !== false ? $g : null) ?? $_ENV[$name] ?? $_SERVER[$name] ?? static::getDefault()[$name] ?? null;
 
-        static::$cache[static::envKey()][$name] = $result;
-        return $result;
+        return $value !== null ? (string)$value : (string)$default;
     }
 
     public static function ini(string $name, $default = ''): string {
@@ -409,12 +403,6 @@ final class Config {
         static $s = null;
         if ($s === null) $s = new \stdClass();
         return $s;
-    }
-
-    private static function envKey(): string {
-        static $k = null;
-        if ($k === null) $k = "\0" . bin2hex(random_bytes(6));
-        return $k;
     }
 
     private static function configKey(): string {
