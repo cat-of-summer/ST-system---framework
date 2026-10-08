@@ -13,6 +13,11 @@ abstract class Command {
         return static::$signature;
     }
 
+    /** Имя команды - первое слово сигнатуры до пробела или `{`. */
+    final public static function getName(): string {
+        return preg_match('/^\s*([^\s{]+)/', static::$signature, $m) ? $m[1] : '';
+    }
+
     final public function __construct(array $positional = [], array $rawOptions = []) {
         [$argDefs, $optDefs] = static::parseSignature(static::getSignature());
         $this->arguments = static::resolveArguments($positional, $argDefs);

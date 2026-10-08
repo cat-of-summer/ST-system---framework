@@ -38,8 +38,8 @@ final class Kernel {
             );
             $class = $namespace . '\\' . str_replace('/', '\\', substr($relative, 0, -4));
 
-            if (class_exists($class) && is_subclass_of($class, Command::class) && $class::getSignature() !== '') {
-                self::register($class::getSignature(), $class);
+            if (class_exists($class) && is_subclass_of($class, Command::class) && $class::getName() !== '') {
+                self::register($class::getName(), $class);
             }
         }
     }

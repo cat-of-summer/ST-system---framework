@@ -40,6 +40,13 @@ final class CommandTest extends TestCase {
         $this->assertStringStartsWith('copy {source}', SignatureCommand::getSignature());
     }
 
+    public function testGetNameIsFirstWordOfSignature(): void {
+        $this->assertSame('copy', SignatureCommand::getName());
+        $this->assertSame('backup_cron', OptionsCommand::getName());
+        $this->assertSame('cache:clear', BareCommand::getName());
+        $this->assertSame('', NamelessCommand::getName());
+    }
+
     /** Команда завершает процесс через exit(1), поэтому запускается отдельным PHP. */
     public function testMissingRequiredArgumentExits(): void {
         $script = sprintf(
@@ -69,4 +76,25 @@ final class SignatureCommand extends Command {
             'asked'     => $this->ask('Question?', 'dflt'),
         ];
     }
+}
+
+final class OptionsCommand extends Command {
+
+    protected static string $signature = 'backup_cron{--user}';
+
+    public function handle() {}
+}
+
+final class BareCommand extends Command {
+
+    protected static string $signature = ' cache:clear ';
+
+    public function handle() {}
+}
+
+final class NamelessCommand extends Command {
+
+    protected static string $signature = '{--user}';
+
+    public function handle() {}
 }
