@@ -30,9 +30,13 @@ final class KernelTest extends TestCase {
 
         Kernel::registerDir($dir, 'KernelFixture');
 
+        // Порядок обхода каталога зависит от файловой системы.
+        $commands = self::getStatic(Kernel::class, 'commands');
+        ksort($commands);
+
         $this->assertSame(
             ['backup_cron' => 'KernelFixture\BackupCron', 'user:create' => 'KernelFixture\Sub\UserCreate'],
-            self::getStatic(Kernel::class, 'commands')
+            $commands
         );
     }
 
