@@ -102,8 +102,10 @@ docker run --rm -v "$PWD:/app" -w /app php:8.3-cli vendor/bin/phpunit
 - HTTP-клиенты (`IntegrationDriver`, `WebClient`) ходят во встроенный сервер `php -S` на
   `127.0.0.1` (`tests/Support/StubServer.php`) — внешняя сеть не нужна. Сквозной тест MCP
   (`tests/Unit/MCP/McpHttpTest.php`) поднимает так же мини-приложение `tests/Support/mcp-app.php`
-  с несколькими воркерами (`PHP_CLI_SERVER_WORKERS`): ответ человека приходит встречным POST,
-  пока открыт SSE-поток. На Windows такой режим недоступен, и тест пропускается.
+  с несколькими воркерами (`PHP_CLI_SERVER_WORKERS`). Ответ человека приходит встречным POST,
+  пока открыт SSE-поток, во второй экземпляр приложения с тем же каталогом состояния: `php -S`
+  не смотрит, свободен ли воркер, и ответ мог бы встать в очередь к воркеру с потоком. На Windows
+  такой режим недоступен, и тест пропускается.
 - Нужны расширения `mbstring`, `json`, `dom`, `curl`, `pdo_sqlite`, `fileinfo`. Без `pdo_sqlite`
   или `curl` соответствующие тесты пропускаются. Redis, Memcached, MySQL/PostgreSQL,
   GD/Imagick и внешние API в набор не входят.

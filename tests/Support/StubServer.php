@@ -7,7 +7,7 @@ namespace ST_system\Tests\Support;
  *
  * url() — эхо-сервер для HTTP-клиентов: отвечает JSON-эхом запроса, `/status/{code}` отдаёт
  * указанный статус. app() — сервер с другим роутером (мини-приложением) и переменными
- * окружения; на каждый роутер поднимается свой процесс.
+ * окружения; на каждый роутер (и имя экземпляра) поднимается свой процесс.
  */
 final class StubServer {
 
@@ -20,11 +20,14 @@ final class StubServer {
 
     /**
      * @param array<string,string> $env переменные окружения процесса; PHP_CLI_SERVER_WORKERS > 1
-     *                                   даёт параллельные запросы (нужно для SSE + встречного POST)
+     *                                   даёт параллельные запросы
+     * @param string $instance имя экземпляра: второй процесс с тем же роутером
      */
-    public static function app(string $router, array $env = []): string {
-        if (isset(self::$servers[$router]))
-            return self::$servers[$router]['url'];
+    public static function app(string $router, array $env = [], string $instance = ''): string {
+        $key = $router.'#'.$instance;
+
+        if (isset(self::$servers[$key]))
+            return self::$servers[$key]['url'];
 
         $port = self::freePort();
         $null = DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null';
@@ -49,9 +52,9 @@ final class StubServer {
                 if (self::$servers === [])
                     register_shutdown_function([self::class, 'stop']);
 
-                self::$servers[$router] = ['process' => $process, 'url' => "http://127.0.0.1:{$port}"];
+                self::$servers[$key] = ['process' => $process, 'url' => "http://127.0.0.1:{$port}"];
 
-                return self::$servers[$router]['url'];
+                return self::$servers[$key]['url'];
             }
             usleep(50000);
         }

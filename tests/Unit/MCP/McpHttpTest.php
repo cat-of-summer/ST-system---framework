@@ -9,10 +9,16 @@ use ST_system\Tests\TestCase;
  * MCP по настоящему HTTP: Route + Server::route под php -S (tests/Support/mcp-app.php).
  * Встречный POST с ответом человека приходит, пока открыт SSE-поток вызова, поэтому
  * сервер поднимается с несколькими воркерами (PHP_CLI_SERVER_WORKERS, только не Windows).
+ *
+ * Ответ человека идёт во второй php -S с тем же каталогом состояния, как в php-fpm, где его
+ * принимает другой процесс. php -S раздаёт соединения воркерам не глядя на занятость: ответ,
+ * попавший в воркер с SSE-потоком, ждал бы конца потока, и вопрос истекал бы по таймауту.
  */
 final class McpHttpTest extends TestCase {
 
     private static string $url = '';
+
+    private static string $answerUrl = '';
 
     protected function setUp(): void {
         if (!function_exists('curl_init'))
@@ -25,10 +31,11 @@ final class McpHttpTest extends TestCase {
             $root = ST_TESTS_ROOT.'/mcp-app';
             @mkdir($root, 0777, true);
 
-            self::$url = StubServer::app(dirname(__DIR__, 2).'/Support/mcp-app.php', [
-                'ST_MCP_ROOT'           => $root,
-                'PHP_CLI_SERVER_WORKERS' => '4',
-            ]);
+            $app = dirname(__DIR__, 2).'/Support/mcp-app.php';
+            $env = ['ST_MCP_ROOT' => $root, 'PHP_CLI_SERVER_WORKERS' => '4'];
+
+            self::$url       = StubServer::app($app, $env);
+            self::$answerUrl = StubServer::app($app, $env, 'answers');
         }
     }
 
@@ -36,8 +43,8 @@ final class McpHttpTest extends TestCase {
      * @param ?callable(array $event): void $onEvent для SSE: каждое событие message
      * @return array{status:int,headers:array<string,string>,body:string,events:array}
      */
-    private static function request(string $method, $body = null, array $headers = [], ?callable $onEvent = null): array {
-        $ch = curl_init(self::$url.'/mcp');
+    private static function request(string $method, $body = null, array $headers = [], ?callable $onEvent = null, ?string $base = null): array {
+        $ch = curl_init(($base ?? self::$url).'/mcp');
         $responseHeaders = [];
         $raw    = '';
         $buffer = '';
@@ -106,12 +113,12 @@ final class McpHttpTest extends TestCase {
         );
     }
 
-    /** Ответ человека — отдельный POST, пока поток вызова ещё открыт. */
+    /** Ответ человека — отдельный POST во второй сервер, пока поток вызова ещё открыт. */
     private static function answerer(string $session, array $result): callable {
         return static function (array $event) use ($session, $result): void {
             if (($event['method'] ?? '') !== 'elicitation/create') return;
 
-            self::request('POST', ['jsonrpc' => '2.0', 'id' => $event['id'], 'result' => $result], ["Mcp-Session-Id: {$session}"]);
+            self::request('POST', ['jsonrpc' => '2.0', 'id' => $event['id'], 'result' => $result], ["Mcp-Session-Id: {$session}"], null, self::$answerUrl);
         };
     }
 
