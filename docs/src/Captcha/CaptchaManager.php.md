@@ -26,9 +26,12 @@
   (`<CacheManager default.dir>/Captcha`).
 - `default.behavior` — набор поведенческих сигналов, веса групп и параметры PoW.
 - `drivers.default` — класс драйвера по умолчанию (`InvisibleCaptchaDriver`).
-- `drivers.available` — карта имя → класс: `invisible`, `checkbox`, `swipe`, `text`, `smart`,
-  `recaptcha`. Последние два живут в `Captcha\Drivers\Service` — это капчи внешних сервисов
-  поверх общего `Service\ServiceCaptchaDriver`.
+- `drivers.available` - карта имя → класс: `invisible`, `checkbox`, `swipe`, `text`,
+  [`math`](Drivers/MathCaptchaDriver.php.md), [`puzzle`](Drivers/Game/Puzzle/PuzzleCaptchaDriver.php.md),
+  `smart`, `recaptcha`, `snake`, `flappy`, `arkanoid`, `tetris`, `pacman`, `battlecity`. `smart` и
+  `recaptcha` живут в `Captcha\Drivers\Service` - это капчи внешних сервисов поверх общего
+  `Service\ServiceCaptchaDriver`. `puzzle` и шесть последних - мини-игры из `Captcha\Drivers\Game`
+  поверх [GameCaptchaDriver](Drivers/Game/GameCaptchaDriver.php.md).
 
 `CaptchaManager::setConfig([...])` одним вызовом настраивает и сам менеджер, и конкретные
 драйверы — ключи `drivers.<имя>.<параметр>` (кроме служебных `drivers.default` и
@@ -90,7 +93,8 @@ $captcha = CaptchaManager::swipe('contacts');
 либо `taken from drivers.default`. Класс, не наследующий `CaptchaDriver`, — `\InvalidArgumentException`.
 
 Типичные причины недоступности: у `text` — нет ни GD, ни Imagick, либо в каталоге `fonts` не нашлось
-ни одного `ttf`/`otf`; у `smart` и `recaptcha` — не заданы `client_key`/`secret`.
+ни одного `ttf`/`otf`; у `smart` и `recaptcha` - не заданы `client_key`/`secret`; у игровых -
+не собран `dist/game.min.js` в папке игры.
 
 Подмены на `drivers.default` **нет**. Раньше менеджер молча пересоздавал капчу на дефолтном драйвере,
 если недоступным оказался явно запрошенный, — и это было худшее из поведений: страница отдавала не тот

@@ -1,0 +1,22 @@
+{
+  "name": "st-captcha-games",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "engine",
+    "../Snake",
+    "../Flappy",
+    "../Arkanoid",
+    "../Tetris",
+    "../PacMan",
+    "../BattleCity",
+    "../Puzzle"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "node --test \"test/*.test.js\" && node test/fixtures.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

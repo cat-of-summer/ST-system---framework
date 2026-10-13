@@ -3,18 +3,12 @@
 namespace ST_system\Captcha\Drivers;
 
 use ST_system\Captcha\CaptchaDriver;
-use ST_system\Captcha\Drivers\Image\GdAdapter;
-use ST_system\Captcha\Drivers\Image\ImagickAdapter;
+use ST_system\Captcha\Drivers\Image\Adapters;
+use ST_system\Captcha\Drivers\Image\ImageAdapterInterface;
 use ST_system\Storage\File;
 use ST_system\Storage\Mimes\FontMime;
-use ST_system\Storage\Mimes\ImageMime;
 
 class TextCaptchaDriver extends CaptchaDriver {
-
-    private const ADAPTERS = [
-        'gd'      => GdAdapter::class,
-        'imagick' => ImagickAdapter::class,
-    ];
 
     protected static function getDefaultConfig(): array {
         return array_merge(static::baseConfig(), [
@@ -46,7 +40,7 @@ class TextCaptchaDriver extends CaptchaDriver {
         $this->attributes['lines']          = max(0, (int)($config['lines'] ?? 3));
         $this->attributes['contrast']       = (int)($config['contrast'] ?? 10);
         $this->attributes['case_sensitive'] = (bool)($config['case_sensitive'] ?? false);
-        $this->attributes['image']          = strtolower((string)($config['image'] ?? 'auto'));
+        $this->attributes['image']          = (string)($config['image'] ?? 'auto');
         $this->attributes['font_types']     = array_values((array)($config['font_types'] ?? ['ttf', 'otf']));
         $this->attributes['max_fonts']      = max(0, (int)($config['max_fonts'] ?? 50));
         $this->attributes['fonts']          = $this->resolveFonts($config['fonts'] ?? '');
@@ -64,7 +58,7 @@ class TextCaptchaDriver extends CaptchaDriver {
 
         if (isset($override['char_pool']))      $this->attributes['char_pool']      = (string)$override['char_pool'];
         if (isset($override['case_sensitive'])) $this->attributes['case_sensitive'] = (bool)$override['case_sensitive'];
-        if (isset($override['image']))          $this->attributes['image']          = strtolower((string)$override['image']);
+        if (isset($override['image']))          $this->attributes['image']          = (string)$override['image'];
     }
 
     public function isAvailable(): bool {
@@ -75,12 +69,8 @@ class TextCaptchaDriver extends CaptchaDriver {
         return true;
     }
 
-    protected function issue(array $params): array {
-        $adapter = $this->adapter();
-
-        if ($adapter === null)
-            throw new \RuntimeException('TextCaptchaDriver: neither Imagick nor GD is available');
-
+    /** Задание: [текст на картинке, ожидаемый ответ после normalize()]. */
+    protected function challenge(): array {
         $pool   = preg_split('//u', (string)$this->attributes['char_pool'], -1, PREG_SPLIT_NO_EMPTY);
         $size   = count($pool);
         $length = (int)$this->attributes['length'];
@@ -91,6 +81,28 @@ class TextCaptchaDriver extends CaptchaDriver {
         $text = '';
         for ($i = 0; $i < $length; $i++)
             $text .= $pool[random_int(0, $size - 1)];
+
+        return [$text, $this->normalize($text)];
+    }
+
+    /** Сколько символов клиент ждёт в поле, прежде чем считать ответ введённым. */
+    protected function answerLength(string $text): int {
+        return (int)$this->attributes['length'];
+    }
+
+    /** Атрибуты поля ответа сверх name и class. */
+    protected function inputAttributes(array $public): string {
+        return ' autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"'
+             . ' maxlength="'.(int)($public['length'] ?? 8).'" required';
+    }
+
+    protected function issue(array $params): array {
+        $adapter = $this->adapter();
+
+        if ($adapter === null)
+            throw new \RuntimeException(static::class.': neither Imagick nor GD is available');
+
+        [$text, $answer] = $this->challenge();
 
         $options = [
             'width'      => (int)$this->attributes['width'],
@@ -108,10 +120,10 @@ class TextCaptchaDriver extends CaptchaDriver {
         $png = $adapter::render($text, $options);
 
         return [
-            ['answer' => $this->normalize($text)],
+            ['answer' => $answer],
             [
                 'image'  => 'data:image/png;base64,'.base64_encode($png),
-                'length' => $length,
+                'length' => $this->answerLength($text),
             ],
         ];
     }
@@ -119,8 +131,7 @@ class TextCaptchaDriver extends CaptchaDriver {
     protected function render(array $public, string $id): string {
         return '<img class="st-captcha-image" alt="captcha" src="'.self::esc($public['image'] ?? '').'">'
              . '<input type="text" class="st-captcha-input" name="'.self::esc($this->field('answer')).'" value=""'
-             . ' autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"'
-             . ' maxlength="'.(int)($public['length'] ?? 8).'" required>';
+             . $this->inputAttributes($public).'>';
     }
 
     protected function verify(array $payload, array $state): bool {
@@ -131,8 +142,9 @@ class TextCaptchaDriver extends CaptchaDriver {
     }
 
     protected function driverJs(): string {
-        return <<<'JS'
-window.STCaptcha && STCaptcha.register('text', class extends STCaptcha.Driver {
+        return 'window.STCaptcha && STCaptcha.register('.self::json(static::name()).', class extends STCaptcha.Driver {'
+             . <<<'JS'
+
 
     onMount() {
         var self  = this;
@@ -152,7 +164,7 @@ window.STCaptcha && STCaptcha.register('text', class extends STCaptcha.Driver {
 JS;
     }
 
-    private function normalize(string $value): string {
+    protected function normalize(string $value): string {
         $value = trim($value);
 
         if ($this->attributes['case_sensitive']) return $value;
@@ -160,23 +172,9 @@ JS;
         return function_exists('mb_strtoupper') ? mb_strtoupper($value, 'UTF-8') : strtoupper($value);
     }
 
-    private function adapter(): ?string {
-        $requested = (string)$this->attributes['image'];
-
-        if ($requested !== '' && $requested !== 'auto') {
-            $class = self::ADAPTERS[$requested] ?? null;
-
-            return ($class !== null && $class::isAvailable()) ? $class : null;
-        }
-
-        $order = ImageMime::getImageDriver() === 'gd' ? ['gd', 'imagick'] : ['imagick', 'gd'];
-
-        foreach ($order as $name) {
-            $class = self::ADAPTERS[$name];
-            if ($class::isAvailable()) return $class;
-        }
-
-        return null;
+    /** Адаптер рисования: `gd`, `imagick`, `auto` или имя класса с ImageAdapterInterface. */
+    protected function adapter(): ?string {
+        return Adapters::resolve((string)$this->attributes['image'], ImageAdapterInterface::class);
     }
 
     private function resolveFonts($value): array {

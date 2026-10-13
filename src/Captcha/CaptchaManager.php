@@ -18,8 +18,16 @@ use ST_system\View;
  * @method static self checkbox(mixed $key, array $config = [])
  * @method static self swipe(mixed $key, array $config = [])
  * @method static self text(mixed $key, array $config = [])
+ * @method static self math(mixed $key, array $config = [])
+ * @method static self puzzle(mixed $key, array $config = [])
  * @method static self smart(mixed $key, array $config = [])
  * @method static self recaptcha(mixed $key, array $config = [])
+ * @method static self snake(mixed $key, array $config = [])
+ * @method static self flappy(mixed $key, array $config = [])
+ * @method static self arkanoid(mixed $key, array $config = [])
+ * @method static self tetris(mixed $key, array $config = [])
+ * @method static self pacman(mixed $key, array $config = [])
+ * @method static self battlecity(mixed $key, array $config = [])
  * @method string putCaptcha(array $params = [])
  * @method bool check(mixed $payload)
  * @method array refresh(string $id = '')
@@ -38,8 +46,17 @@ final class CaptchaManager {
             'checkbox'  => \ST_system\Captcha\Drivers\CheckboxCaptchaDriver::class,
             'swipe'     => \ST_system\Captcha\Drivers\SwipeCaptchaDriver::class,
             'text'      => \ST_system\Captcha\Drivers\TextCaptchaDriver::class,
+            'math'      => \ST_system\Captcha\Drivers\MathCaptchaDriver::class,
+            'puzzle'    => \ST_system\Captcha\Drivers\Game\Puzzle\PuzzleCaptchaDriver::class,
             'smart'     => \ST_system\Captcha\Drivers\Service\SmartCaptchaDriver::class,
             'recaptcha' => \ST_system\Captcha\Drivers\Service\ReCaptchaDriver::class,
+
+            'snake'      => \ST_system\Captcha\Drivers\Game\Snake\SnakeCaptchaDriver::class,
+            'flappy'     => \ST_system\Captcha\Drivers\Game\Flappy\FlappyCaptchaDriver::class,
+            'arkanoid'   => \ST_system\Captcha\Drivers\Game\Arkanoid\ArkanoidCaptchaDriver::class,
+            'tetris'     => \ST_system\Captcha\Drivers\Game\Tetris\TetrisCaptchaDriver::class,
+            'pacman'     => \ST_system\Captcha\Drivers\Game\PacMan\PacManCaptchaDriver::class,
+            'battlecity' => \ST_system\Captcha\Drivers\Game\BattleCity\BattleCityCaptchaDriver::class,
         ];
 
         return [

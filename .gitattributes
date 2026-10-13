@@ -6,3 +6,8 @@
 /.gitignore      export-ignore
 /tests/          export-ignore
 /phpunit.xml.dist export-ignore
+/src/Captcha/Drivers/Game/assets/**         export-ignore
+/src/Captcha/Drivers/Game/*/package.json    export-ignore
+/src/Captcha/Drivers/Game/*/src/**          export-ignore
+/src/Captcha/Drivers/Game/*/test/**         export-ignore
+/src/Captcha/Drivers/Game/*/dist/**         linguist-generated

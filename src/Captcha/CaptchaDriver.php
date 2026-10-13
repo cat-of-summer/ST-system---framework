@@ -103,6 +103,9 @@ abstract class CaptchaDriver {
     abstract protected function driverJs(): string;
 
     protected function driverCss(): string { return ''; }
+
+    /** Порог поведенческого скоринга для текущей проверки; вызывается после verify(). */
+    protected function requiredScore(): float { return (float)$this->attributes['min_score']; }
     protected function forcedSignals(): array { return []; }
     protected function providesAnswerField(): bool { return false; }
 
@@ -232,7 +235,7 @@ abstract class CaptchaDriver {
         $this->attributes['report']  = $result['report'];
         $this->attributes['reasons'] = $result['reasons'];
 
-        $trusted = empty($state['signals']) || $result['score'] >= (float)$this->attributes['min_score'];
+        $trusted = empty($state['signals']) || $result['score'] >= $this->requiredScore();
         $passed  = $answered && $trusted;
 
         $this->fire('score', $result, $state, $passed);

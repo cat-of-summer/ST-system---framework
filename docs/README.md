@@ -115,14 +115,37 @@ docker run --rm -v "$PWD:/app" -w /app php:8.3-cli vendor/bin/phpunit
 
 | Переменная | Значение |
 |------------|----------|
-| `TOOLCHAIN` | `php@7.4` |
-| `BUILD_COMMAND` | `composer install --no-interaction --no-progress --prefer-dist` |
-| `CI_COMMAND` | `vendor/bin/phpunit` |
-| `CACHE_PATHS` | `vendor` |
-| `CACHE_KEY_FILES` | `composer.json` |
+| `ACTION_TRIGGER` | `tag` |
+| `BUILD_COMMAND` | сборка JS игровых капч, см. ниже |
+| `CI_COMMAND` | JS-тесты, сверка `dist` и фикстур, PHPUnit, см. ниже |
+| `RELEASE_FILES` | `src/Captcha/Drivers/Game/*/dist/game.min.js` |
+| `PUBLISH_METHOD` | `packagist` |
+| `PACKAGIST_USERNAME` | `cat-of-summer` (секрет `PACKAGIST_API_TOKEN`) |
 
-`composer.lock` в репозиторий не коммитится — это библиотека, версии зависимостей выбирает
-проект-потребитель. Ключ кэша зависимостей поэтому строится по `composer.json`.
+Node, Composer и PHP берутся образами Docker, тулчейн на раннер не ставится.
+
+`BUILD_COMMAND`:
+
+```bash
+docker run --rm -v "$PWD:/app" -w /app/src/Captcha/Drivers/Game/assets node:24 sh -c "npm ci --no-audit --no-fund && npm run build"
+```
+
+`CI_COMMAND`:
+
+```bash
+docker run --rm -v "$PWD:/app" -w /app/src/Captcha/Drivers/Game/assets node:24 npm test
+if [ -n "$(git status --porcelain -- src/Captcha/Drivers/Game tests/Fixtures)" ]; then git status --short -- src/Captcha/Drivers/Game tests/Fixtures; echo "::error::dist или фикстуры не совпадают с исходниками: npm run build && npm test в src/Captcha/Drivers/Game/assets и закоммитить"; exit 1; fi
+docker run --rm -v "$PWD:/app" -w /app composer:2 install --no-interaction --no-progress --prefer-dist
+docker run --rm -v "$PWD:/app" -w /app php:7.4-cli vendor/bin/phpunit
+```
+
+Бандлы игр (`src/Captcha/Drivers/Game/*/dist/game.min.js`) коммитятся: Packagist отдаёт архив
+коммита тега, собрать их при установке негде. CI собирает бандлы и фикстуры
+(`tests/Fixtures/Captcha/Game`) заново. Если они расходятся с закоммиченными, CI падает. К
+GitHub Release бандлы прикрепляются отдельными файлами `<Игра>__dist__game.min.js`.
+
+`composer.lock` в репозиторий не коммитится: это библиотека, и версии зависимостей выбирает
+проект-потребитель.
 
 ---
 

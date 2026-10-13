@@ -1,0 +1,6 @@
+{
+  "name": "@st-captcha/engine",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js"
+}
