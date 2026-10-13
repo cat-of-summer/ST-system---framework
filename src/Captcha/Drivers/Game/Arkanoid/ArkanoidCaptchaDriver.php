@@ -13,8 +13,8 @@ class ArkanoidCaptchaDriver extends GameCaptchaDriver {
 
     protected static function defaultHint(): array {
         return [
-            'keys'  => 'Стрелки влево и вправо — ракетка, пробел — запустить мяч',
-            'touch' => 'Кнопки справа или палец по полю — ракетка, кнопка слева — мяч',
+            'keys'  => 'Стрелки влево и вправо — ракетка',
+            'touch' => 'Кнопки ◀ ▶ — ракетка',
         ];
     }
 

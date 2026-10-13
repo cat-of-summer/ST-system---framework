@@ -3,13 +3,8 @@ import { TetrisSim, SHAPES, COLS, ROWS } from './sim.js';
 
 const PIECE_COLORS = [null, '#22d3ee', COLORS.yellow, COLORS.purple, COLORS.green, COLORS.red, COLORS.blue, COLORS.orange, '#475569'];
 
-const KEYS = {
-    ArrowUp: 0, w: 0, W: 0, x: 0, X: 0, 'ц': 0, 'ч': 0,
-    ArrowRight: 1, d: 1, D: 1, 'в': 1,
-    ArrowDown: 2, s: 2, S: 2, 'ы': 2,
-    ArrowLeft: 3, a: 3, A: 3, 'ф': 3,
-    ' ': 4,
-};
+/** Кнопка → код: большая — поворот, ▲ — сбросить, ◀ ▼ ▶ — сдвиг и шаг вниз. */
+const BUTTONS = { big: 0, right: 1, down: 2, left: 3, up: 4 };
 
 function block(ctx, x, y, size, color) {
     ctx.fillStyle = color;
@@ -67,9 +62,9 @@ createDriver({
     name: 'tetris',
     Sim:  TetrisSim,
     pad:  {
-        dpad:    ['ArrowLeft', 'ArrowDown', 'ArrowRight'],
-        actions: [{ key: 'ArrowUp', label: '⟳', big: true }, { key: ' ', label: '⤓' }],
-        repeat:  ['ArrowLeft', 'ArrowRight', 'ArrowDown'],
+        dpad:   ['up', 'right', 'down', 'left'],
+        big:    true,
+        repeat: ['left', 'right', 'down'],
     },
     render: render,
     icon: function (ctx, x, y, r) {
@@ -79,13 +74,12 @@ createDriver({
     },
     controls: function (api) {
         return {
-            key: function (key, down, repeat) {
-                if (!(key in KEYS)) return false;
-                if (down && !(repeat && (KEYS[key] === 0 || KEYS[key] === 4))) api.record(KEYS[key]);
+            button: function (name, down, repeat) {
+                if (!(name in BUTTONS)) return false;
+                // Поворот и сброс — по нажатию, без автоповтора; сдвиг повторяется, пока держат.
+                if (down && !(repeat && (name === 'big' || name === 'up'))) api.record(BUTTONS[name]);
                 return true;
             },
-            tap: function () { api.record(0); },
-            swipe: function (dir) { api.record([4, 1, 2, 3][dir]); },
         };
     },
 });

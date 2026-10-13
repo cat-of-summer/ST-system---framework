@@ -13,8 +13,8 @@ class TetrisCaptchaDriver extends GameCaptchaDriver {
 
     protected static function defaultHint(): array {
         return [
-            'keys'  => 'Стрелки — двигать, вверх — повернуть, пробел — сбросить',
-            'touch' => 'Кнопки справа — двигать, слева — повернуть и сбросить',
+            'keys'  => 'Стрелки — двигать, вверх — сбросить, пробел — повернуть',
+            'touch' => 'Крестовина — двигать, вверх — сбросить, большая кнопка — повернуть',
         ];
     }
 

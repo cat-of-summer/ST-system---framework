@@ -98,7 +98,7 @@ function render(ctx, sim, view) {
 createDriver({
     name: 'battlecity',
     Sim:  BattleCitySim,
-    pad:  { dpad: ['ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft'], actions: [{ key: ' ', label: '●', big: true }] },
+    pad:  { dpad: ['up', 'right', 'down', 'left'], big: true },
     render: render,
     icon: function (ctx, x, y, r) {
         ctx.save();

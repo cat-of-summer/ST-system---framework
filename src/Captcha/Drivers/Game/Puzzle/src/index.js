@@ -14,7 +14,7 @@ function icon(ctx, x, y, r) {
 createDriver({
     name:  'puzzle',
     Sim:   PuzzleSim,
-    mouse: true,
+    pointer: true,
     open:  true,
     startScreen: false,
     icon:  icon,

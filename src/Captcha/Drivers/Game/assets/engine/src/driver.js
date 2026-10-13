@@ -1,4 +1,5 @@
 import { START, collectMet } from './sim.js';
+import { keymap } from './keys.js';
 
 /**
  * Клиентская обвязка игры: canvas в закрытом shadow root, фиксированный тик симуляции,
@@ -9,8 +10,14 @@ import { START, collectMet } from './sim.js';
  * время (cfg.max_ticks); засчитывать или нет, решает сервер. Смерть в игре — не провал: после
  * паузы кнопка перезапуска, статистика копится дальше.
  *
- * Мышь в игре не участвует: клик только даёт фокус и нажимает кнопку старта или перезапуска. На
- * сенсорных устройствах виджет — кнопка запуска: игра разворачивается поверх страницы с геймпадом.
+ * Ввод трёх видов:
+ *   - кнопки геймпада (spec.pad): крестовина и большая кнопка; игра получает controls.button();
+ *   - клавиатура наследует геймпад (стрелки и WASD — крестовина, пробел и Enter — большая кнопка),
+ *     spec.keys переопределяет клавиши; клавиши вне раскладки уходят в controls.key();
+ *   - жесты по полю (spec.pointer: мышь и палец) — только там, где игра в них нуждается (пазл).
+ * Без spec.pointer клик и тап по полю только дают фокус и нажимают кнопку старта или перезапуска.
+ * На сенсорных устройствах виджет — кнопка запуска: игра разворачивается поверх страницы с
+ * геймпадом; сторона большой кнопки — cfg.big_button.
  *
  * spec:
  *   name      — имя драйвера (как в CaptchaManager drivers.available)
@@ -20,9 +27,11 @@ import { START, collectMet } from './sim.js';
  *   render    — (ctx, sim, view) рисует поле в логических координатах
  *   icon      — (ctx, x, y, r) значок счёта в HUD
  *   score     — (sim) → число в HUD; по умолчанию sim.reactions
- *   pad       — {dpad: [клавиши] | null, actions: [{key, label, big}], repeat: [клавиши]}
- *   controls  — (api) → { key(key, down, repeat), press(x, y), move(x, y), tap(x, y), swipe(dir), release() }
- *               key() получает имена клавиш KeyboardEvent.key; кнопки геймпада шлют те же имена.
+ *   pad       — {dpad: ['up', 'right', 'down', 'left'] | ['left', 'right'] | null, big: bool, repeat: [кнопки]}
+ *   keys      — {клавиша: кнопка | null}: свои клавиши поверх унаследованных от геймпада
+ *   pointer   — true: мышь и палец по полю уходят в press/move/up
+ *   controls  — (api) → { button(name, down, repeat), key(key, down, repeat), press(x, y), move(x, y),
+ *               up(x, y, ok), release() }; button() и key() возвращают true, если ввод взят.
  */
 
 export const COLORS = {
@@ -48,8 +57,6 @@ export function fitGrid(cols, rows, W, H) {
     return { c: c, x: (W - c * cols) / 2, y: HUD + (H - HUD - c * rows) / 2 };
 }
 
-const SWIPE        = 18;
-const TAP          = 12;
 const REPEAT_DELAY = 180;
 const REPEAT_EVERY = 70;
 
@@ -60,41 +67,34 @@ const INLINE_CSS = ':host{display:block}'
     + 'canvas{display:block;width:100%;height:100%;touch-action:none;outline:none;border-radius:8px;cursor:pointer;background:' + COLORS.bg + '}'
     + 'canvas:focus-visible{box-shadow:0 0 0 3px rgba(59,130,246,.6)}';
 
+// Геймпад: две зоны по краям — в одной большая кнопка, в другой крестовина (сторона — cfg.big_button).
+// Портрет — зоны под полем, альбом — по бокам от поля.
 const OVERLAY_CSS = ':host{all:initial}'
     + '.screen{position:fixed;inset:0;box-sizing:border-box;display:grid;gap:12px;'
     + 'grid-template-columns:1fr 1fr;grid-template-rows:auto minmax(0,1fr) auto;'
-    + 'grid-template-areas:"bar bar" "stage stage" "act dpad";'
+    + 'grid-template-areas:"bar bar" "stage stage" "l r";'
     + 'padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));'
     + 'background:#05080f;touch-action:none;overscroll-behavior:contain;'
     + 'user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;font-family:' + FONT + '}'
-    + '.screen.solo{grid-template-areas:"bar bar" "stage stage" "act act"}'
     + '.bar{grid-area:bar;display:flex;justify-content:flex-end}'
     + '.close{width:40px;height:40px;border:0;border-radius:50%;background:rgba(255,255,255,.12);color:' + COLORS.text + ';font-size:18px;line-height:40px;padding:0}'
     + '.stage{grid-area:stage;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0}'
     + '.stage canvas{display:block;border-radius:10px;touch-action:none;outline:none;background:' + COLORS.bg + '}'
-    + '.dpad{grid-area:dpad;justify-self:end;align-self:center;display:grid;gap:6px;grid-template:repeat(3,56px)/repeat(3,56px)}'
-    + '.dpad.h{grid-template:64px/repeat(2,72px)}'
-    + '.dpad:empty{display:none}'
-    + '.actions{grid-area:act;justify-self:start;align-self:center;display:flex;gap:14px;align-items:center}'
-    + '.solo .actions{justify-self:center}'
+    + '.zone{align-self:center;display:flex;align-items:center;justify-content:center;min-width:0}'
+    + '.zl{grid-area:l;justify-self:start}.zr{grid-area:r;justify-self:end}'
+    + '.dpad{display:grid;gap:6px;grid-template:repeat(3,58px)/repeat(3,58px)}'
+    + '.dpad.h{grid-template:68px/repeat(2,76px);gap:12px}'
     + '.btn{box-sizing:border-box;border:0;border-radius:14px;padding:0;background:rgba(255,255,255,.14);'
-    + 'color:' + COLORS.text + ';font:600 22px/1 ' + FONT + ';touch-action:none;display:flex;align-items:center;justify-content:center}'
+    + 'color:' + COLORS.text + ';font:600 22px/1 ' + FONT + ';touch-action:none;display:flex;align-items:center;justify-content:center;pointer-events:auto}'
     + '.btn.on{background:rgba(52,211,153,.55)}'
     + '.up{grid-area:1/2}.left{grid-area:2/1}.right{grid-area:2/3}.down{grid-area:3/2}'
     + '.h .left{grid-area:1/1}.h .right{grid-area:1/2}'
-    + '.act{width:80px;height:80px;border-radius:50%;font-size:26px}'
-    + '.act.big{width:108px;height:108px;font-size:36px}'
+    + '.big{width:108px;height:108px;border-radius:50%}'
+    + '.big::after{content:"";width:30px;height:30px;border-radius:50%;background:' + COLORS.text + '}'
     + '@media (orientation:landscape){'
-    + '.screen{grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto minmax(0,1fr);grid-template-areas:"bar bar bar" "act stage dpad"}'
-    + '.screen.solo{grid-template-columns:auto minmax(0,1fr);grid-template-areas:"bar bar" "act stage"}'
-    + '.actions{flex-direction:column}}';
+    + '.screen{grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto minmax(0,1fr);grid-template-areas:"bar bar bar" "l stage r"}}';
 
-const ARROWS = {
-    ArrowUp:    ['up', '▲'],
-    ArrowRight: ['right', '▶'],
-    ArrowDown:  ['down', '▼'],
-    ArrowLeft:  ['left', '◀'],
-};
+const ARROWS = { up: '▲', right: '▶', down: '▼', left: '◀' };
 
 export function createDriver(spec) {
     const api = window.STCaptcha;
@@ -217,6 +217,8 @@ function mount(driver, spec) {
         if (sim.dead > 0 && !dying) {
             dying   = true;
             pending = null;
+            // Кнопки под пальцами тоже отпускаются: поведёт палец — нажмутся снова.
+            releasePad(true);
             if (controls.release) controls.release();
         } else if (sim.dead === 0) {
             dying = false;
@@ -471,15 +473,36 @@ function mount(driver, spec) {
 
     // --- клавиатура -----------------------------------------------------------------------------
 
-    function key(name, down, repeat) {
+    const keys = keymap(spec.pad, spec.keys);
+
+    /**
+     * Кнопка геймпада (или клавиша, унаследованная от неё). Нажатие, которое игра не взяла, при
+     * показанной кнопке старта или перезапуска нажимает её.
+     */
+    function pushButton(name, down, repeat) {
         if (done) return false;
-        return controls.key ? controls.key(name, down, repeat) : false;
+
+        const taken = controls.button ? controls.button(name, down, repeat) : false;
+
+        if (down && !repeat && !taken && startable()) {
+            record(START);
+            return true;
+        }
+
+        return taken;
     }
 
     canvas.addEventListener('keydown', function (e) {
         if (!e.isTrusted || e.ctrlKey || e.metaKey || e.altKey) return;
         paused = false;
-        if (key(e.key, true, e.repeat)) { e.preventDefault(); return; }
+
+        if (e.key in keys) {
+            pushButton(keys[e.key], true, e.repeat);
+            e.preventDefault();
+            return;
+        }
+
+        if (!done && controls.key && controls.key(e.key, true, e.repeat)) { e.preventDefault(); return; }
 
         // Пробел и Enter нажимают кнопку старта, даже если игре они не нужны.
         if (!e.repeat && (e.key === ' ' || e.key === 'Enter') && startable()) {
@@ -490,14 +513,20 @@ function mount(driver, spec) {
 
     canvas.addEventListener('keyup', function (e) {
         if (!e.isTrusted) return;
-        if (controls.key && controls.key(e.key, false, false)) e.preventDefault();
+
+        if (e.key in keys) {
+            pushButton(keys[e.key], false, false);
+            e.preventDefault();
+        } else if (controls.key && controls.key(e.key, false, false)) {
+            e.preventDefault();
+        }
     });
 
     canvas.addEventListener('blur', function () {
         if (controls.release) controls.release();
     });
 
-    // --- пальцы (мышь только фокусирует и жмёт кнопку старта) -------------------------------------
+    // --- поле: фокус, кнопка старта, жесты — только у игр со spec.pointer ---------------------------
 
     function at(e) {
         const rect = canvas.getBoundingClientRect();
@@ -516,10 +545,10 @@ function mount(driver, spec) {
         if (done) return;
         if (paused) { paused = false; return; }
         if (startable()) { record(START); return; }
-        if (e.pointerType === 'mouse' && !spec.mouse) return;
+        if (!spec.pointer) return;
 
         const p = at(e);
-        pointer = { x: p[0], y: p[1], cx: e.clientX, cy: e.clientY, swiped: false, t: performance.now() };
+        pointer = true;
 
         try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
 
@@ -527,37 +556,17 @@ function mount(driver, spec) {
     });
 
     canvas.addEventListener('pointermove', function (e) {
-        if (!e.isTrusted || !pointer || (e.pointerType === 'mouse' && !spec.mouse)) return;
+        if (!e.isTrusted || !pointer) return;
 
         const p = at(e);
         if (controls.move) controls.move(p[0], p[1]);
-
-        if (!controls.swipe) return;
-
-        const dx = e.clientX - pointer.cx;
-        const dy = e.clientY - pointer.cy;
-
-        if (Math.abs(dx) < SWIPE && Math.abs(dy) < SWIPE) return;
-
-        controls.swipe(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
-
-        pointer.cx     = e.clientX;
-        pointer.cy     = e.clientY;
-        pointer.swiped = true;
     });
 
     function release(e) {
         if (!pointer) return;
 
-        const dx = e.clientX - pointer.cx;
-        const dy = e.clientY - pointer.cy;
-        const p  = at(e);
-
-        if (e.type === 'pointerup' && !pointer.swiped && Math.abs(dx) < TAP && Math.abs(dy) < TAP
-            && performance.now() - pointer.t < 600 && controls.tap)
-            controls.tap(pointer.x, pointer.y);
-
         // Отпускание с координатами — для перетаскивания; при отмене — без них.
+        const p = at(e);
         if (controls.up) controls.up(p[0], p[1], e.type === 'pointerup');
 
         pointer = null;
@@ -576,9 +585,11 @@ function mount(driver, spec) {
         const bar     = el('div', 'bar');
         const close   = el('button', 'close');
         const stage   = el('div', 'stage');
-        const dpad    = el('div', 'dpad');
-        const actions = el('div', 'actions');
+        const left    = el('div', 'zone zl');
+        const right   = el('div', 'zone zr');
         const pad     = spec.pad || {};
+        const dpad    = pad.dpad || [];
+        const bigLeft = cfg.big_button !== 'right';
 
         oHost.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:none';
         oStyle.textContent  = OVERLAY_CSS;
@@ -587,69 +598,123 @@ function mount(driver, spec) {
         close.setAttribute('aria-label', 'close');
         close.addEventListener('click', collapse);
 
-        const repeatKeys = pad.repeat || [];
+        if (dpad.length) {
+            const cross = el('div', 'dpad' + (dpad.length === 2 ? ' h' : ''));
+            dpad.forEach(function (name) { cross.append(padButton(name, 'btn ' + name, ARROWS[name])); });
+            (bigLeft ? right : left).append(cross);
+        }
 
-        (pad.dpad || []).forEach(function (name) {
-            const arrow = ARROWS[name];
-            dpad.append(button(name, 'btn ' + arrow[0], arrow[1], repeatKeys.indexOf(name) >= 0));
-        });
-
-        if (pad.dpad && pad.dpad.length === 2) dpad.classList.add('h');
-        if (!pad.dpad || !pad.dpad.length) screen.classList.add('solo');
-
-        (pad.actions || []).forEach(function (a) {
-            actions.append(button(a.key, 'btn act' + (a.big ? ' big' : ''), a.label, repeatKeys.indexOf(a.key) >= 0));
-        });
+        if (pad.big) (bigLeft ? left : right).append(padButton('big', 'btn big', ''));
 
         bar.append(close);
-        screen.append(bar, stage, dpad, actions);
+        screen.append(bar, stage, left, right);
         oShadow.append(oStyle, screen);
         document.body.appendChild(oHost);
+
+        softPad(oShadow, [left, right], pad.repeat || []);
 
         if (typeof ResizeObserver !== 'undefined') new ResizeObserver(layout).observe(stage);
 
         return { host: oHost, stage: stage };
     }
 
-    /** Кнопка геймпада: нажата/отпущена — как клавиша; repeat — автоповтор, пока держат. */
-    function button(name, cls, label, repeat) {
+    function padButton(name, cls, label) {
         const b = el('button', cls);
-        let timer = null;
-        let held  = false;
+        b.type          = 'button';
+        b.textContent   = label;
+        b.dataset.pad   = name;
+        b.setAttribute('aria-label', name);
+        b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+        return b;
+    }
 
-        b.type        = 'button';
-        b.textContent = label;
-        b.setAttribute('aria-label', name === ' ' ? 'action' : name);
+    /**
+     * Мягкие кнопки, как в мобильных играх: у каждого пальца своя кнопка под ним. Увёл палец с
+     * кнопки — она отпускается, довёл до другой — нажимается та; пальцы друг другу не мешают.
+     * Автоповтор (repeat) — пока палец держит кнопку из списка.
+     */
+    let releasePad = function () {};
 
-        function stop() {
-            if (timer) { clearTimeout(timer); clearInterval(timer); timer = null; }
-            if (!held) return;
-            held = false;
-            b.classList.remove('on');
-            key(name, false, false);
+    function softPad(root, zones, repeat) {
+        const fingers = {};
+
+        function under(x, y) {
+            const node = root.elementFromPoint ? root.elementFromPoint(x, y) : null;
+            const b    = node && node.closest ? node.closest('[data-pad]') : null;
+            return b && zones.some(function (z) { return z.contains(b); }) ? b : null;
         }
 
-        b.addEventListener('pointerdown', function (e) {
+        function prevent(e) { e.preventDefault(); }
+
+        function stopRepeat(f) {
+            if (f.timer) { clearTimeout(f.timer); clearInterval(f.timer); f.timer = null; }
+        }
+
+        function hold(f, b) {
+            if (f.button === b) return;
+
+            stopRepeat(f);
+
+            if (f.button) {
+                f.button.classList.remove('on');
+                pushButton(f.button.dataset.pad, false, false);
+            }
+
+            f.button = b;
+            if (!b) return;
+
+            const name = b.dataset.pad;
+            b.classList.add('on');
+            pushButton(name, true, false);
+
+            if (repeat.indexOf(name) >= 0)
+                f.timer = setTimeout(function () {
+                    f.timer = setInterval(function () { pushButton(name, true, true); }, REPEAT_EVERY);
+                }, REPEAT_DELAY);
+        }
+
+        // Палец можно поставить и мимо кнопки — она нажмётся, когда он до неё доедет.
+        function down(e) {
             if (!e.isTrusted) return;
             e.preventDefault();
-            try { b.setPointerCapture(e.pointerId); } catch (_) {}
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
 
-            held = true;
-            b.classList.add('on');
-            if (!key(name, true, false) && startable()) record(START);
+            const f = fingers[e.pointerId] = { button: null, timer: null };
+            hold(f, under(e.clientX, e.clientY));
+        }
 
-            if (repeat)
-                timer = setTimeout(function () {
-                    timer = setInterval(function () { key(name, true, true); }, REPEAT_EVERY);
-                }, REPEAT_DELAY);
+        function move(e) {
+            const f = fingers[e.pointerId];
+            if (!e.isTrusted || !f) return;
+            hold(f, under(e.clientX, e.clientY));
+        }
+
+        function up(e) {
+            const f = fingers[e.pointerId];
+            if (!f) return;
+            hold(f, null);
+            delete fingers[e.pointerId];
+        }
+
+        zones.forEach(function (zone) {
+            zone.addEventListener('pointerdown', down);
+            zone.addEventListener('pointermove', move);
+            zone.addEventListener('pointerup', up);
+            zone.addEventListener('pointercancel', up);
+            zone.addEventListener('lostpointercapture', up);
+            // Без этого браузер, сдвинув палец на несколько пикселей, забирает касание себе
+            // (прокрутка, жест) и шлёт pointercancel: touch-action: none соблюдают не все.
+            zone.addEventListener('touchstart', prevent, { passive: false });
+            zone.addEventListener('touchmove', prevent, { passive: false });
         });
 
-        b.addEventListener('pointerup', stop);
-        b.addEventListener('pointercancel', stop);
-        b.addEventListener('lostpointercapture', stop);
-        b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-
-        return b;
+        // keep — пальцы остаются на экране: двинутся — снова нажмут кнопку под собой.
+        releasePad = function (keep) {
+            for (const id in fingers) {
+                hold(fingers[id], null);
+                if (!keep) delete fingers[id];
+            }
+        };
     }
 
     function expand() {
@@ -670,6 +735,7 @@ function mount(driver, spec) {
     function collapse() {
         if (!expanded) return;
 
+        releasePad();
         if (controls.release) controls.release();
 
         slot.append(canvas);

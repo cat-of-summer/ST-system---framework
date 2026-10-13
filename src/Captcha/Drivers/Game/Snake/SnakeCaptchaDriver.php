@@ -15,7 +15,7 @@ class SnakeCaptchaDriver extends GameCaptchaDriver {
     protected static function defaultHint(): array {
         return [
             'keys'  => 'Стрелки или WASD — повернуть змейку',
-            'touch' => 'Кнопки справа или свайп — повернуть змейку',
+            'touch' => 'Крестовина — повернуть змейку',
         ];
     }
 

@@ -14,7 +14,7 @@ class FlappyCaptchaDriver extends GameCaptchaDriver {
     protected static function defaultHint(): array {
         return [
             'keys'  => 'Пробел или стрелка вверх — взмах',
-            'touch' => 'Кнопка слева или тап по полю — взмах',
+            'touch' => 'Большая кнопка — взмах',
         ];
     }
 

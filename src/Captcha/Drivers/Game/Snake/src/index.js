@@ -1,12 +1,8 @@
 import { createDriver, fitGrid, COLORS, HUD } from '../../assets/engine/src/index.js';
 import { SnakeSim, DX, DY } from './sim.js';
 
-const KEYS = {
-    ArrowUp: 0, w: 0, W: 0, 'ц': 0, 'Ц': 0,
-    ArrowRight: 1, d: 1, D: 1, 'в': 1, 'В': 1,
-    ArrowDown: 2, s: 2, S: 2, 'ы': 2, 'Ы': 2,
-    ArrowLeft: 3, a: 3, A: 3, 'ф': 3, 'Ф': 3,
-};
+/** Крестовина: кнопка → направление (вверх, вправо, вниз, влево). */
+const DIRS = { up: 0, right: 1, down: 2, left: 3 };
 
 function apple(ctx, x, y, r) {
     ctx.fillStyle = COLORS.red;
@@ -51,22 +47,15 @@ function render(ctx, sim, view) {
 createDriver({
     name: 'snake',
     Sim:  SnakeSim,
-    pad:  { dpad: ['ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft'] },
+    pad:  { dpad: ['up', 'right', 'down', 'left'] },
     render: render,
     icon: function (ctx, x, y, r) { apple(ctx, x, y, r - 1); },
     controls: function (api) {
         return {
-            key: function (key, down) {
-                if (!(key in KEYS)) return false;
-                if (down) api.record(KEYS[key]);
+            button: function (name, down) {
+                if (!(name in DIRS)) return false;
+                if (down) api.record(DIRS[name]);
                 return true;
-            },
-            swipe: function (dir) { api.record(dir); },
-            tap: function (x, y) {
-                // Тап — поворот к точке касания относительно головы.
-                const sim = api.sim(), g = fitGrid(sim.cols, sim.rows, api.W, api.H), head = sim.body[0];
-                const dx = x - (g.x + (head[0] + 0.5) * g.c), dy = y - (g.y + (head[1] + 0.5) * g.c);
-                api.record(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
             },
         };
     },

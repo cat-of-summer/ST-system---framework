@@ -49,7 +49,7 @@ function render(ctx, sim, view) {
 createDriver({
     name: 'arkanoid',
     Sim:  ArkanoidSim,
-    pad:  { dpad: ['ArrowLeft', 'ArrowRight'], actions: [{ key: ' ', label: '●', big: true }] },
+    pad:  { dpad: ['left', 'right'] },
     // В HUD — разбитые кирпичи; цель (отбитые мячи) знает только сервер.
     score: function (sim) { return sim.broken; },
     render: render,

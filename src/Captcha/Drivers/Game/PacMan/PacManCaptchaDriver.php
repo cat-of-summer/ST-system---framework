@@ -14,7 +14,7 @@ class PacManCaptchaDriver extends GameCaptchaDriver {
     protected static function defaultHint(): array {
         return [
             'keys'  => 'Стрелки или WASD — куда свернуть',
-            'touch' => 'Кнопки справа или свайп — куда свернуть',
+            'touch' => 'Крестовина — куда свернуть',
         ];
     }
 

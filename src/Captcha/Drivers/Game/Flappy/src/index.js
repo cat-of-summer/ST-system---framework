@@ -1,8 +1,6 @@
 import { createDriver, COLORS, HUD } from '../../assets/engine/src/index.js';
 import { FlappySim, H, GROUND, FP, BX, R, PW, GAP, SPEED } from './sim.js';
 
-const KEYS = { ' ': 1, ArrowUp: 1, w: 1, W: 1, 'ц': 1, 'Ц': 1, Enter: 1 };
-
 function bird(ctx, x, y, r, tilt) {
     ctx.save();
     ctx.translate(x, y);
@@ -72,17 +70,18 @@ function render(ctx, sim, view) {
 createDriver({
     name: 'flappy',
     Sim:  FlappySim,
-    pad:  { actions: [{ key: ' ', label: '▲', big: true }] },
+    pad:  { big: true },
+    // Кроме пробела и Enter (большая кнопка) взмах — и стрелкой вверх, как привыкли.
+    keys: { ArrowUp: 'big', w: 'big', W: 'big', 'ц': 'big', 'Ц': 'big' },
     render: render,
     icon: function (ctx, x, y, r) { bird(ctx, x, y, r - 1, 0); },
     controls: function (api) {
         return {
-            key: function (key, down, repeat) {
-                if (!(key in KEYS)) return false;
+            button: function (name, down, repeat) {
+                if (name !== 'big') return false;
                 if (down && !repeat) api.record(0);
                 return true;
             },
-            press: function () { api.record(0); },
         };
     },
 });

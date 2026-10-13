@@ -14,7 +14,7 @@ class BattleCityCaptchaDriver extends GameCaptchaDriver {
     protected static function defaultHint(): array {
         return [
             'keys'  => 'Стрелки — шаг и поворот, пробел — огонь',
-            'touch' => 'Кнопки справа — шаг и поворот, кнопка слева или тап — огонь',
+            'touch' => 'Крестовина — шаг и поворот, большая кнопка — огонь',
         ];
     }
 

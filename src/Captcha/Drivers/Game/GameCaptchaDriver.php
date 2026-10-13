@@ -93,6 +93,7 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
             'fallback'    => static::defaultFallback(),
             'size'        => [320, 200],
             'hint'        => static::defaultHint(),
+            'big_button'  => 'left',
             'max_time'    => static::defaultMaxTime(),
             'max_events'  => 4000,
             'clock_slack' => 2,
@@ -107,6 +108,7 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         $this->attributes['fallback']   = self::resolveFallback(static::defaultFallback());
         $this->attributes['size']       = [320, 200];
         $this->attributes['hint']       = static::defaultHint();
+        $this->attributes['big_button'] = 'left';
 
         $this->applyGame($config);
     }
@@ -124,6 +126,7 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
                 max(140, min(960, (int)($size[1] ?? 200))),
             ];
         }
+        if (isset($config['big_button'])) $this->attributes['big_button'] = $config['big_button'] === 'right' ? 'right' : 'left';
         if (isset($config['hint']) && is_array($config['hint']))
             $this->attributes['hint'] = array_map('strval', array_intersect_key($config['hint'], ['keys' => 1, 'touch' => 1]))
                 + $this->attributes['hint'];
@@ -223,6 +226,7 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
             'max_events' => (int)$this->attributes['max_events'],
             'collect'    => $fallback ? ['time' => $fallback['time'], 'actions' => $fallback['actions']] : null,
             'hint'       => $this->attributes['hint'],
+            'big_button' => $this->attributes['big_button'],
         ];
 
         return [$secret, $public];

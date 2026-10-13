@@ -148,6 +148,12 @@ final class GameCaptchaTest extends TestCase {
         $this->assertNotSame('', $public['hint']['touch'], 'частичный hint дополняется подсказкой игры');
     }
 
+    public function testBigButtonSide(): void {
+        $this->assertSame('left', self::publicConfig($this->captcha('battlecity')->putCaptcha())['big_button'], 'по умолчанию слева');
+        $this->assertSame('right', self::publicConfig($this->captcha('battlecity', ['big_button' => 'right'])->putCaptcha())['big_button']);
+        $this->assertSame('left', self::publicConfig($this->captcha('battlecity', ['big_button' => 'top'])->putCaptcha())['big_button'], 'неизвестная сторона — слева');
+    }
+
     /** Лог дольше max_time не принимается: партия не может идти дольше, чем её показывает браузер. */
     public function testLogLongerThanMaxTimeFails(): void {
         $id = $this->issue('snake');
