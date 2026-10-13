@@ -82,6 +82,9 @@ class TextCaptchaDriver extends CaptchaDriver {
         for ($i = 0; $i < $length; $i++)
             $text .= $pool[random_int(0, $size - 1)];
 
+        // Регистр не важен — и на картинке его нет: всегда заглавные, вводить можно как угодно.
+        if (!$this->attributes['case_sensitive']) $text = $this->normalize($text);
+
         return [$text, $this->normalize($text)];
     }
 

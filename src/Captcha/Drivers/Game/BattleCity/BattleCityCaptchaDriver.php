@@ -23,8 +23,12 @@ class BattleCityCaptchaDriver extends GameCaptchaDriver {
         return ['cols' => self::clamp($w / 16, 9, 40), 'rows' => self::clamp(($h - self::HUD) / 16, 7, 40)];
     }
 
-    /** Выстрелов и поворотов много: выборка больше, доля выше. */
-    protected static function defaultFallback(): array {
-        return ['actions' => 20, 'ratio' => 0.65] + parent::defaultFallback();
+    /** Выстрелов и поворотов много: выборка больше. */
+    protected static function defaultCollect(): array {
+        return ['actions' => 20] + parent::defaultCollect();
+    }
+
+    protected static function defaultQuality(): array {
+        return [0.50, 0.75];
     }
 }

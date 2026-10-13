@@ -112,11 +112,21 @@ final class PuzzleCaptchaTest extends TestCase {
         $this->captcha()->putCaptcha(['order' => [0, 0, 1, 2, 3, 4, 5, 6, 7]]);
     }
 
-    public function testPartialFallbackGetsBaseThresholds(): void {
-        $captcha = $this->captcha(['fallback' => ['time' => 40]]);
-        $public  = self::publicConfig($captcha->putCaptcha());
+    public function testPuzzleMustBeSolvedAndHasNoCollectThreshold(): void {
+        $this->assertTrue(PuzzleCaptchaDriver::required(), 'пазл обязательно собрать');
+        $this->assertNull(self::publicConfig($this->captcha()->putCaptcha())['collect']);
 
-        $this->assertSame(['time' => 40, 'actions' => 10, 'ratio' => 60, 'score' => 0.7], $captcha->fallback);
+        $captcha = $this->captcha(['collect' => ['time' => 40]]);
+        $public  = self::publicConfig($captcha->putCaptcha());
+        $this->assertSame(['time' => 40, 'actions' => 10], $captcha->collect, 'частичный порог дополняется базовым');
         $this->assertSame(['time' => 40, 'actions' => 10], $public['collect']);
+    }
+
+    public function testScaleShrinksLogicalCanvas(): void {
+        $public = self::publicConfig($this->captcha(['size' => [640, 400], 'scale' => 2])->putCaptcha());
+
+        $this->assertSame([320, 200], $public['size'], 'логический холст — size / scale');
+        $this->assertSame([640, 400], $public['view'], 'на экране — size');
+        $this->assertSame([120, 120], $public['board'], 'поле то же, что у 320 × 200');
     }
 }

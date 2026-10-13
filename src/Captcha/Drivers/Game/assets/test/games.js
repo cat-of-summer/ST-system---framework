@@ -23,7 +23,7 @@ export const GAMES = {
     pacman:     { dir: 'PacMan',     cls: 'PacManSim',     tps: 10, goal: 2, codes: [0, 1, 2, 3], layout: { cols: 19, rows: 11 } },
     battlecity: { dir: 'BattleCity', cls: 'BattleCitySim', tps: 20, goal: 2, codes: [0, 1, 2, 3, 4, 5], layout: { cols: 20, rows: 11 } },
     puzzle: {
-        dir: 'Puzzle', cls: 'PuzzleSim', tps: 10, goal: 9, goalRatio: 0, fallback: false, maxTime: 60,
+        dir: 'Puzzle', cls: 'PuzzleSim', tps: 10, goal: 9, goalRatio: 0, collect: false, maxTime: 60, required: true,
         codes: [0, 1], values: [0, 9 * 64],
         // Сервер отдаёт клиенту rows/cols, а order — только своей копии игры.
         params: function (seed) { return { per_life: true, rows: 3, cols: 3, order: puzzleOrder(seed, 9) }; },
@@ -43,29 +43,36 @@ export function publicParamsFor(name) {
     return game.publicParams || Object.assign({ per_life: true }, game.layout);
 }
 
-const FALLBACK = { time: 8, actions: 10, ratio: 60 };
+const COLLECT = { time: 8, actions: 10 };
 
-// Свои пороги у игр (defaultFallback() в PHP): действий больше там, где они частые, доля выше
-// там, где у человека она заметно выше, чем у случайных нажатий.
+// Свои пороги у игр (defaultCollect() и defaultQuality() в PHP): действий больше там, где они
+// частые; доля осмысленных у случайных нажатий и у человека — своя у каждой игры.
 const OWN = {
-    snake:      { actions: 12 },
-    flappy:     { actions: 20, ratio: 65 },
-    arkanoid:   { actions: 14, ratio: 75 },
-    tetris:     { actions: 12 },
-    pacman:     { actions: 12, ratio: 65 },
-    battlecity: { actions: 20, ratio: 65 },
+    snake:      { actions: 12, quality: [0.45, 0.80] },
+    flappy:     { actions: 20, quality: [0.52, 0.80] },
+    arkanoid:   { actions: 14, quality: [0.65, 0.92] },
+    tetris:     { actions: 12, quality: [0.45, 0.80] },
+    pacman:     { actions: 12, quality: [0.53, 0.80] },
+    battlecity: { actions: 20, quality: [0.50, 0.75] },
 };
 
-/** Пороги запасного зачёта, как их отдаёт клиенту PHP: ratio — в процентах; null — выключен. */
-export function fallbackFor(name) {
-    if (GAMES[name] && GAMES[name].fallback === false) return null;
-    return Object.assign({}, FALLBACK, OWN[name] || {});
+/** Порог сбора данных, как его отдаёт браузеру PHP; null — порога нет (пазл). */
+export function collectFor(name) {
+    if (GAMES[name] && GAMES[name].collect === false) return null;
+    return { time: COLLECT.time, actions: (OWN[name] || {}).actions || COLLECT.actions };
 }
 
-/** Порог сбора данных, который видит браузер: время и число действий из запасного зачёта. */
-export function collectFor(name) {
-    const fallback = fallbackFor(name);
-    return fallback ? { time: fallback.time, actions: fallback.actions } : null;
+/** Доли осмысленных действий: [случайные нажатия, человек] — оценка осмысленности 0 и 1. */
+export function qualityFor(name) {
+    return (OWN[name] || {}).quality || [0.45, 0.80];
+}
+
+/** Взвешенное решение по умолчанию (decision в CaptchaManager): итог = 0.6 · игра + 0.4 · поведение ≥ 0.6. */
+export const DECISION = { task: 0.6, behavior: 0.4, pass: 0.6, floor: 0.2 };
+
+export function decide(task, behavior) {
+    const combined = (DECISION.task * task + DECISION.behavior * behavior) / (DECISION.task + DECISION.behavior);
+    return task >= DECISION.floor && combined >= DECISION.pass;
 }
 
 /** Секунд на партию (max_time в PHP): дальше браузер отдаёт то, что набрано. */

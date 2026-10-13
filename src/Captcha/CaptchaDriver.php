@@ -22,6 +22,14 @@ abstract class CaptchaDriver {
 
     private const ID_REGEX = '/^[a-f0-9]{32}$/';
 
+    /**
+     * Задачу обязательно решить (текст, пример, пазл, галочка): проходит только решённая и при
+     * поведенческом скоринге не ниже min_score. Иначе (игры на реакцию) решение — взвешенная сумма
+     * оценки задачи (taskScore()) и поведения, см. ключ decision. Свойство типа капчи, не
+     * настройка.
+     */
+    protected const REQUIRED = true;
+
     private static array $js_emitted  = [];
     private static array $css_emitted = [];
 
@@ -36,6 +44,7 @@ abstract class CaptchaDriver {
             'salt'         => CaptchaManager::config('default.salt'),
             'cache'        => CaptchaManager::config('default.cache'),
             'behavior'     => CaptchaManager::config('default.behavior'),
+            'decision'     => CaptchaManager::config('default.decision'),
             'enabled'      => CaptchaManager::config('default.enabled'),
         ];
     }
@@ -60,6 +69,7 @@ abstract class CaptchaDriver {
         $this->attributes['salt']         = self::assertSalt((string)($config['salt'] ?? ''));
         $this->attributes['cache']        = (array)($config['cache'] ?? []);
         $this->attributes['behavior']     = $this->resolveBehavior($config['behavior'] ?? true);
+        $this->attributes['decision']     = self::resolveDecision($config['decision'] ?? []);
         $this->attributes['enabled']      = self::flag($config['enabled'] ?? true);
         $this->attributes['issued_id']    = '';
 
@@ -83,6 +93,7 @@ abstract class CaptchaDriver {
         if (isset($override['salt']))         $clone->attributes['salt']         = self::assertSalt((string)$override['salt']);
         if (isset($override['cache']))        $clone->attributes['cache']        = (array)$override['cache'];
         if (isset($override['enabled']))      $clone->attributes['enabled']      = self::flag($override['enabled']);
+        if (isset($override['decision']))     $clone->attributes['decision']     = self::resolveDecision((array)$override['decision'] + $clone->attributes['decision']);
 
         if (array_key_exists('behavior', $override))
             $clone->attributes['behavior'] = $clone->resolveBehavior($override['behavior']);
@@ -107,6 +118,16 @@ abstract class CaptchaDriver {
     /** Порог поведенческого скоринга для текущей проверки; вызывается после verify(). */
     protected function requiredScore(): float { return (float)$this->attributes['min_score']; }
     protected function forcedSignals(): array { return []; }
+
+    /**
+     * Оценка задачи 0..1 для необязательных (REQUIRED = false): насколько осмысленно с ней
+     * работали. Вызывается после verify(), если та вернула true.
+     */
+    protected function taskScore(): float { return 1.0; }
+
+    public static function required(): bool {
+        return static::REQUIRED;
+    }
     protected function providesAnswerField(): bool { return false; }
 
     public static function name(): string {
@@ -235,8 +256,24 @@ abstract class CaptchaDriver {
         $this->attributes['report']  = $result['report'];
         $this->attributes['reasons'] = $result['reasons'];
 
-        $trusted = empty($state['signals']) || $result['score'] >= $this->requiredScore();
-        $passed  = $answered && $trusted;
+        if (static::REQUIRED) {
+            $trusted = empty($state['signals']) || $result['score'] >= $this->requiredScore();
+            $passed  = $answered && $trusted;
+        } else {
+            // Необязательная задача: оценка задачи и поведение складываются с весами — сильное
+            // поведение на странице вытягивает слабую игру и наоборот, но совсем без задачи нельзя.
+            $decision = (array)$this->attributes['decision'];
+            $task     = $answered ? max(0.0, min(1.0, $this->taskScore())) : 0.0;
+            $behavior = empty($state['signals']) ? 1.0 : (float)$result['score'];
+            $weights  = (float)$decision['task'] + (float)$decision['behavior'];
+            $combined = $weights > 0 ? ($task * (float)$decision['task'] + $behavior * (float)$decision['behavior']) / $weights : $task;
+
+            $this->attributes['task_score'] = round($task, 4);
+            $this->attributes['combined']   = round($combined, 4);
+
+            $answered = $answered && $task >= (float)$decision['floor'];
+            $passed   = $answered && $combined >= (float)$decision['pass'];
+        }
 
         $this->fire('score', $result, $state, $passed);
 
@@ -307,7 +344,10 @@ abstract class CaptchaDriver {
 
         if (!isset(self::$css_emitted[''])) {
             self::$css_emitted[''] = true;
+            // Без синей подсветки при тапе и обводки фокуса у виджетов (у полей ввода фокус виден).
             $css .= '.st-captcha{display:inline-block}'
+                  . '.st-captcha,.st-captcha *{-webkit-tap-highlight-color:transparent}'
+                  . '.st-captcha :focus:not(input):not(textarea){outline:none}'
                   . '.st-captcha-hp{position:absolute!important;left:-9999px!important;top:0;width:1px;height:1px;opacity:0;pointer-events:none}'
                   . '.st-captcha-image{display:block;max-width:100%}'
                   . '.st-captcha-input{display:block;width:240px}'
@@ -410,11 +450,25 @@ abstract class CaptchaDriver {
     }
 
     private function purgeResult(): void {
-        $this->attributes['passed']  = false;
-        $this->attributes['error']   = '';
-        $this->attributes['score']   = 0.0;
-        $this->attributes['report']  = [];
-        $this->attributes['reasons'] = [];
+        $this->attributes['passed']     = false;
+        $this->attributes['error']      = '';
+        $this->attributes['score']      = 0.0;
+        $this->attributes['task_score'] = 0.0;
+        $this->attributes['combined']   = 0.0;
+        $this->attributes['report']     = [];
+        $this->attributes['reasons']    = [];
+    }
+
+    /** Веса и пороги взвешенного решения; недостающие ключи — по умолчанию. */
+    private static function resolveDecision($value): array {
+        $value = (array)$value + ['task' => 0.6, 'behavior' => 0.4, 'pass' => 0.6, 'floor' => 0.2];
+
+        return [
+            'task'     => max(0.0, (float)$value['task']),
+            'behavior' => max(0.0, (float)$value['behavior']),
+            'pass'     => max(0.0, min(1.0, (float)$value['pass'])),
+            'floor'    => max(0.0, min(1.0, (float)$value['floor'])),
+        ];
     }
 
     private static function bootstrapJs(): string {

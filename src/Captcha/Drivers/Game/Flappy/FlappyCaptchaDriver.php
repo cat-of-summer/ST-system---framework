@@ -23,8 +23,12 @@ class FlappyCaptchaDriver extends GameCaptchaDriver {
         return ['w' => self::clamp(300 * $w / ($h - self::HUD), 200, 1200)];
     }
 
-    /** Взмахов много и они ритмичные: выборка больше, доля выше. */
-    protected static function defaultFallback(): array {
-        return ['actions' => 20, 'ratio' => 0.65] + parent::defaultFallback();
+    /** Взмахов много и они ритмичные: выборка больше, а случайные взмахи часто попадают «под зазор». */
+    protected static function defaultCollect(): array {
+        return ['actions' => 20] + parent::defaultCollect();
+    }
+
+    protected static function defaultQuality(): array {
+        return [0.52, 0.80];
     }
 }

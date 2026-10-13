@@ -23,7 +23,7 @@
 | `fonts` | `'~/captcha_fonts'` | где искать шрифты: путь, шаблон, `Storage\File` или массив |
 | `font_types` | `['ttf', 'otf']` | какие расширения считать шрифтами |
 | `max_fonts` | `50` | сколько шрифтов брать максимум; `0` — без ограничения |
-| `case_sensitive` | `false` | учитывать регистр при сравнении |
+| `case_sensitive` | `false` | учитывать регистр. При `false` текст на картинке всегда заглавными (даже если в `char_pool` строчные), а вводить можно в любом регистре |
 | `image` | `'auto'` | адаптер отрисовки: `auto`, `gd`, `imagick` или имя класса с `Image\ImageAdapterInterface` |
 
 Плюс общие ключи `CaptchaDriver` (`ttl`, `attempts`, `min_score`, `behavior`, ...).

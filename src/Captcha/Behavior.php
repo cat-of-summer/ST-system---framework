@@ -173,7 +173,25 @@ final class Behavior {
             $score -= 0.1;
         }
 
+        $score += self::pageActivity((array)($data['page'] ?? []));
+
         return self::clamp($score);
+    }
+
+    /**
+     * Бонус за естественную активность на всей странице, до +0.2: прокрутка, заполненные поля
+     * формы, набор текста, время на странице (движение мыши оценивается выше отдельно). Человек, который заполнял форму, а
+     * потом играл в капчу клавиатурой, не теряет баллы за то, что в самой капче мышь не нужна.
+     */
+    private static function pageActivity(array $page): float {
+        $signs = 0;
+
+        if ((int)($page['scroll'] ?? 0) > 0)    $signs++;
+        if ((int)($page['fields'] ?? 0) >= 1)   $signs++;
+        if ((int)($page['inputs'] ?? 0) >= 3)   $signs++;
+        if ((int)($page['dwell'] ?? 0) >= 5000) $signs++;
+
+        return min(0.2, 0.05 * $signs + ($signs >= 3 ? 0.05 : 0.0));
     }
 
     private static function scoreEnv(array $data, array &$reasons): float {
@@ -486,6 +504,8 @@ final class Behavior {
             this.powTask  = null;
             this.holding  = {};
             this.lastUp   = 0;
+            this.page     = { scroll: 0, inputs: 0, hidden: 0 };
+            this.fields   = [];
             this.unbind   = [];
         }
 
@@ -564,6 +584,24 @@ final class Behavior {
             }, { passive: true });
 
             this.on(this.root, 'paste', function () { self.paste = true; }, { passive: true });
+
+            // Активность на всей странице, а не только в капче: прокрутка, поля формы (только темп
+            // и число полей, без содержимого), уход со вкладки.
+            this.on(global, 'scroll', function (e) { mark(e); self.page.scroll++; }, { passive: true });
+
+            this.on(document, 'focusin', function (e) {
+                var el = e.target;
+                if (!el || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || self.root.contains(el)) return;
+                if (self.fields.indexOf(el) < 0 && self.fields.length < 50) self.fields.push(el);
+            }, { passive: true });
+
+            this.on(document, 'input', function (e) {
+                if (e.target && !self.root.contains(e.target)) self.page.inputs++;
+            }, { passive: true });
+
+            this.on(document, 'visibilitychange', function () {
+                if (document.visibilityState === 'hidden') self.page.hidden++;
+            }, { passive: true });
         }
 
         solvePow() {
@@ -619,7 +657,14 @@ final class Behavior {
                 ptypes:  Object.keys(this.ptypes),
                 trusted: this.trusted ? 1 : 0,
                 paste:   this.paste ? 1 : 0,
-                hp:      trap && trap.value !== '' ? 1 : 0
+                hp:      trap && trap.value !== '' ? 1 : 0,
+                page:    {
+                    scroll: this.page.scroll,
+                    fields: this.fields.length,
+                    inputs: this.page.inputs,
+                    hidden: this.page.hidden,
+                    dwell:  Math.round(now() - this.t0)
+                }
             };
         }
 

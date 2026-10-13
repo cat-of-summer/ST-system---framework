@@ -19,7 +19,11 @@ class TetrisCaptchaDriver extends GameCaptchaDriver {
     }
 
     /** Осмысленные действия считаются по фигурам, а не по нажатиям. */
-    protected static function defaultFallback(): array {
-        return ['actions' => 12] + parent::defaultFallback();
+    protected static function defaultCollect(): array {
+        return ['actions' => 12] + parent::defaultCollect();
+    }
+
+    protected static function defaultQuality(): array {
+        return [0.45, 0.80];
     }
 }

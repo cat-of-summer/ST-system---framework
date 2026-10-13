@@ -71,6 +71,9 @@ final class CaptchaManager {
                     'driver' => 'filesystem',
                     'dir'    => Main::glue([Cache::config('default.dir'), 'Captcha'], '/'),
                 ],
+                // Необязательные задачи (игры на реакцию): итог = task·оценка задачи + behavior·скоринг
+                // (с нормировкой весов) не ниже pass, а оценка задачи не ниже floor.
+                'decision' => ['task' => 0.6, 'behavior' => 0.4, 'pass' => 0.6, 'floor' => 0.2],
                 'behavior' => [
                     'signals' => Behavior::GROUPS,
                     'basic'   => ['min_solve' => 700],

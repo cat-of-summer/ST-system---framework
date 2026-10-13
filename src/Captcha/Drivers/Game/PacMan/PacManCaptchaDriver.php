@@ -26,8 +26,12 @@ class PacManCaptchaDriver extends GameCaptchaDriver {
         return ['cols' => $cols - 1 + $cols % 2, 'rows' => $rows - 1 + $rows % 2];
     }
 
-    /** Повороты только на развилках — их немного, доля выше. */
-    protected static function defaultFallback(): array {
-        return ['actions' => 12, 'ratio' => 0.65] + parent::defaultFallback();
+    /** Повороты только на развилках — их немного; случайные попадают «к вишне» чаще, чем в других играх. */
+    protected static function defaultCollect(): array {
+        return ['actions' => 12] + parent::defaultCollect();
+    }
+
+    protected static function defaultQuality(): array {
+        return [0.53, 0.80];
     }
 }

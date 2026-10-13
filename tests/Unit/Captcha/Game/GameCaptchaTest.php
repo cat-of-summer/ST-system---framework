@@ -39,9 +39,9 @@ final class GameCaptchaTest extends TestCase {
         return $out;
     }
 
-    /** Игры с запасным путём: у пазла его нет. */
-    public function fallbackGameProvider(): array {
-        return array_filter($this->gameProvider(), static fn(array $row): bool => isset(self::fixture($row[0])['fallback_pass']));
+    /** Необязательные игры — те, что проходятся осмысленной игрой без цели; пазл обязателен. */
+    public function progressGameProvider(): array {
+        return array_filter($this->gameProvider(), static fn(array $row): bool => isset(self::fixture($row[0])['progress_pass']));
     }
 
     public function caseProvider(): array {
@@ -57,6 +57,7 @@ final class GameCaptchaTest extends TestCase {
     private function captcha(string $name, array $config = []): CaptchaManager {
         if ($name === 'puzzle') $config += ['image' => StubImageAdapter::class, 'images' => $this->images];
 
+        // Поведенческих данных в тестах нет: игры всегда собирают basic, и его скоринг здесь 0.
         return CaptchaManager::make('game-form', $config + [
             'driver'      => $name,
             'min_score'   => 0,
@@ -73,9 +74,9 @@ final class GameCaptchaTest extends TestCase {
         return $method->invoke(null);
     }
 
-    /** Выдать капчу с seed (и у пазла — перестановкой) из фикстуры; вернуть id. */
-    private function issue(string $name, array $config = []): string {
-        $pass   = self::fixture($name)['pass'];
+    /** Выдать капчу с seed (и у пазла — перестановкой) из партии фикстуры; вернуть id. */
+    private function issue(string $name, array $config = [], string $game = 'pass'): string {
+        $pass   = self::fixture($name)[$game];
         $params = ['seed' => $pass['seed']];
 
         if (isset($pass['params']['order'])) $params['order'] = $pass['params']['order'];
@@ -128,11 +129,17 @@ final class GameCaptchaTest extends TestCase {
         $this->assertSame($expected, $params, 'параметры игры в браузере');
 
         // Цель и пороги качества остаются на сервере — те же, что в games.js.
+        $class   = get_class($captcha->driver);
+        $quality = new \ReflectionMethod($class, 'defaultQuality');
+        $quality->setAccessible(true);
+
         $this->assertSame($fixture['goal'], $captcha->goal);
         $this->assertSame($fixture['goal_ratio'], $captcha->goal_ratio);
-        $this->assertSame($fixture['fallback'], $captcha->fallback ? array_diff_key($captcha->fallback, ['score' => 0]) : null);
+        $this->assertSame($fixture['collect'], $captcha->collect);
+        $this->assertSame($fixture['required'], $class::required(), 'обязательно ли выигрывать');
+        if (!$fixture['required']) $this->assertEquals($fixture['quality'], $quality->invoke(null), 'коридор осмысленности');
 
-        foreach (['goal', 'goal_ratio', 'fallback'] as $key)
+        foreach (['goal', 'goal_ratio', 'quality'] as $key)
             $this->assertArrayNotHasKey($key, $public, $key.' в браузер не уходит');
         $this->assertArrayNotHasKey('order', $public['params'], 'секретные параметры в браузер не уходят');
     }
@@ -217,70 +224,79 @@ final class GameCaptchaTest extends TestCase {
     }
 
     /**
-     * Слабый игрок: цель недостижима, но играл достаточно и осмысленно. Порог скоринга обнулён —
-     * поведенческий слой здесь не проверяется.
+     * Осмысленная игра без очков (цель недостижима): оценка игры как у генератора фикстур и сама по
+     * себе выше порога (вес поведения 0 — поведенческих данных в тесте нет).
      *
-     * @dataProvider fallbackGameProvider
+     * @dataProvider progressGameProvider
      */
-    public function testFallbackPassesWithoutGoal(string $name): void {
-        $fb     = self::fixture($name)['fallback_pass'];
-        $config = ['goal' => 50, 'fallback' => ['score' => 0]];
-        $id     = $this->issue($name, $config);
+    public function testMeaningfulPlayPassesWithoutPoints(string $name): void {
+        $game   = self::fixture($name)['progress_pass'];
+        $config = ['goal' => 50, 'decision' => ['behavior' => 0]];
+        $id     = $this->issue($name, $config, 'progress_pass');
 
         $captcha = $this->captcha($name, $config);
-        $this->assertTrue($captcha->check(self::payload($id, ['t' => $fb['ticks'], 'log' => $fb['log']])), (string)$captcha->error);
-        $this->assertSame('fallback', $captcha->via);
+        $this->assertTrue($captcha->check(self::payload($id, ['t' => $game['ticks'], 'log' => $game['log']])), (string)$captcha->error);
+        $this->assertSame('progress', $captcha->via);
+        $this->assertEqualsWithDelta($game['task'], $captcha->task_score, 0.0001, 'оценка игры, как в JS');
     }
 
-    /** @dataProvider fallbackGameProvider */
-    public function testFallbackNeedsHigherBehaviorScore(string $name): void {
-        $fb = self::fixture($name)['fallback_pass'];
-        $id = $this->issue($name, ['goal' => 50]);
+    /**
+     * Та же игра без поведенческих данных (скоринг 0): одной игры без очков мало — сумма ниже
+     * порога.
+     *
+     * @dataProvider progressGameProvider
+     */
+    public function testMeaningfulPlayNeedsBehavior(string $name): void {
+        $game   = self::fixture($name)['progress_pass'];
+        $config = ['goal' => 50];
+        $id     = $this->issue($name, $config, 'progress_pass');
 
-        // Поведения нет (score 0): по цели при min_score 0 это прошло бы, по запасному пути — нет.
-        $captcha = $this->captcha($name, ['goal' => 50]);
-        $this->assertFalse($captcha->check(self::payload($id, ['t' => $fb['ticks'], 'log' => $fb['log']])));
+        $captcha = $this->captcha($name, $config);
+        $this->assertFalse($captcha->check(self::payload($id, ['t' => $game['ticks'], 'log' => $game['log']])));
         $this->assertSame('behavior', $captcha->error);
-        $this->assertSame('fallback', $captcha->via);
+        $this->assertLessThan(0.6, $captcha->combined);
     }
 
-    /** @dataProvider fallbackGameProvider */
-    public function testFallbackCanBeDisabled(string $name): void {
-        $fb     = self::fixture($name)['fallback_pass'];
-        $config = ['goal' => 50, 'fallback' => false];
-        $id     = $this->issue($name, $config);
+    /** Сильное поведение вытягивает игру: при весе поведения 0 решает только оценка игры. */
+    public function testDecisionWeightsAreConfigurable(): void {
+        $game = self::fixture('snake')['progress_pass'];
+        $id   = $this->issue('snake', ['goal' => 50], 'progress_pass');
 
-        $captcha = $this->captcha($name, $config);
-        $this->assertFalse($captcha->check(self::payload($id, ['t' => $fb['ticks'], 'log' => $fb['log']])));
-        $this->assertSame('answer', $captcha->error);
+        $captcha = $this->captcha('snake', ['goal' => 50, 'decision' => ['behavior' => 0, 'pass' => 0.95]]);
+        $this->assertFalse($captcha->check(self::payload($id, ['t' => $game['ticks'], 'log' => $game['log']])));
+        $this->assertSame('behavior', $captcha->error);
+        $this->assertEqualsWithDelta($game['task'], $captcha->combined, 0.0001, 'итог — одна оценка игры');
     }
 
-    /** @dataProvider fallbackGameProvider */
-    public function testFallbackTooShortFails(string $name): void {
-        $fb     = self::fixture($name)['fallback_pass'];
+    /**
+     * Мало данных: порог сбора данных вчетверо выше сыгранного — объём ×¼, оценка ниже пола.
+     *
+     * @dataProvider progressGameProvider
+     */
+    public function testTooLittlePlayFails(string $name): void {
+        $game   = self::fixture($name)['progress_pass'];
         $tps    = self::fixture($name)['tps'];
-        $config = ['goal' => 50, 'fallback' => ['score' => 0, 'time' => (int)ceil($fb['ticks'] / $tps) + 5]];
-        $id     = $this->issue($name, $config);
+        $config = ['goal' => 50, 'collect' => ['time' => (int)ceil($game['ticks'] / $tps) * 4, 'actions' => $game['acts'] * 4]];
+        $id     = $this->issue($name, $config, 'progress_pass');
 
         $captcha = $this->captcha($name, $config);
-        $this->assertFalse($captcha->check(self::payload($id, ['t' => $fb['ticks'], 'log' => $fb['log']])));
+        $this->assertFalse($captcha->check(self::payload($id, ['t' => $game['ticks'], 'log' => $game['log']])));
         $this->assertSame('answer', $captcha->error);
     }
 
     /**
-     * Случайные нажатия, как их отдал бы браузер (до сбора данных или конца партии): ни цели
-     * (вслепую), ни запасного зачёта.
+     * Случайные нажатия, как их отдал бы браузер (до сбора данных или конца партии): даже при
+     * идеальном поведении на странице сумма ниже порога.
      *
      * @dataProvider gameProvider
      */
     public function testRandomInputFails(string $name): void {
-        $rnd    = self::fixture($name)['random'];
-        $config = self::fixture($name)['fallback'] ? ['fallback' => ['score' => 0]] : [];
-        $id     = $this->issue($name, $config);
+        $id = $this->issue($name);
 
-        $captcha = $this->captcha($name, $config);
+        $rnd     = self::fixture($name)['random'];
+        $captcha = $this->captcha($name);
         $this->assertFalse($captcha->check(self::payload($id, ['t' => $rnd['ticks'], 'log' => $rnd['log']])));
-        $this->assertSame('answer', $captcha->error);
+        $this->assertContains($captcha->error, ['answer', 'behavior']);
     }
 
     public function garbageProvider(): array {

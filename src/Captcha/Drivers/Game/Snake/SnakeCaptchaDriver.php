@@ -28,7 +28,11 @@ class SnakeCaptchaDriver extends GameCaptchaDriver {
     }
 
     /** Поворотов немного, около одного в секунду: двенадцать набираются примерно за 10 секунд. */
-    protected static function defaultFallback(): array {
-        return ['actions' => 12] + parent::defaultFallback();
+    protected static function defaultCollect(): array {
+        return ['actions' => 12] + parent::defaultCollect();
+    }
+
+    protected static function defaultQuality(): array {
+        return [0.45, 0.80];
     }
 }

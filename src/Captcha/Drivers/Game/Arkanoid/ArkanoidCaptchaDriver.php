@@ -28,8 +28,12 @@ class ArkanoidCaptchaDriver extends GameCaptchaDriver {
         return 0.75;
     }
 
-    /** Ракетка к мячу — у человека почти всегда; у случайных нажатий доля до 65 %. */
-    protected static function defaultFallback(): array {
-        return ['actions' => 14, 'ratio' => 0.75] + parent::defaultFallback();
+    /** Ракетка к мячу — у человека почти всегда; случайные нажатия набирают до 65 %. */
+    protected static function defaultCollect(): array {
+        return ['actions' => 14] + parent::defaultCollect();
+    }
+
+    protected static function defaultQuality(): array {
+        return [0.65, 0.92];
     }
 }

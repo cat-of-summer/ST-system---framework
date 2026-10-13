@@ -62,6 +62,19 @@ final class BehaviorTest extends TestCase {
         $this->assertSame(1.0, $result['score']);
     }
 
+    /** Активность на странице поднимает скоринг: человек, который до капчи заполнял форму. */
+    public function testPageActivityRaisesScore(): void {
+        $data = self::human();
+        $data['basic']['solve'] = 500;
+        $base = self::score($data, ['basic'])['report']['basic'];
+
+        $data['basic']['page'] = ['scroll' => 3, 'fields' => 2, 'inputs' => 12, 'hidden' => 0, 'dwell' => 20000];
+        $busy = self::score($data, ['basic'])['report']['basic'];
+
+        $this->assertSame(0.55, $base, 'слишком быстро решено');
+        $this->assertSame(0.75, $busy, 'прокрутка, поля, ввод и время на странице: +0.2');
+    }
+
     /** @dataProvider botCases */
     public function testBotSignals(callable $mutate, string $reason, float $groupScore, string $group): void {
         $data = self::human();

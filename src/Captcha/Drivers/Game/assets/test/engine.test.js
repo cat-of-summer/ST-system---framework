@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Rng, idiv } from '../engine/src/rng.js';
-import { Sim, START, replay, goalMet, fallbackMet, collectMet } from '../engine/src/sim.js';
+import { Sim, START, replay, goalMet, taskScore, collectMet } from '../engine/src/sim.js';
 import { crc32 } from '../engine/src/digest.js';
 
 /** Пробная игра: 1 — очко, 2 — смерть, 3 — осмысленное действие, 4 — бессмысленное. */
@@ -112,23 +112,32 @@ test('goalMet: цель и доля осмысленных действий', fu
     assert.ok(!goalMet(sim, 3, 60), 'цель не набрана');
 });
 
-test('fallbackMet: время, число действий и доля осмысленных среди них', function () {
-    const fb  = { time: 2, actions: 4, ratio: 60 };
-    const sim = new Probe(1, {});
-    sim.input(3); sim.input(3); sim.input(3);
-    for (let i = 0; i < 20; i++) sim.advance();
-    assert.ok(!fallbackMet(sim, fb, 10), 'три действия — меньше четырёх');
+test('taskScore: цель — 1; без цели — объём данных × осмысленность и прогресс', function () {
+    const collect = { time: 1, actions: 4 };
+    const quality = [0.5, 1];
 
-    const fresh = new Probe(1, {});
-    fresh.input(3); fresh.input(3); fresh.input(3); fresh.input(4);
-    assert.ok(!fallbackMet(fresh, fb, 10), 'не сыграно 2 секунды');
+    const goal = new Probe(1, {});
+    goal.input(3); goal.input(1); goal.input(1);
+    assert.deepEqual(taskScore(goal, 2, 60, collect, quality, 10), [1, 'goal']);
 
-    sim.input(4);
-    assert.ok(fallbackMet(sim, fb, 10), '3 из 4 и 2 секунды');
+    const none = new Probe(1, {});
+    assert.deepEqual(taskScore(none, 2, 60, collect, quality, 10), [0, 'progress'], 'без действий — ноль');
 
-    sim.input(4); sim.input(4);
-    assert.ok(!fallbackMet(sim, fb, 10), '3 из 6 — меньше 60 %');
-    assert.ok(!fallbackMet(sim, null, 10), 'выключен — не выполняется никогда');
+    const half = new Probe(1, {});
+    half.input(3); half.input(3); half.input(3); half.input(4);
+    for (let i = 0; i < 10; i++) half.advance();
+    // объём 1 × (0.75 · (0.75 − 0.5) / 0.5 + 0.25 · 0) = 0.375
+    assert.deepEqual(taskScore(half, 2, 60, collect, quality, 10), [0.375, 'progress']);
+
+    half.input(1);
+    // прогресс 1 из 2: 0.375 + 0.25 · 0.5
+    assert.deepEqual(taskScore(half, 2, 60, collect, quality, 10), [0.5, 'progress']);
+
+    const short = new Probe(1, {});
+    short.input(3); short.input(3);
+    for (let i = 0; i < 5; i++) short.advance();
+    // объём (2/4) · (5/10) = 0.25, осмысленность 1
+    assert.deepEqual(taskScore(short, 2, 60, collect, quality, 10), [0.1875, 'progress']);
 });
 
 test('collectMet: данных достаточно — время и число действий, без оценки качества', function () {

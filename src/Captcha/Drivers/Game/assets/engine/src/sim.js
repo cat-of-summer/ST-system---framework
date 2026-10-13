@@ -111,12 +111,22 @@ export function goalMet(sim, goal, ratio) {
 }
 
 /**
- * Запасной зачёт: сыграно не меньше time секунд, действий с намерением не меньше actions, и
- * не меньше ratio процентов из них — осмысленные. fallback — {time, actions, ratio} или null.
- * То же, что GameCaptchaDriver::fallbackMet() в PHP.
+ * Оценка игры 0..1 и путь, как у сервера (GameCaptchaDriver::gameScore()): цель набрана с долей
+ * осмысленных не ниже ratio процентов — [1, 'goal']; иначе 'progress': объём данных ×
+ * (0.75 · осмысленность + 0.25 · прогресс к цели). quality — [доля случайных, доля человека].
+ * Браузер её не считает — по ней генератор фикстур подбирает пороги.
  */
-export function fallbackMet(sim, fallback, tps) {
-    return collectMet(sim, fallback, tps) && sim.good * 100 >= fallback.ratio * sim.acts;
+export function taskScore(sim, goal, ratio, collect, quality, tps) {
+    if (goalMet(sim, goal, ratio)) return [1, 'goal'];
+    if (sim.acts === 0) return [0, 'progress'];
+
+    const amount = collect
+        ? Math.min(1, sim.acts / collect.actions) * Math.min(1, sim.tick / (collect.time * tps))
+        : 1;
+    const sense    = Math.max(0, Math.min(1, (sim.good / sim.acts - quality[0]) / Math.max(0.01, quality[1] - quality[0])));
+    const progress = goal > 0 ? Math.min(1, sim.peak / goal) : 0;
+
+    return [Math.round(amount * (0.75 * sense + 0.25 * progress) * 10000) / 10000, 'progress'];
 }
 
 /**

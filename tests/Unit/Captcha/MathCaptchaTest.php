@@ -166,6 +166,35 @@ final class MathCaptchaTest extends TestCase {
         $this->assertTrue($captcha->check(self::payload(self::id($html), strtolower($text))), (string)$captcha->error);
     }
 
+    public function testTextCaseInsensitiveShowsCapitals(): void {
+        $html = $this->captcha('text', ['char_pool' => 'abcdefgh'])->putCaptcha();
+        $text = StubImageAdapter::$text;
+
+        $this->assertMatchesRegularExpression('/^[A-H]{4}$/', $text, 'регистр не важен — на картинке заглавные');
+
+        $captcha = $this->captcha('text', ['char_pool' => 'abcdefgh']);
+        $this->assertTrue($captcha->check(self::payload(self::id($html), strtolower($text))), 'вводить можно любыми');
+    }
+
+    public function testTextCaseSensitiveKeepsCase(): void {
+        $html = $this->captcha('text', ['char_pool' => 'abcdefgh', 'case_sensitive' => true])->putCaptcha();
+        $text = StubImageAdapter::$text;
+
+        $this->assertMatchesRegularExpression('/^[a-h]{4}$/', $text);
+
+        $captcha = $this->captcha('text', ['char_pool' => 'abcdefgh', 'case_sensitive' => true]);
+        $this->assertFalse($captcha->check(self::payload(self::id($html), strtoupper($text))), 'регистр важен');
+    }
+
+    /** Обязательность — свойство типа капчи: задачу с ответом надо решить, игру на реакцию — нет. */
+    public function testRequiredIsPerDriver(): void {
+        foreach (['text', 'math', 'checkbox', 'swipe', 'puzzle'] as $name)
+            $this->assertTrue(CaptchaManager::config('drivers.available.'.$name)::required(), $name);
+
+        foreach (['snake', 'flappy', 'arkanoid', 'tetris', 'pacman', 'battlecity'] as $name)
+            $this->assertFalse(CaptchaManager::config('drivers.available.'.$name)::required(), $name);
+    }
+
     public function testMathRegistersItsOwnName(): void {
         \ST_system\Captcha\CaptchaDriver::resetEmitted();
 

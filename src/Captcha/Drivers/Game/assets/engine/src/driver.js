@@ -58,14 +58,19 @@ export function fitGrid(cols, rows, W, H) {
 }
 
 const REPEAT_DELAY = 180;
+
+// Анимации поля: схлопывание кнопки старта (оно же задержка перед началом) и появление кнопок.
+const START_MS = 600;
+const FADE_MS  = 600;
 const REPEAT_EVERY = 70;
 
 const FONT = 'system-ui,-apple-system,Segoe UI,Roboto,sans-serif';
 
-const INLINE_CSS = ':host{display:block}'
+// Без обводки фокуса и подсветки тапа: фокус у поля нужен только для клавиатуры.
+const INLINE_CSS = ':host{display:block;outline:none;-webkit-tap-highlight-color:transparent}'
     + '.slot{width:100%;height:100%}'
-    + 'canvas{display:block;width:100%;height:100%;touch-action:none;outline:none;border-radius:8px;cursor:pointer;background:' + COLORS.bg + '}'
-    + 'canvas:focus-visible{box-shadow:0 0 0 3px rgba(59,130,246,.6)}';
+    + 'canvas{display:block;width:100%;height:100%;touch-action:none;outline:none;border-radius:8px;cursor:pointer;'
+    + '-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;background:' + COLORS.bg + '}';
 
 // Геймпад: две зоны по краям — в одной большая кнопка, в другой крестовина (сторона — cfg.big_button).
 // Портрет — зоны под полем, альбом — по бокам от поля.
@@ -163,6 +168,13 @@ function mount(driver, spec) {
     const ctx = canvas.getContext('2d');
 
     let sim, log, started, done, acc, pending, dying;
+
+    // Состояние игры для страницы: ready | starting | playing | dead | done — в data-game-state
+    // элемента .st-captcha-game и в событии st-captcha:game на корне капчи.
+    let phase    = '';
+    let phaseAt  = 0;
+    let starting = 0;
+    let startKind = 'play';
     let last     = performance.now();
     let onScreen = true;
     let paused   = false;
@@ -180,6 +192,42 @@ function mount(driver, spec) {
         pending = null;
         dying   = false;
         offered = false;
+        starting = 0;
+        setPhase(spec.startScreen === false ? 'playing' : 'ready');
+    }
+
+    function setPhase(next) {
+        if (next === phase) return;
+
+        phase   = next;
+        phaseAt = performance.now();
+        host.setAttribute('data-game-state', next);
+
+        try {
+            driver.root.dispatchEvent(new CustomEvent('st-captcha:game', { bubbles: true, detail: { state: next } }));
+        } catch (_) {}
+    }
+
+    function currentPhase() {
+        if (done) return 'done';
+        if (starting) return 'starting';
+        if (sim.dead > 0) return 'dead';
+        if (spec.startScreen === false) return 'playing';
+        if (!started) return 'ready';
+        return sim.idle ? 'dead' : 'playing';
+    }
+
+    /**
+     * Кнопка старта или перезапуска нажата: кнопка схлопывается, затемнение уходит, и только
+     * потом игра начинается — анимация служит задержкой перед стартом.
+     */
+    function begin() {
+        if (starting || !startable()) return false;
+
+        startKind = started ? 'retry' : 'play';
+        starting  = performance.now();
+        setPhase('starting');
+        return true;
     }
 
     function finish() {
@@ -269,6 +317,11 @@ function mount(driver, spec) {
         const dt = Math.min(Math.max(0, now - last), 250);
         last = now;
 
+        if (starting && now - starting >= START_MS) {
+            starting = 0;
+            record(START);
+        }
+
         if (running()) {
             acc += dt;
 
@@ -340,6 +393,7 @@ function mount(driver, spec) {
 
         (controls.render || spec.render)(ctx, sim, view);
         hud();
+        setPhase(currentPhase());
         overlayScreen(view);
     }
 
@@ -363,21 +417,24 @@ function mount(driver, spec) {
     const R = 22;
 
     function overlayScreen(view) {
-        const cx = W / 2;
-        const cy = (H + HUD) / 2;
+        const cx    = W / 2;
+        const cy    = (H + HUD) / 2;
+        const since = view.now - phaseAt;
+        const fade  = Math.min(1, since / FADE_MS);
 
-        if (done) {
-            veil('rgba(6,40,30,0.55)');
-            badge(cx, cy, COLORS.green, 1);
-            ctx.strokeStyle = COLORS.board;
-            ctx.lineWidth   = 4;
-            ctx.lineCap     = 'round';
-            ctx.lineJoin    = 'round';
-            ctx.beginPath();
-            ctx.moveTo(cx - 10, cy);
-            ctx.lineTo(cx - 3, cy + 7);
-            ctx.lineTo(cx + 10, cy - 7);
-            ctx.stroke();
+        if (phase === 'done') {
+            veil('rgba(6,40,30,' + (0.55 * fade).toFixed(3) + ')');
+            badge('check', cx, cy, pop(fade), fade);
+            return;
+        }
+
+        if (phase === 'starting') {
+            // Кнопка «прыгает»: чуть подрастает и схлопывается с нарастающей скоростью; затемнение
+            // плавно уходит вместе с ней.
+            const k = Math.min(1, (view.now - starting) / START_MS);
+            veil('rgba(7,16,37,' + ((startKind === 'play' ? 0.6 : 0.45) * (1 - easeInOut(k))).toFixed(3) + ')');
+            // «Повторить» вдобавок раскручивается по часовой стрелке с ускорением — вокруг центра.
+            badge(startKind, cx, cy, 1 - easeInBack(k), 1, startKind === 'retry' ? k * k * Math.PI * 3 : 0);
             return;
         }
 
@@ -387,56 +444,113 @@ function mount(driver, spec) {
         }
 
         const launcher = touchUi && !expanded;
-        const restart  = started && sim.idle && !launcher && !paused;
 
-        if (!launcher && !paused && !startable()) return;
+        if (phase === 'dead' && !launcher && !paused) {
+            veil('rgba(7,16,37,' + (0.45 * fade).toFixed(3) + ')');
+            badge('retry', cx, cy, pop(fade) * breathe(view.now, since), fade);
+            return;
+        }
 
-        const pulse = 0.92 + 0.08 * Math.sin(view.now / 300);
-        const text  = restart ? '' : (touchUi ? hint.touch : hint.keys);
-        const lines = text ? wrap(text, W - 32) : [];
-        const top   = cy - lines.length * 8;
+        if (phase !== 'ready' && !launcher && !paused) return;
 
-        veil(started ? 'rgba(7,16,37,0.45)' : 'rgba(7,16,37,0.6)');
-        badge(cx, top, COLORS.blue, pulse);
+        const text  = touchUi ? hint.touch : hint.keys;
+        const lines = phase === 'ready' && text ? wrap(text, W - 32) : [];
 
-        ctx.fillStyle   = COLORS.text;
-        ctx.strokeStyle = COLORS.text;
+        // Кнопка всегда по центру поля, подсказка — под ней и кнопку не сдвигает.
+        veil('rgba(7,16,37,0.6)');
+        badge('play', cx, cy, breathe(view.now, since), 1);
 
-        if (restart) {
-            // Скруглённая стрелка: дуга почти по кругу и наконечник на её конце.
-            const r = 10;
-            const a = -Math.PI / 2;
-            ctx.lineWidth = 3.5;
-            ctx.lineCap   = 'round';
+        ctx.fillStyle    = COLORS.text;
+        ctx.font         = '600 12px ' + FONT;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        lines.forEach(function (line, i) { ctx.fillText(line, cx, cy + R + 14 + i * 15); });
+    }
+
+    /**
+     * Дыхание кнопки, которую нужно нажать: плавно ±6 % с периодом 1,6 с. Начинается после
+     * появления (since — сколько кнопка на экране) и нарастает плавно, без рывка.
+     */
+    function breathe(now, since) {
+        const ramp = Math.max(0, Math.min(1, (since - FADE_MS) / 400));
+        return 1 + 0.06 * ramp * Math.sin((since - FADE_MS) / 1600 * Math.PI * 2);
+    }
+
+    /** Появление: из точки чуть больше натуральной величины и обратно к 1 (ease-out-back). */
+    function pop(k) {
+        const c = 1.70158;
+        return k >= 1 ? 1 : 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2);
+    }
+
+    /** Схлопывание (ease-in-back): сперва чуть назад — кнопка подрастает, — потом с ускорением к 1. */
+    function easeInBack(k) {
+        const c = 1.70158;
+        return (c + 1) * k * k * k - c * k * k;
+    }
+
+    /** ease-in-out: медленно в начале и в конце, быстро в середине. */
+    function easeInOut(k) {
+        return k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    }
+
+    /** Круг со знаком: play — треугольник, retry — круговая стрелка, check — галочка; turn — поворот знака, рад. */
+    function badge(kind, x, y, scale, alpha, turn) {
+        if (scale <= 0 || alpha <= 0) return;
+
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, alpha);
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+        if (turn) ctx.rotate(turn);
+
+        ctx.fillStyle = kind === 'check' ? COLORS.green : COLORS.blue;
+        ctx.beginPath();
+        ctx.arc(0, 0, R, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle   = kind === 'check' ? COLORS.board : COLORS.text;
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.lineCap     = 'round';
+        ctx.lineJoin    = 'round';
+
+        if (kind === 'play') {
             ctx.beginPath();
-            ctx.arc(cx, top, r, a + 0.55, a + Math.PI * 2 - 0.15);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(cx + 1, top - r - 5.5);
-            ctx.lineTo(cx + 7.5, top - r);
-            ctx.lineTo(cx + 1, top - r + 5.5);
+            ctx.moveTo(-6, -10);
+            ctx.lineTo(11, 0);
+            ctx.lineTo(-6, 10);
             ctx.closePath();
             ctx.fill();
-        } else {
+        } else if (kind === 'check') {
+            ctx.lineWidth = 4;
             ctx.beginPath();
-            ctx.moveTo(cx - 6, top - 10);
-            ctx.lineTo(cx + 11, top);
-            ctx.lineTo(cx - 6, top + 10);
+            ctx.moveTo(-10, 0);
+            ctx.lineTo(-3, 7);
+            ctx.lineTo(10, -7);
+            ctx.stroke();
+        } else {
+            // Круговая стрелка по часовой: дуга с разрывом сверху, наконечник — по касательной
+            // к её концу.
+            const r  = 10;
+            const a0 = -Math.PI / 2 + 0.5;
+            const a1 = a0 + Math.PI * 2 - 1.25;
+            const px = r * Math.cos(a1), py = r * Math.sin(a1);
+            const tx = -Math.sin(a1),    ty = Math.cos(a1);
+            const nx = Math.cos(a1),     ny = Math.sin(a1);
+
+            ctx.lineWidth = 3.2;
+            ctx.beginPath();
+            ctx.arc(0, 0, r, a0, a1);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(px + tx * 6, py + ty * 6);
+            ctx.lineTo(px - tx * 1.5 + nx * 5, py - ty * 1.5 + ny * 5);
+            ctx.lineTo(px - tx * 1.5 - nx * 5, py - ty * 1.5 - ny * 5);
             ctx.closePath();
             ctx.fill();
         }
 
-        ctx.font         = '600 12px ' + FONT;
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        lines.forEach(function (line, i) { ctx.fillText(line, cx, top + R + 14 + i * 15); });
-    }
-
-    function badge(x, y, color, scale) {
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(x, y, R * scale, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.restore();
     }
 
     /** Строки подсказки по ширине: переносы по словам, не больше трёх строк. */
@@ -461,35 +575,21 @@ function mount(driver, spec) {
         ctx.fillRect(0, HUD, W, H - HUD);
     }
 
-    function roundRect(x, y, w, h, r) {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.arcTo(x + w, y, x + w, y + h, r);
-        ctx.arcTo(x + w, y + h, x, y + h, r);
-        ctx.arcTo(x, y + h, x, y, r);
-        ctx.arcTo(x, y, x + w, y, r);
-        ctx.closePath();
-    }
-
     // --- клавиатура -----------------------------------------------------------------------------
 
     const keys = keymap(spec.pad, spec.keys);
 
-    /**
-     * Кнопка геймпада (или клавиша, унаследованная от неё). Нажатие, которое игра не взяла, при
-     * показанной кнопке старта или перезапуска нажимает её.
-     */
+    /** Кнопка геймпада (или клавиша, унаследованная от неё). */
     function pushButton(name, down, repeat) {
         if (done) return false;
 
-        const taken = controls.button ? controls.button(name, down, repeat) : false;
-
-        if (down && !repeat && !taken && startable()) {
-            record(START);
+        // Пока показана кнопка старта или перезапуска (или идёт её анимация), кнопки только жмут её.
+        if (starting || startable()) {
+            if (down && !repeat) begin();
             return true;
         }
 
-        return taken;
+        return controls.button ? controls.button(name, down, repeat) : false;
     }
 
     canvas.addEventListener('keydown', function (e) {
@@ -505,10 +605,7 @@ function mount(driver, spec) {
         if (!done && controls.key && controls.key(e.key, true, e.repeat)) { e.preventDefault(); return; }
 
         // Пробел и Enter нажимают кнопку старта, даже если игре они не нужны.
-        if (!e.repeat && (e.key === ' ' || e.key === 'Enter') && startable()) {
-            record(START);
-            e.preventDefault();
-        }
+        if (!e.repeat && (e.key === ' ' || e.key === 'Enter') && begin()) e.preventDefault();
     });
 
     canvas.addEventListener('keyup', function (e) {
@@ -544,7 +641,8 @@ function mount(driver, spec) {
         if (touchUi && !expanded && e.pointerType !== 'mouse') { expand(); return; }
         if (done) return;
         if (paused) { paused = false; return; }
-        if (startable()) { record(START); return; }
+        if (starting) return;
+        if (startable()) { begin(); return; }
         if (!spec.pointer) return;
 
         const p = at(e);

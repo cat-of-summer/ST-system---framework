@@ -15,13 +15,16 @@ use ST_system\Storage\File;
  * (`collect`: время и число действий с намерением) или вышло `max_time`; проигрыш в игре капчу не
  * проваливает — после смерти игрок начинает заново, статистика копится.
  *
- * Запасной путь (fallback): цель не набрана, но игрок играл достаточно долго и его действия были
- * ответом на ситуацию — тоже зачёт, с повышенным порогом поведенческого скоринга. Каким путём
- * пройдено, видно в `via` (`goal` | `fallback`).
+ * Выигрывать не обязательно (REQUIRED = false): итог — взвешенная сумма оценки игры (taskScore())
+ * и поведенческого скоринга, см. ключ decision. Оценка игры: цель набрана — 1, иначе по объёму
+ * данных, доле осмысленных действий и прогрессу к цели. Каким путём набрана оценка, видно в `via`
+ * (`goal` | `progress`).
  *
  * Игра — папка рядом с драйвером: Simulation на PHP и npm-проект, собранный в dist/game.min.js.
  */
 abstract class GameCaptchaDriver extends CaptchaDriver {
+
+    protected const REQUIRED = false;
 
     private const MAX_CODE      = 15;
     private const MAX_VALUE     = 100000;
@@ -56,15 +59,23 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         return max($min, min($max, (int)round($x)));
     }
 
-    private const FALLBACK = ['time' => 8, 'actions' => 10, 'ratio' => 0.6, 'score' => 0.7];
+    private const COLLECT = ['time' => 8, 'actions' => 10];
 
     /**
-     * Пороги запасного зачёта: секунды игры, действия с намерением, доля осмысленных среди них,
-     * поведенческий скоринг. Время и число действий — ещё и порог сбора данных, на котором браузер
-     * отдаёт лог. Пустой массив — у игры запасного пути нет, пока его не включат в конфиге.
+     * Порог сбора данных: сыграно time секунд и действий с намерением не меньше actions — браузер
+     * ставит галочку и отдаёт лог, а оценка игры считает объём данных полным. Пустой массив —
+     * порога нет: браузер отдаёт лог, когда игра решена или вышло max_time.
      */
-    protected static function defaultFallback(): array {
-        return self::FALLBACK;
+    protected static function defaultCollect(): array {
+        return self::COLLECT;
+    }
+
+    /**
+     * Доля осмысленных действий, ниже которой осмысленность — ноль (так играют случайные
+     * нажатия), и выше которой — единица (так играет человек). Между ними — линейно.
+     */
+    protected static function defaultQuality(): array {
+        return [0.45, 0.80];
     }
 
     /** Секунд на игру: дальше браузер отдаёт то, что набрано. */
@@ -90,8 +101,9 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
             'goal'        => static::defaultGoal(),
             'goal_ratio'  => static::defaultGoalRatio(),
             'per_life'    => true,
-            'fallback'    => static::defaultFallback(),
+            'collect'     => static::defaultCollect(),
             'size'        => [320, 200],
+            'scale'       => 1,
             'hint'        => static::defaultHint(),
             'big_button'  => 'left',
             'max_time'    => static::defaultMaxTime(),
@@ -101,12 +113,13 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
     }
 
     protected function __init(array $config): void {
-        $this->attributes['via']       = '';
-        $this->attributes['via_score'] = 0.0;
+        $this->attributes['via']        = '';
+        $this->attributes['task']       = 0.0;
         $this->attributes['per_life']   = true;
         $this->attributes['goal_ratio'] = (int)round(static::defaultGoalRatio() * 100);
-        $this->attributes['fallback']   = self::resolveFallback(static::defaultFallback());
+        $this->attributes['collect']    = self::resolveCollect(static::defaultCollect());
         $this->attributes['size']       = [320, 200];
+        $this->attributes['scale']      = 1.0;
         $this->attributes['hint']       = static::defaultHint();
         $this->attributes['big_button'] = 'left';
 
@@ -126,6 +139,7 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
                 max(140, min(960, (int)($size[1] ?? 200))),
             ];
         }
+        if (isset($config['scale']))       $this->attributes['scale']       = max(0.5, min(4.0, (float)$config['scale']));
         if (isset($config['big_button'])) $this->attributes['big_button'] = $config['big_button'] === 'right' ? 'right' : 'left';
         if (isset($config['hint']) && is_array($config['hint']))
             $this->attributes['hint'] = array_map('strval', array_intersect_key($config['hint'], ['keys' => 1, 'touch' => 1]))
@@ -136,23 +150,31 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         if (isset($config['per_life']))    $this->attributes['per_life']    = (bool)$config['per_life'];
         if (isset($config['goal_ratio']))  $this->attributes['goal_ratio']  = max(0, min(100, (int)round((float)$config['goal_ratio'] * 100)));
 
-        if (array_key_exists('fallback', $config))
-            $this->attributes['fallback'] = self::resolveFallback($config['fallback']);
+        if (array_key_exists('collect', $config))
+            $this->attributes['collect'] = self::resolveCollect($config['collect']);
     }
 
-    /** false/null — без запасного пути; массив дополняется значениями игры по умолчанию. */
-    private static function resolveFallback($value): ?array {
+    /** false/[] — без порога сбора данных; частичный массив дополняется значениями игры. */
+    private static function resolveCollect($value): ?array {
         if (!is_array($value) || $value === []) return null;
 
-        // У игры без запасного пути по умолчанию (defaultFallback() = []) пороги — базовые.
-        $value += static::defaultFallback() + self::FALLBACK;
+        $value += static::defaultCollect() + self::COLLECT;
 
         return [
             'time'    => max(1, min(600, (int)$value['time'])),
             'actions' => max(1, min(1000, (int)$value['actions'])),
-            'ratio'   => max(0, min(100, (int)round((float)$value['ratio'] * 100))),
-            'score'   => max(0.0, min(1.0, (float)$value['score'])),
         ];
+    }
+
+    /**
+     * Логический холст: size / scale. На нём строится поле и рисует движок, а на экране он
+     * растянут на size — при scale 2 всё вдвое крупнее, а поле то же.
+     */
+    final protected function canvasSize(): array {
+        [$w, $h] = $this->attributes['size'];
+        $scale   = (float)$this->attributes['scale'];
+
+        return [(int)round($w / $scale), (int)round($h / $scale)];
     }
 
     /**
@@ -164,20 +186,30 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
     }
 
     /**
-     * Запасной зачёт выполнен: сыграно не меньше time секунд, действий с намерением не меньше
-     * actions, и доля осмысленных среди них не ниже ratio. То же, что fallbackMet() в
-     * assets/engine/src/sim.js.
+     * Оценка игры 0..1 и путь: цель набрана (с долей осмысленных не ниже $ratio процентов) — 1,
+     * `goal`; иначе `progress`: объём данных × (0.75 · осмысленность + 0.25 · прогресс к цели).
+     * То же, что taskScore() в assets/engine/src/sim.js (по нему генератор фикстур подбирает
+     * пороги).
+     *
+     * @return array{0: float, 1: string}
      */
-    final protected static function fallbackMet(Simulation $sim, array $fallback, int $tps): bool {
-        return $sim->tick >= (int)$fallback['time'] * $tps
-            && $sim->acts >= (int)$fallback['actions']
-            && $sim->good * 100 >= (int)$fallback['ratio'] * $sim->acts;
+    final public static function gameScore(Simulation $sim, int $goal, int $ratio, ?array $collect, array $quality, int $tps): array {
+        if (static::goalMet($sim, $goal, $ratio)) return [1.0, 'goal'];
+        if ($sim->acts === 0) return [0.0, 'progress'];
+
+        $amount = $collect
+            ? min(1.0, $sim->acts / (int)$collect['actions']) * min(1.0, $sim->tick / ((int)$collect['time'] * $tps))
+            : 1.0;
+
+        [$low, $high] = $quality;
+        $sense    = max(0.0, min(1.0, ($sim->good / $sim->acts - $low) / max(0.01, $high - $low)));
+        $progress = $goal > 0 ? min(1.0, $sim->peak / $goal) : 0.0;
+
+        return [round($amount * (0.75 * $sense + 0.25 * $progress), 4), 'progress'];
     }
 
-    protected function requiredScore(): float {
-        $base = parent::requiredScore();
-
-        return $this->attributes['via'] === 'fallback' ? max($base, (float)$this->attributes['via_score']) : $base;
+    protected function taskScore(): float {
+        return (float)$this->attributes['task'];
     }
 
     public function isAvailable(): bool {
@@ -202,9 +234,9 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         $seed = isset($params['seed']) ? ((int)$params['seed'] & 0xFFFFFFFF) : 0;
         $seed = $seed ?: random_int(1, 0xFFFFFFFF);
 
-        $fallback = $this->attributes['fallback'];
-        $extra    = $this->prepare($params, $seed);
-        [$w, $h]  = $this->attributes['size'];
+        $collect = $this->attributes['collect'];
+        $extra   = $this->prepare($params, $seed);
+        [$w, $h] = $this->canvasSize();
 
         $game = [
             'seed'       => $seed,
@@ -218,13 +250,15 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         $secret = $game + [
             'goal'       => (int)($extra['goal'] ?? $this->attributes['goal']),
             'goal_ratio' => (int)$this->attributes['goal_ratio'],
-            'fallback'   => $fallback,
+            'collect'    => $collect,
+            'quality'    => static::defaultQuality(),
         ];
         $secret['params'] = (array)($extra['secret'] ?? []) + $game['params'];
 
         $public = (array)($extra['public'] ?? []) + $game + [
             'max_events' => (int)$this->attributes['max_events'],
-            'collect'    => $fallback ? ['time' => $fallback['time'], 'actions' => $fallback['actions']] : null,
+            'collect'    => $collect,
+            'view'       => $this->attributes['size'],
             'hint'       => $this->attributes['hint'],
             'big_button' => $this->attributes['big_button'],
         ];
@@ -240,8 +274,8 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
     }
 
     protected function verify(array $payload, array $state): bool {
-        $this->attributes['via']       = '';
-        $this->attributes['via_score'] = 0.0;
+        $this->attributes['via']  = '';
+        $this->attributes['task'] = 0.0;
 
         $data   = @json_decode($this->answer($payload), true);
         $secret = (array)($state['secret'] ?? []);
@@ -270,20 +304,16 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         // и может играть дальше, поэтому итог считается на присланном тике.
         $sim   = $class::replay((int)($secret['seed'] ?? 0), (array)($secret['params'] ?? []), $log, $ticks);
 
-        if (static::goalMet($sim, $goal, (int)($secret['goal_ratio'] ?? 0))) {
-            $this->attributes['via'] = 'goal';
-            return true;
-        }
+        [$task, $via] = static::gameScore(
+            $sim, $goal, (int)($secret['goal_ratio'] ?? 0),
+            $secret['collect'] ?? null, (array)($secret['quality'] ?? static::defaultQuality()), $tps
+        );
 
-        $fallback = $secret['fallback'] ?? null;
+        $this->attributes['task'] = $task;
+        $this->attributes['via']  = $via;
 
-        if (is_array($fallback) && static::fallbackMet($sim, $fallback, $tps)) {
-            $this->attributes['via']       = 'fallback';
-            $this->attributes['via_score'] = (float)$fallback['score'];
-            return true;
-        }
-
-        return false;
+        // Обязательная игра (пазл) решена только целью; необязательную судит взвешенная сумма.
+        return static::REQUIRED ? $via === 'goal' : true;
     }
 
     /** Лог как список [tick, code, value] целых чисел; null — если он не мог прийти от игры. */
@@ -333,7 +363,7 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
     }
 
     protected function driverCss(): string {
-        return '.st-captcha-game{display:block;position:relative;user-select:none;-webkit-user-select:none}';
+        return '.st-captcha-game{display:block;position:relative;user-select:none;-webkit-user-select:none;outline:none}';
     }
 
     /** dist/game.min.js в папке игры — той, где лежит класс драйвера. */

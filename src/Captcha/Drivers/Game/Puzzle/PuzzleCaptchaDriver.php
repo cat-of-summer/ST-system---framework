@@ -41,8 +41,11 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
         return 60;
     }
 
-    /** Запасного зачёта нет: собран пазл или нет — однозначно. */
-    protected static function defaultFallback(): array {
+    /** Пазл обязательно собрать: частично собранный не засчитывается, как бы ни вёл себя игрок. */
+    protected const REQUIRED = true;
+
+    /** Порога сбора данных нет: галочка — когда все ячейки заняты. */
+    protected static function defaultCollect(): array {
         return [];
     }
 
@@ -158,7 +161,7 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
 
         [$rows, $cols] = $this->attributes['grid'];
 
-        [$w, $h] = $this->attributes['size'];
+        [$w, $h] = $this->canvasSize();
         [$cw, $ch, $bleed, $tray] = self::table($w, $h, $rows, $cols);
 
         $n     = $rows * $cols;
