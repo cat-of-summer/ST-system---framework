@@ -6,7 +6,9 @@ use ST_system\Captcha\Drivers\Game\Simulation;
 
 /**
  * Зеркало src/sim.js. Поле 8×14, внизу ряд мусора с дыркой в 3 клетки. Коды ввода: 0 — поворот,
- * 1 — вправо, 2 — вниз на клетку, 3 — влево, 4 — сбросить. Реакция — убранная линия.
+ * 1 — вправо, 2 — вниз на клетку, 3 — влево, мгновенного сброса нет. Реакция — убранная линия.
+ * Осмысленное действие — сдвиг ближе к одному из лучших мест для фигуры при её повороте; поворот
+ * не оценивается.
  */
 final class TetrisSimulation extends Simulation {
 
@@ -30,6 +32,7 @@ final class TetrisSimulation extends Simulation {
     private static array $shapes = [];
 
     private array $grid = [];
+    private array $goals = [];
     private int $type   = 0;
     private int $rot    = 0;
     private int $x      = 0;
@@ -74,21 +77,72 @@ final class TetrisSimulation extends Simulation {
         $this->moved = 0;
 
         if ($this->collide($this->x, $this->y, $this->rot)) $this->lose();
+        else $this->plan();
     }
 
-    /** Пустые клетки, над которыми в том же столбце есть занятые. */
-    private function holes(): int {
-        $holes = 0;
+    /** Лучшие места для новой фигуры: [поворот, x] с оценкой не ниже лучшей минус 2. */
+    private function plan(): void {
+        $all  = [];
+        $best = -1000000000;
 
-        for ($x = 0; $x < self::COLS; $x++) {
-            $covered = false;
-            for ($y = 0; $y < self::ROWS; $y++) {
-                if ($this->grid[$y * self::COLS + $x]) $covered = true;
-                elseif ($covered) $holes++;
+        for ($rot = 0; $rot < 4; $rot++)
+            for ($x = -2; $x < self::COLS; $x++) {
+                if ($this->collide($x, 0, $rot)) continue;
+
+                $y = 0;
+                while (!$this->collide($x, $y + 1, $rot)) $y++;
+
+                $score = $this->rate($rot, $x, $y);
+                $all[] = [$rot, $x, $score];
+                if ($score > $best) $best = $score;
+            }
+
+        $this->goals = [];
+        foreach ($all as $p) if ($p[2] >= $best - 2) $this->goals[] = [$p[0], $p[1]];
+    }
+
+    /** Оценка места: 20 за линию, −6 за дыру, −1 за клетку высоты. */
+    private function rate(int $rot, int $x, int $y): int {
+        $grid = $this->grid;
+        foreach (self::shapes()[$this->type][$rot] as $c) $grid[($y + $c[1]) * self::COLS + $x + $c[0]] = 1;
+
+        $lines  = 0;
+        $holes  = 0;
+        $height = 0;
+
+        for ($r = 0; $r < self::ROWS; $r++) {
+            $full = true;
+            for ($cx = 0; $cx < self::COLS; $cx++) if (!$grid[$r * self::COLS + $cx]) { $full = false; break; }
+            if ($full) $lines++;
+        }
+
+        for ($cx = 0; $cx < self::COLS; $cx++) {
+            $seen = false;
+            for ($r = 0; $r < self::ROWS; $r++) {
+                if ($grid[$r * self::COLS + $cx]) {
+                    if (!$seen && self::ROWS - $r > $height) $height = self::ROWS - $r;
+                    $seen = true;
+                } elseif ($seen) {
+                    $holes++;
+                }
             }
         }
 
-        return $holes;
+        return $lines * 20 - $holes * 6 - $height;
+    }
+
+    /** Сколько сдвигов до ближайшего лучшего места при нынешнем повороте (нет такого — при любом). */
+    private function away(): int {
+        $same = 99;
+        $any  = 99;
+
+        foreach ($this->goals as $g) {
+            $d = abs($g[1] - $this->x);
+            if ($g[0] === $this->rot && $d < $same) $same = $d;
+            if ($d < $any) $any = $d;
+        }
+
+        return $same < 99 ? $same : $any;
     }
 
     private function collide(int $x, int $y, int $rot): bool {
@@ -103,7 +157,7 @@ final class TetrisSimulation extends Simulation {
     }
 
     protected function handle(int $code, int $value): void {
-        if ($code < 0 || $code > 4) return;
+        if ($code < 0 || $code > 3) return;
 
         $this->moved = 1;
 
@@ -113,19 +167,22 @@ final class TetrisSimulation extends Simulation {
                 if (!$this->collide($this->x + $k, $this->y, $rot)) {
                     $this->x  += $k;
                     $this->rot = $rot;
-                    return;
+                    break;
                 }
         } elseif ($code === 1 || $code === 3) {
-            $dx = $code === 1 ? 1 : -1;
+            $before = $this->away();
+            $dx     = $code === 1 ? 1 : -1;
             if (!$this->collide($this->x + $dx, $this->y, $this->rot)) $this->x += $dx;
+
+            // Осмысленно — сдвинуть фигуру ближе к одному из лучших мест; между равноценными местами
+            // и в стену — не в счёт.
+            $after = $this->away();
+            if ($after !== $before) $this->intent($after < $before);
         } elseif ($code === 2) {
             if (!$this->collide($this->x, $this->y + 1, $this->rot)) {
                 $this->y++;
                 $this->clock = 0;
             }
-        } elseif ($code === 4) {
-            while (!$this->collide($this->x, $this->y + 1, $this->rot)) $this->y++;
-            $this->lock();
         }
     }
 
@@ -138,13 +195,8 @@ final class TetrisSimulation extends Simulation {
     }
 
     private function lock(): void {
-        $before = $this->holes();
-
         foreach (self::shapes()[$this->type][$this->rot] as $c)
             $this->grid[($this->y + $c[1]) * self::COLS + $this->x + $c[0]] = $this->type + 1;
-
-        // Осмысленно — фигуру, которую двигали, положить без новых дыр.
-        if ($this->moved) $this->intent($this->holes() <= $before);
 
         for ($row = self::ROWS - 1; $row >= 0;) {
             $full = true;

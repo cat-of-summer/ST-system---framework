@@ -440,7 +440,9 @@ function mount(driver, spec) {
         }
 
         if (sim.dead > 0) {
-            veil('rgba(251,113,133,' + (0.08 + 0.25 * sim.dead / sim.cooldown).toFixed(3) + ')');
+            // Красная вспышка — на всё окно, вместе со строкой счёта.
+            ctx.fillStyle = 'rgba(251,113,133,' + (0.08 + 0.25 * sim.dead / sim.cooldown).toFixed(3) + ')';
+            ctx.fillRect(0, 0, W, H);
             return;
         }
 

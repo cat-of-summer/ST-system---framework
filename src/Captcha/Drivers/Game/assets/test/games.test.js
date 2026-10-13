@@ -157,13 +157,27 @@ test('Arkanoid: вести ракетку к падающему мячу — о�
 
 // --- Tetris ---------------------------------------------------------------------------------------
 
+/** Опустить фигуру по клетке до упора и дать ей лечь (сброса нет). */
+function land(sim) {
+    do sim.input(2); while (!sim.collide(sim.x, sim.y + 1, sim.rot));
+    run(sim, 10);
+}
+
+test('Tetris: мгновенного сброса нет — код 4 ничего не делает', function () {
+    const sim = new TetrisSim(1, {});
+    sim.input(2);
+    const y = sim.y;
+    sim.input(4);
+    assert.equal(sim.y, y);
+});
+
 test('Tetris: заполненный ряд убирается и даёт очко', function () {
     const sim = new TetrisSim(1, {});
     sim.grid = sim.grid.map(function () { return 0; });
     for (let x = 1; x < COLS; x++) sim.grid[(ROWS - 1) * COLS + x] = 8;
     sim.type = 0; sim.rot = 1; sim.x = -2; sim.y = 0;
 
-    sim.input(4);
+    land(sim);
     assert.equal(sim.reactions, 1);
     for (let x = 1; x < COLS; x++) assert.equal(sim.grid[(ROWS - 1) * COLS + x], 0, 'ряд сдвинулся');
     assert.equal(sim.grid[(ROWS - 1) * COLS], 1, 'над рядом осталась часть палки');
@@ -179,16 +193,23 @@ test('Tetris: поворот у стенки сдвигает фигуру', fun
     assert.ok(!sim.collide(sim.x, sim.y, sim.rot));
 });
 
-test('Tetris: фигура без новых дыр — осмысленно, с дырой — нет', function () {
+test('Tetris: сдвиг к лучшему месту — осмысленно, от него — нет; поворот не оценивается', function () {
     const sim = new TetrisSim(1, {});
     sim.grid = sim.grid.map(function () { return 0; });
-    sim.type = 1; sim.rot = 0; sim.x = 0; sim.y = 0;
-    sim.input(4);
-    assert.deepEqual([sim.acts, sim.good], [1, 1]);
+    for (let x = 0; x < COLS - 2; x++) sim.grid[(ROWS - 1) * COLS + x] = 8;
+    sim.type = 1; sim.rot = 0; sim.x = 2; sim.y = 0;   // квадрат; линию закрывает только справа
+    sim.plan();
 
-    sim.type = 2; sim.rot = 2; sim.x = 0; sim.y = 0;
-    sim.input(4);
-    assert.deepEqual([sim.acts, sim.good], [2, 1], 'T остриём вниз на ровном — дыры по бокам');
+    assert.deepEqual(sim.goals.map(function (g) { return g[1]; }).filter(function (x, i, a) { return a.indexOf(x) === i; }), [6]);
+
+    sim.input(1);
+    assert.deepEqual([sim.acts, sim.good], [1, 1], 'вправо — к месту');
+
+    sim.input(3);
+    assert.deepEqual([sim.acts, sim.good], [2, 1], 'влево — от него');
+
+    sim.input(0);
+    assert.equal(sim.acts, 2, 'поворот не оценивается');
 });
 
 // --- Pac-Man --------------------------------------------------------------------------------------

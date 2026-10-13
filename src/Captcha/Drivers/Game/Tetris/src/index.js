@@ -3,8 +3,8 @@ import { TetrisSim, SHAPES, COLS, ROWS } from './sim.js';
 
 const PIECE_COLORS = [null, '#22d3ee', COLORS.yellow, COLORS.purple, COLORS.green, COLORS.red, COLORS.blue, COLORS.orange, '#475569'];
 
-/** Кнопка → код: большая — поворот, ▲ — сбросить, ◀ ▼ ▶ — сдвиг и шаг вниз. */
-const BUTTONS = { big: 0, right: 1, down: 2, left: 3, up: 4 };
+/** Кнопка → код: большая и ▲ — поворот, ◀ ▼ ▶ — сдвиг и шаг вниз. Мгновенного сброса нет. */
+const BUTTONS = { big: 0, up: 0, right: 1, down: 2, left: 3 };
 
 function block(ctx, x, y, size, color) {
     ctx.fillStyle = color;
@@ -76,7 +76,7 @@ createDriver({
         return {
             button: function (name, down, repeat) {
                 if (!(name in BUTTONS)) return false;
-                // Поворот и сброс — по нажатию, без автоповтора; сдвиг повторяется, пока держат.
+                // Поворот — по нажатию, без автоповтора; сдвиг повторяется, пока держат.
                 if (down && !(repeat && (name === 'big' || name === 'up'))) api.record(BUTTONS[name]);
                 return true;
             },

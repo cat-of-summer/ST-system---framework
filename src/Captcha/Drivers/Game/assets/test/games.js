@@ -19,7 +19,7 @@ export const GAMES = {
     snake:      { dir: 'Snake',      cls: 'SnakeSim',      tps: 24, goal: 2, codes: [0, 1, 2, 3], layout: { cols: 16, rows: 9 } },
     flappy:     { dir: 'Flappy',     cls: 'FlappySim',     tps: 30, goal: 3, codes: [0], layout: { w: 533 } },
     arkanoid:   { dir: 'Arkanoid',   cls: 'ArkanoidSim',   tps: 30, goal: 2, goalRatio: 75, codes: [0], values: [24, 474], layout: { w: 498 } },
-    tetris:     { dir: 'Tetris',     cls: 'TetrisSim',     tps: 20, goal: 1, codes: [0, 1, 2, 3, 4] },
+    tetris:     { dir: 'Tetris',     cls: 'TetrisSim',     tps: 20, goal: 1, goalRatio: 70, codes: [0, 1, 2, 3] },
     pacman:     { dir: 'PacMan',     cls: 'PacManSim',     tps: 10, goal: 2, codes: [0, 1, 2, 3], layout: { cols: 19, rows: 11 } },
     battlecity: { dir: 'BattleCity', cls: 'BattleCitySim', tps: 20, goal: 2, codes: [0, 1, 2, 3, 4, 5], layout: { cols: 20, rows: 11 } },
     puzzle: {
@@ -51,7 +51,7 @@ const OWN = {
     snake:      { actions: 12, quality: [0.45, 0.80] },
     flappy:     { actions: 20, quality: [0.52, 0.80] },
     arkanoid:   { actions: 14, quality: [0.65, 0.92] },
-    tetris:     { actions: 12, quality: [0.45, 0.80] },
+    tetris:     { actions: 12, quality: [0.55, 0.85] },
     pacman:     { actions: 12, quality: [0.53, 0.80] },
     battlecity: { actions: 20, quality: [0.50, 0.75] },
 };

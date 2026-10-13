@@ -44,7 +44,7 @@ export function bot(seed) {
 
     return function (sim) {
         if (sim.idle) return [[2]];
-        if (rng.int(12) === 0) return [[rng.int(5)]];
+        if (rng.int(60) === 0) return [[rng.int(4)]];
         if (rng.int(2) === 0) return [];
 
         let best = null;
@@ -55,10 +55,11 @@ export function bot(seed) {
                 if (score !== null && (!best || score > best.score)) best = { score, rot, x };
             }
 
-        if (!best) return [[4]];
+        // Мгновенного сброса нет: на месте — вниз по клетке.
+        if (!best) return [[2]];
         if (best.rot !== sim.rot) return [[0]];
         if (best.x > sim.x) return [[1]];
         if (best.x < sim.x) return [[3]];
-        return [[4]];
+        return [[2]];
     };
 }

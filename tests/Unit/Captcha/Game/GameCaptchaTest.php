@@ -269,6 +269,23 @@ final class GameCaptchaTest extends TestCase {
     }
 
     /**
+     * Бездействие: нажал «начать» и ничего не делал, пока не вышло время. Оценка игры — 0, и
+     * капча не пройдена даже при идеальном поведении на странице.
+     *
+     * @dataProvider gameProvider
+     */
+    public function testIdlePlayerFails(string $name): void {
+        $fixture = self::fixture($name);
+        $config  = ['decision' => ['behavior' => 1, 'task' => 0.0001]];
+        $id      = $this->issue($name, $config);
+
+        $captcha = $this->captcha($name, $config);
+        $this->assertFalse($captcha->check(self::payload($id, ['t' => $fixture['tps'] * $fixture['max_time'], 'log' => [[0, 15]]])));
+        $this->assertSame('answer', $captcha->error);
+        $this->assertSame(0.0, $captcha->task_score);
+    }
+
+    /**
      * Мало данных: порог сбора данных вчетверо выше сыгранного — объём ×¼, оценка ниже пола.
      *
      * @dataProvider progressGameProvider
