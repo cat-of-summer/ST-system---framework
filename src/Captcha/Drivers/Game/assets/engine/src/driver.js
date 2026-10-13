@@ -418,7 +418,8 @@ function mount(driver, spec) {
 
     function overlayScreen(view) {
         const cx    = W / 2;
-        const cy    = (H + HUD) / 2;
+        // По центру всего окна капчи, а не игровой зоны под строкой счёта.
+        const cy    = H / 2;
         const since = view.now - phaseAt;
         const fade  = Math.min(1, since / FADE_MS);
 
@@ -456,7 +457,7 @@ function mount(driver, spec) {
         const text  = touchUi ? hint.touch : hint.keys;
         const lines = phase === 'ready' && text ? wrap(text, W - 32) : [];
 
-        // Кнопка всегда по центру поля, подсказка — под ней и кнопку не сдвигает.
+        // Кнопка всегда по центру окна, подсказка — под ней и кнопку не сдвигает.
         veil('rgba(7,16,37,0.6)');
         badge('play', cx, cy, breathe(view.now, since), 1);
 
@@ -464,7 +465,7 @@ function mount(driver, spec) {
         ctx.font         = '600 12px ' + FONT;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        lines.forEach(function (line, i) { ctx.fillText(line, cx, cy + R + 14 + i * 15); });
+        lines.forEach(function (line, i) { ctx.fillText(line, cx, cy + R + 22 + i * 15); });
     }
 
     /**
