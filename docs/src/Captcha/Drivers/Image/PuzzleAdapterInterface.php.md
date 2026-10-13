@@ -1,0 +1,1 @@
+# PuzzleAdapterInterface.php

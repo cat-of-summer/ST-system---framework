@@ -1,0 +1,1 @@
+# StubImageAdapter.php

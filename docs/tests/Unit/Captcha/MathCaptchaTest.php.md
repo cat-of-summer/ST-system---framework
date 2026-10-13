@@ -1,0 +1,1 @@
+# MathCaptchaTest.php
