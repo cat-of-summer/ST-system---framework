@@ -5,13 +5,14 @@ namespace ST_system\Captcha\Drivers\Game\Puzzle;
 use ST_system\Captcha\Drivers\Game\Simulation;
 
 /**
- * Зеркало src/sim.js. Коды ввода: 0 — поставить кусочек (value = k × 64 + s), 1 — убрать кусочек
- * k на стол. params.order (только у сервера): место кусочка из ячейки спрайта k — ячейка order[k].
+ * Зеркало src/sim.js. Коды ввода: 0 — поставить кусочек (value = k × 128 + s), 1 — убрать кусочек
+ * k на стол. params.fixed — кусочки, уже стоящие на поле ([[k, s], ...]): их не снять и не
+ * вытеснить. params.order (только у сервера): место кусочка из ячейки спрайта k — ячейка order[k].
  * Реакции — сколько кусочков на своих местах.
  */
 final class PuzzleSimulation extends Simulation {
 
-    private const SLOT_BITS = 64;
+    private const SLOT_BITS = 128;
 
     private int $rows    = 0;
     private int $cols    = 0;
@@ -19,6 +20,7 @@ final class PuzzleSimulation extends Simulation {
     private ?array $order = null;
     private array $slots = [];
     private array $where = [];
+    private array $locked = [];
 
     protected function cooldown(): int {
         return 1;
@@ -30,7 +32,20 @@ final class PuzzleSimulation extends Simulation {
         $this->n     = $this->rows * $this->cols;
         $this->order = isset($this->params['order']) ? array_values((array)$this->params['order']) : null;
         $this->slots = $this->n > 0 ? array_fill(0, $this->n, -1) : [];
-        $this->where = $this->slots;
+        $this->where  = $this->slots;
+        $this->locked = $this->n > 0 ? array_fill(0, $this->n, 0) : [];
+
+        foreach ((array)($this->params['fixed'] ?? []) as $f) {
+            $k = (int)($f[0] ?? -1);
+            $s = (int)($f[1] ?? -1);
+            if ($k < 0 || $k >= $this->n || $s < 0 || $s >= $this->n) continue;
+
+            $this->slots[$s]  = $k;
+            $this->where[$k]  = $s;
+            $this->locked[$k] = 1;
+        }
+
+        $this->recount();
     }
 
     protected function restart(): void {}
@@ -39,12 +54,16 @@ final class PuzzleSimulation extends Simulation {
         if ($code === 0 && $value >= 0) {
             $k = intdiv($value, self::SLOT_BITS);
             $s = $value % self::SLOT_BITS;
-            if ($k < $this->n && $s < $this->n) $this->place($k, $s);
-        } elseif ($code === 1 && $value >= 0 && $value < $this->n && $this->where[$value] >= 0) {
+            if ($k < $this->n && $s < $this->n && $this->free($k, $s)) $this->place($k, $s);
+        } elseif ($code === 1 && $value >= 0 && $value < $this->n && $this->where[$value] >= 0 && !$this->locked[$value]) {
             $this->slots[$this->where[$value]] = -1;
             $this->where[$value] = -1;
             $this->recount();
         }
+    }
+
+    private function free(int $k, int $s): bool {
+        return !$this->locked[$k] && !($this->slots[$s] >= 0 && $this->locked[$this->slots[$s]]);
     }
 
     private function place(int $k, int $s): void {

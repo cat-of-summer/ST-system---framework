@@ -802,3 +802,32 @@ test('Puzzle: без перестановки (браузер) правильн�
     assert.equal(sim.filled(), 9, 'занято всё — можно отправлять');
     assert.deepEqual([sim.reactions, sim.acts], [0, 0], 'а верно ли — решает сервер');
 });
+
+// Лёгкий уровень: ячейки 0..5 уже заняты своими кусочками, вставить остаются три.
+const FIXED = [0, 1, 2, 3, 4, 5].map(function (s) { return [ORDER.indexOf(s), s]; });
+
+test('Puzzle: закреплённые кусочки стоят на местах с начала и считаются в цель', function () {
+    const sim = new PuzzleSim(1, { rows: 3, cols: 3, order: ORDER, fixed: FIXED });
+    assert.deepEqual([sim.reactions, sim.peak, sim.filled()], [6, 6, 6]);
+
+    for (let s = 6; s < 9; s++) sim.input(0, ORDER.indexOf(s) * SLOT_BITS + s);
+    assert.equal(sim.peak, 9, 'собран целиком');
+    assert.deepEqual([sim.acts, sim.good], [3, 3], 'действия — только свои ходы');
+});
+
+test('Puzzle: закреплённый не снять, не переставить и не вытеснить', function () {
+    const sim  = new PuzzleSim(1, { rows: 3, cols: 3, order: ORDER, fixed: FIXED });
+    const k0   = ORDER.indexOf(0);
+    const free = ORDER.indexOf(8);
+    const was  = sim.slots.slice();
+
+    sim.input(1, k0);
+    sim.input(0, k0 * SLOT_BITS + 7);
+    sim.input(0, free * SLOT_BITS + 0);
+    assert.deepEqual(sim.slots, was);
+    assert.equal(sim.acts, 0, 'запрещённые ходы — не действия');
+
+    // В браузере перестановки нет, а закреплённые всё равно на местах.
+    const client = new PuzzleSim(1, { rows: 3, cols: 3, fixed: FIXED });
+    assert.equal(client.filled(), 6);
+});

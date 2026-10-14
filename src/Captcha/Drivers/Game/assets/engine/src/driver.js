@@ -145,7 +145,8 @@ function mount(driver, spec) {
     const W         = (cfg.size && cfg.size[0]) || 320;
     const H         = (cfg.size && cfg.size[1]) || 200;
     const tps       = cfg.tps | 0 || 20;
-    const maxTicks  = cfg.max_ticks | 0 || tps * 20;
+    // max_ticks 0 — без лимита времени: партия идёт, пока не собраны данные (или вечно без collect).
+    const maxTicks  = cfg.max_ticks === 0 ? Infinity : (cfg.max_ticks | 0 || tps * 20);
     const maxEvents = cfg.max_events | 0 || 4000;
     const collect   = cfg.collect || null;
     const stepMs    = 1000 / tps;
@@ -238,7 +239,17 @@ function mount(driver, spec) {
     }
 
     function record(code, value) {
-        if (done || sim.dead > 0 || log.length >= maxEvents) return;
+        if (done || sim.dead > 0) return;
+
+        // Лог полон: в обычной партии ввод больше не принимается, в бесконечной игра идёт дальше,
+        // но ход не пишется в лог — такой ответ сервер уже не примет.
+        if (log.length >= maxEvents) {
+            if (maxTicks !== Infinity) return;
+            started = true;
+            sim.input(code, value | 0);
+            died();
+            return;
+        }
 
         started = true;
 

@@ -15,12 +15,18 @@ use ST_system\Storage\File;
  * серверная копия игры получает её из закрытой части выдачи, браузер видит только спрайт с
  * вырезанными кусочками. Контуры уходят в браузер пикселями, не данными. Зачёт — все кусочки на
  * своих местах.
+ *
+ * Сложность — ключ `level`: `hard` — вставить все кусочки, `easy` — четверть (не меньше двух),
+ * остальные уже стоят на своих местах и закреплены.
  */
 class PuzzleCaptchaDriver extends GameCaptchaDriver {
 
-    private const MAX_PIECES = 36;
+    private const MAX_PIECES = 100;
     private const MAX_BOARD  = 400;
     private const GAP        = 6;
+
+    /** Доля кусочков, которую нужно вставить, по уровню; остальные уже на поле. */
+    private const LEVELS = ['easy' => 0.25, 'hard' => 1.0];
 
     /** Спрайт рисуется вдвое плотнее холста: на телефоне и в развёрнутом виде картинка не мылится. */
     public const DENSITY = 2;
@@ -55,6 +61,7 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
             'extensions' => ['jpg', 'jpeg', 'png', 'webp'],
             'max_images' => 100,
             'pieces'     => 9,
+            'level'      => 'hard',
             'quality'    => 82,
             'image'      => 'auto',
             'goal_ratio' => 0,
@@ -64,6 +71,7 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
     protected function __init(array $config): void {
         parent::__init($config);
 
+        $this->attributes['level'] = self::level($config['level'] ?? 'hard');
         $this->applyPuzzle($config);
         $this->attributes['images'] = $this->resolveImages($config['images'] ?? []);
     }
@@ -79,6 +87,7 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
 
     private function applyPuzzle(array $config): void {
         if (isset($config['pieces']))     $this->attributes['grid']       = self::grid((int)$config['pieces']);
+        if (isset($config['level']))      $this->attributes['level']      = self::level($config['level']);
         if (isset($config['quality']))    $this->attributes['quality']    = max(40, min(95, (int)$config['quality']));
         if (isset($config['image']))      $this->attributes['image']      = (string)$config['image'];
         if (isset($config['max_images'])) $this->attributes['max_images'] = max(1, (int)$config['max_images']);
@@ -88,6 +97,20 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
                 static fn($e): string => strtolower(ltrim(trim((string)$e), '.')),
                 (array)$config['extensions']
             )));
+    }
+
+    private static function level($value): string {
+        $value = strtolower(trim((string)$value));
+
+        if (!isset(self::LEVELS[$value]))
+            throw new \InvalidArgumentException("PuzzleCaptchaDriver: unknown level '{$value}', expected ".implode(' | ', array_keys(self::LEVELS)));
+
+        return $value;
+    }
+
+    /** Сколько кусочков вставлять из n: доля уровня, не меньше двух. */
+    public static function loose(int $n, string $level): int {
+        return min($n, max(2, (int)ceil($n * self::LEVELS[$level])));
     }
 
     /** Сетка под число кусочков: rows = ⌊√n⌋, cols = ⌈n / rows⌉; 9 → 3×3, 12 → 3×4. */
@@ -100,15 +123,15 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
 
     /**
      * Раскладка стола под холст w × h: поле и лоток рядом с ним (справа или снизу — где поле
-     * выйдет крупнее). Поле — наибольшее, при котором все кусочки ложатся в лоток, не налезая
-     * друг на друга клетками; язычки (bleed) остаются в пределах холста.
+     * выйдет крупнее). Поле — наибольшее, при котором $loose кусочков (по умолчанию все) ложатся
+     * в лоток, не налезая друг на друга клетками; язычки (bleed) остаются в пределах холста.
      *
      * @return array{0: int, 1: int, 2: int, 3: string} [ширина клетки, высота клетки,
      *         bleed в пикселях спрайта, 'right' | 'below']
      */
-    public static function table(int $w, int $h, int $rows, int $cols): array {
+    public static function table(int $w, int $h, int $rows, int $cols, ?int $loose = null): array {
         $zone = $h - self::HUD;
-        $n    = $rows * $cols;
+        $n    = $loose ?? $rows * $cols;
         $best = null;
 
         foreach (['right', 'below'] as $tray) {
@@ -161,10 +184,12 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
 
         [$rows, $cols] = $this->attributes['grid'];
 
-        [$w, $h] = $this->canvasSize();
-        [$cw, $ch, $bleed, $tray] = self::table($w, $h, $rows, $cols);
-
         $n     = $rows * $cols;
+        $loose = self::loose($n, (string)$this->attributes['level']);
+
+        [$w, $h] = $this->canvasSize();
+        [$cw, $ch, $bleed, $tray] = self::table($w, $h, $rows, $cols, $loose);
+
         $sw    = $cw * self::DENSITY;
         $sh    = $ch * self::DENSITY;
         $order = isset($params['order']) ? self::validOrder($params['order'], $n) : self::shuffle($n);
@@ -183,7 +208,7 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
 
         return [
             'goal'   => $n,
-            'params' => ['rows' => $rows, 'cols' => $cols],
+            'params' => ['rows' => $rows, 'cols' => $cols] + ($loose < $n ? ['fixed' => self::fixed($order, $n - $loose)] : []),
             'secret' => ['order' => $order],
             'public' => [
                 'sprite' => 'data:'.self::mime($sprite).';base64,'.base64_encode($sprite),
@@ -193,6 +218,21 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
                 'tray'    => $tray,
             ],
         ];
+    }
+
+    /**
+     * Закреплённые кусочки лёгкого уровня: $count случайных ячеек поля, в каждой — её кусочек.
+     * Пары [ячейка спрайта k, ячейка поля s]; место этих кусочков браузер и так видит.
+     */
+    private static function fixed(array $order, int $count): array {
+        $slots = self::shuffle(count($order));
+        $cell  = array_flip($order);
+        $fixed = [];
+
+        foreach (array_slice($slots, 0, $count) as $s) $fixed[] = [$cell[$s], $s];
+        usort($fixed, static fn(array $a, array $b): int => $a[1] <=> $b[1]);
+
+        return $fixed;
     }
 
     private static function mime(string $bytes): string {

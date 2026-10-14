@@ -157,7 +157,8 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         if (isset($config['hint']) && is_array($config['hint']))
             $this->attributes['hint'] = array_map('strval', array_intersect_key($config['hint'], self::hint()))
                 + $this->attributes['hint'];
-        if (isset($config['max_time']))    $this->attributes['max_time']    = max(10,  min(600,   (int)$config['max_time']));
+        // 0 (или false) — без лимита: браузер не отдаёт ответ по времени, партия не обрезается.
+        if (isset($config['max_time']))    $this->attributes['max_time']    = (int)$config['max_time'] <= 0 ? 0 : max(10, min(600, (int)$config['max_time']));
         if (isset($config['max_events']))  $this->attributes['max_events']  = max(50,  min(20000, (int)$config['max_events']));
         if (isset($config['clock_slack'])) $this->attributes['clock_slack'] = max(0,   (int)$config['clock_slack']);
         if (isset($config['per_life']))    $this->attributes['per_life']    = (bool)$config['per_life'];
@@ -300,7 +301,9 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         $tps   = (int)($secret['tps'] ?? 0);
         $goal  = (int)($secret['goal'] ?? 0);
 
-        if ($tps < 1 || $goal < 1 || $ticks < 0 || $ticks > (int)($secret['max_ticks'] ?? 0))
+        // max_ticks 0 — партия без лимита времени; длину по-прежнему ограничивают часы ниже.
+        $max = (int)($secret['max_ticks'] ?? 0);
+        if ($tps < 1 || $goal < 1 || $ticks < 0 || ($max > 0 && $ticks > $max))
             return false;
 
         // Тики идут в реальном времени: партию нельзя прислать быстрее, чем её можно сыграть.

@@ -4,6 +4,7 @@ namespace ST_system\Tests\Unit\Captcha\Game;
 
 use ST_system\Captcha\CaptchaManager;
 use ST_system\Captcha\Drivers\Game\Puzzle\PuzzleCaptchaDriver;
+use ST_system\Captcha\Drivers\Game\Puzzle\PuzzleSimulation;
 use ST_system\Storage\File;
 use ST_system\Tests\Support\StubImageAdapter;
 use ST_system\Tests\TestCase;
@@ -42,7 +43,7 @@ final class PuzzleCaptchaTest extends TestCase {
     }
 
     public function gridProvider(): array {
-        return [[4, [2, 2]], [6, [2, 3]], [9, [3, 3]], [12, [3, 4]], [16, [4, 4]], [2, [2, 2]], [100, [6, 6]]];
+        return [[4, [2, 2]], [6, [2, 3]], [9, [3, 3]], [12, [3, 4]], [16, [4, 4]], [2, [2, 2]], [100, [10, 10]], [150, [10, 10]]];
     }
 
     /** @dataProvider gridProvider */
@@ -128,5 +129,50 @@ final class PuzzleCaptchaTest extends TestCase {
         $this->assertSame([320, 200], $public['size'], 'логический холст — size / scale');
         $this->assertSame([640, 400], $public['view'], 'на экране — size');
         $this->assertSame([120, 120], $public['board'], 'поле то же, что у 320 × 200');
+    }
+
+    public function testEasyLevelLeavesQuarterOfPieces(): void {
+        $this->assertSame('hard', $this->captcha()->level, 'по умолчанию — вставить все');
+        $this->assertSame(3, PuzzleCaptchaDriver::loose(9, 'easy'));
+        $this->assertSame(25, PuzzleCaptchaDriver::loose(100, 'easy'));
+        $this->assertSame(2, PuzzleCaptchaDriver::loose(4, 'easy'), 'не меньше двух');
+        $this->assertSame(9, PuzzleCaptchaDriver::loose(9, 'hard'));
+
+        $public = self::publicConfig($this->captcha(['level' => 'easy'])->putCaptcha());
+        $order  = StubImageAdapter::$puzzle['order'];
+        $fixed  = $public['params']['fixed'];
+
+        $this->assertCount(6, $fixed, 'из 9 кусочков закреплены 6');
+        foreach ($fixed as [$k, $s]) $this->assertSame($s, $order[$k], 'закреплённый стоит на своём месте');
+        $this->assertCount(6, array_unique(array_column($fixed, 1)), 'ячейки разные');
+        $this->assertArrayNotHasKey('order', $public['params']);
+
+        $hard = self::publicConfig($this->captcha()->putCaptcha());
+        $this->assertArrayNotHasKey('fixed', $hard['params']);
+        $this->assertGreaterThan($hard['board'][0], $public['board'][0], 'в лотке меньше кусочков — поле крупнее');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->captcha(['level' => 'medium']);
+    }
+
+    public function testFixedPiecesLockedInPhpSimulation(): void {
+        $order = [2, 0, 1, 4, 3, 5, 8, 6, 7];
+        $fixed = [];
+        foreach ([0, 1, 2, 3, 4, 5] as $s) $fixed[] = [array_search($s, $order, true), $s];
+
+        $log = [[0, 1, $fixed[0][0]], [0, 0, $fixed[0][0] * 128 + 7], [0, 0, 6 * 128 + 0]];
+        foreach ([6, 7, 8] as $s) $log[] = [1, 0, array_search($s, $order, true) * 128 + $s];
+
+        $sim = PuzzleSimulation::replay(1, ['rows' => 3, 'cols' => 3, 'order' => $order, 'fixed' => $fixed], $log, 2);
+        $this->assertSame(9, $sim->peak, 'собран: шесть закреплённых и три вставленных');
+        $this->assertSame([3, 3], [$sim->acts, $sim->good], 'запрещённые ходы — не действия');
+    }
+
+    public function testHundredPieces(): void {
+        $this->assertSame([10, 10], PuzzleCaptchaDriver::grid(100));
+
+        $public = self::publicConfig($this->captcha(['pieces' => 100, 'size' => [960, 600]])->putCaptcha());
+        $this->assertSame(['rows' => 10, 'cols' => 10, 'per_life' => true], $public['params']);
+        $this->assertCount(100, StubImageAdapter::$puzzle['outlines']);
     }
 }

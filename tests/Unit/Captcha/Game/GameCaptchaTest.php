@@ -172,6 +172,20 @@ final class GameCaptchaTest extends TestCase {
         $captcha = $this->captcha('snake');
         $this->assertFalse($captcha->check(self::payload($id, ['t' => 24 * 20 + 1, 'log' => []])));
         $this->assertSame('answer', $captcha->error);
+        $this->assertSame('', $captcha->via, 'отсечено до переигровки');
+    }
+
+    public function testZeroMaxTimeIsUnlimited(): void {
+        $public = self::publicConfig($this->captcha('snake', ['max_time' => 0])->putCaptcha());
+        $this->assertSame(0, $public['max_ticks'], 'браузер не останавливает партию по времени');
+
+        $id      = $this->issue('snake', ['max_time' => 0]);
+        $captcha = $this->captcha('snake', ['max_time' => 0]);
+        $captcha->check(self::payload($id, ['t' => 24 * 600 + 1, 'log' => []]));
+        $this->assertSame('progress', $captcha->via, 'длинная партия не отсекается по max_time, а переигрывается');
+
+        $this->assertSame(0, $this->captcha('snake', ['max_time' => false])->max_time);
+        $this->assertSame(10, $this->captcha('snake', ['max_time' => 3])->max_time, 'ненулевой — не меньше 10 с');
     }
 
     public function testSizeShapesField(): void {

@@ -12,6 +12,8 @@ const GAP = 6;
  * в ячейку» и «убрать на стол» — то, что меняет сборку.
  *
  * Форма кусочков вырезана сервером в спрайте: клиент рисует их как есть и формы не знает.
+ * Закреплённые кусочки (cfg.params.fixed, лёгкий уровень) стоят на поле с начала: их не взять,
+ * в их ячейки не поставить, в лотке их нет.
  */
 export function puzzleTable(api) {
     const cfg   = api.cfg;
@@ -28,6 +30,12 @@ export function puzzleTable(api) {
     const sb    = cfg.bleed | 0;
     const b     = sb / D;
     const right = cfg.tray !== 'below';
+
+    const locked = [];
+    for (let k = 0; k < n; k++) locked.push(0);
+    for (const f of cfg.params.fixed || []) locked[f[0]] = 1;
+    const loose = [];
+    for (let k = 0; k < n; k++) if (!locked[k]) loose.push(k);
 
     // Поле — у края холста со стороны, противоположной лотку; язычки остаются внутри холста.
     const bx = right ? Math.round(b) : Math.round((W - bw) / 2);
@@ -50,8 +58,8 @@ export function puzzleTable(api) {
     function scatter() {
         const rng   = new Rng((cfg.seed ^ 0xA5A5A5A5) >>> 0);
         const fit   = Math.max(1, Math.floor((tx1 - tx0 + GAP) / (cw + GAP)));
-        const lines = Math.ceil(n / fit);
-        const per   = Math.ceil(n / lines);
+        const lines = Math.ceil(loose.length / fit);
+        const per   = Math.ceil(loose.length / lines);
 
         // Кусочки равномерно по всему лотку — чем свободнее, тем дальше друг от друга.
         const sx = per > 1 ? (tx1 - tx0 - cw) / (per - 1) : 0;
@@ -59,9 +67,8 @@ export function puzzleTable(api) {
         const x0 = per > 1 ? tx0 : (tx0 + tx1 - cw) / 2;
         const y0 = lines > 1 ? ty0 : (ty0 + ty1 - ch) / 2;
 
-        z = [];
-        for (let i = 0; i < n; i++) z.push(i);
-        for (let i = n - 1; i > 0; i--) {
+        z = loose.slice();
+        for (let i = z.length - 1; i > 0; i--) {
             const j = rng.int(i + 1);
             const t = z[i]; z[i] = z[j]; z[j] = t;
         }
@@ -75,7 +82,7 @@ export function puzzleTable(api) {
         });
 
         drag = null;
-        sel = 0;
+        sel = loose[0];
         held = false;
         cursor = 0;
         keyboard = false;
@@ -101,7 +108,19 @@ export function puzzleTable(api) {
         }
 
         const s = slotAt(x, y);
-        return s >= 0 ? sim.slots[s] : -1;
+        return s >= 0 && sim.slots[s] >= 0 && !locked[sim.slots[s]] ? sim.slots[s] : -1;
+    }
+
+    /** Ячейка s занята закреплённым кусочком — туда не поставить. */
+    function fixedSlot(s) {
+        const k = api.sim().slots[s];
+        return k >= 0 && locked[k] === 1;
+    }
+
+    /** Следующий свободный кусочек для выбора с клавиатуры: шаг step по списку незакреплённых. */
+    function nextLoose(k, step) {
+        const i = loose.indexOf(k);
+        return loose[(i + step + loose.length) % loose.length];
     }
 
     /** Поставить k в ячейку s; вытесненный со стола кусочек ложится на место k. */
@@ -109,6 +128,7 @@ export function puzzleTable(api) {
         const sim      = api.sim();
         const occupant = sim.slots[s];
 
+        if (fixedSlot(s)) return;
         if (occupant >= 0 && occupant !== k && sim.where[k] < 0) pos[occupant] = { x: pos[k].x, y: pos[k].y };
 
         api.record(0, k * SLOT_BITS + s);
@@ -196,7 +216,7 @@ export function puzzleTable(api) {
             const s = slotAt(drag.x, drag.y);
             if (s >= 0) {
                 const at = slotRect(s);
-                frame(ctx, at[0], at[1], COLORS.green);
+                frame(ctx, at[0], at[1], fixedSlot(s) ? COLORS.red : COLORS.green);
             }
             drawPiece(ctx, drag.k, drag.x - drag.ox, drag.y - drag.oy, 14);
         }
@@ -235,8 +255,8 @@ export function puzzleTable(api) {
             if (!ok) return;
 
             const s = slotAt(x, y);
-            if (s >= 0) place(d.k, s);
-            else unplace(d.k, x - d.ox, y - d.oy);
+            if (s >= 0 && !fixedSlot(s)) place(d.k, s);
+            else if (s < 0) unplace(d.k, x - d.ox, y - d.oy);
         },
 
         key: function (key, down) {
@@ -251,15 +271,15 @@ export function puzzleTable(api) {
                 case 'ArrowLeft':
                 case 'ArrowRight':
                     if (held) cursor = key === 'ArrowLeft' ? (c > 0 ? cursor - 1 : cursor) : (c < cols - 1 ? cursor + 1 : cursor);
-                    else sel = (sel + (key === 'ArrowLeft' ? n - 1 : 1)) % n;
+                    else sel = nextLoose(sel, key === 'ArrowLeft' ? -1 : 1);
                     return true;
                 case 'ArrowUp':
                     if (held && r > 0) cursor -= cols;
-                    else if (!held) sel = (sel + n - 1) % n;
+                    else if (!held) sel = nextLoose(sel, -1);
                     return true;
                 case 'ArrowDown':
                     if (held && r < rows - 1) cursor += cols;
-                    else if (!held) sel = (sel + 1) % n;
+                    else if (!held) sel = nextLoose(sel, 1);
                     return true;
                 case ' ':
                 case 'Enter':

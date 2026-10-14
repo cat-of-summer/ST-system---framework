@@ -27,7 +27,7 @@ export const GAMES = {
     platformer: { dir: 'Platformer', cls: 'PlatformerSim', tps: 30, goal: 1, codes: [1, 3, 4, 5], layout: { cols: 20, rows: 11 } },
     puzzle: {
         dir: 'Puzzle', cls: 'PuzzleSim', tps: 10, goal: 9, goalRatio: 0, collect: false, maxTime: 60, required: true,
-        codes: [0, 1], values: [0, 9 * 64],
+        codes: [0, 1], values: [0, 9 * 128],
         // Сервер отдаёт клиенту rows/cols, а order — только своей копии игры.
         params: function (seed) { return { per_life: true, rows: 3, cols: 3, order: puzzleOrder(seed, 9) }; },
         publicParams: { per_life: true, rows: 3, cols: 3 },
