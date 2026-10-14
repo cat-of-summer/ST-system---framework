@@ -7,6 +7,11 @@ import { TetrisSim, COLS, ROWS } from '../../Tetris/src/sim.js';
 import { PacManSim, DX, DY } from '../../PacMan/src/sim.js';
 import { BattleCitySim, BRICK, STEEL, PLAYER_PERIOD } from '../../BattleCity/src/sim.js';
 import { PuzzleSim, SLOT_BITS } from '../../Puzzle/src/sim.js';
+import { DinoSim, FP as DFP, GROUND as DGROUND, DX as DDX, DW as DDW, KINDS } from '../../Dino/src/sim.js';
+import { InvadersSim, SHIP_Y as ISHIP_Y, SW as ISW, SX as ISX } from '../../Invaders/src/sim.js';
+import { PlatformerSim, T as PT, FP as PFP, PW as PPW, SCREENS } from '../../Platformer/src/sim.js';
+import { bot as platformerBot } from '../../Platformer/test/bot.js';
+import { START } from '../engine/src/sim.js';
 
 function run(sim, ticks) {
     for (let i = 0; i < ticks; i++) sim.advance();
@@ -434,6 +439,314 @@ test('Арканоид: на экране — разбитые кирпичи, �
     run(sim, 2);
     assert.equal(sim.broken, 1);
     assert.equal(sim.reactions, 0);
+});
+
+// --- DinoRun --------------------------------------------------------------------------------------
+
+/** Динозавр на земле, перед ним одно препятствие вида kind в ticks тиках; новых не появляется. */
+function dino(kind, ticks) {
+    const sim = new DinoSim(1, {});
+    sim.input(START);
+    sim.dist = 1e9;
+    sim.obs  = [[(DDX + DDW) * DFP + ticks * sim.speed, kind, 0]];
+    return sim;
+}
+
+test('DinoRun: прыжок поднимает и возвращает на землю; в воздухе ввод не берётся', function () {
+    const sim = new DinoSim(1, {});
+    sim.input(START);
+    sim.dist = 1e9;
+
+    sim.input(0);
+    run(sim, 1);
+    assert.ok(sim.y < DGROUND * DFP, 'взлетел');
+
+    sim.input(0);
+    assert.equal(sim.acts, 1, 'второй прыжок в воздухе не считается');
+
+    run(sim, 40);
+    assert.deepEqual([sim.y, sim.vy], [DGROUND * DFP, 0], 'приземлился');
+});
+
+test('DinoRun: перепрыгнутое препятствие — очко, касание — смерть', function () {
+    const stay = dino(0, 10);
+    run(stay, 12);
+    assert.ok(stay.dead > 0, 'без прыжка врезался');
+
+    const jump = dino(0, 10);
+    jump.input(0);
+    run(jump, 40);
+    assert.equal(jump.dead, 0);
+    assert.equal(jump.reactions, 1);
+});
+
+test('DinoRun: птица низко — пройти можно только прыжком', function () {
+    const sim = dino(4, 10);
+    run(sim, 14);
+    assert.ok(sim.dead > 0);
+});
+
+test('DinoRun: карта ускоряется, но не быстрее предела', function () {
+    const sim = new DinoSim(1, {});
+    sim.input(START);
+    const speed0 = sim.speed;
+
+    for (let i = 0; i < 3000; i++) { sim.obs = []; sim.dist = 1e9; sim.advance(); }
+    assert.ok(sim.speed > speed0);
+    assert.equal(sim.speed, 2048);
+});
+
+test('DinoRun: прыжок, который перелетает препятствие, — осмысленный; в пустоту или рано — нет', function () {
+    const good = dino(1, 8);
+    good.input(0);
+    assert.deepEqual([good.acts, good.good], [1, 1]);
+
+    const early = dino(1, 40);
+    early.input(0);
+    assert.deepEqual([early.acts, early.good], [1, 0]);
+
+    const empty = dino(0, 0);
+    empty.obs = [];
+    empty.input(0);
+    assert.deepEqual([empty.acts, empty.good], [1, 0]);
+});
+
+test('DinoRun: первые 6 с — только кактусы; промежуток всегда больше прыжка', function () {
+    for (let seed = 1; seed <= 100; seed++) {
+        const sim = new DinoSim(seed, {});
+        sim.hits = function () { return false; };
+        sim.input(START);
+
+        while (sim.clock < 900) {
+            const n = sim.obs.length, last = sim.obs[n - 1];
+            sim.advance();
+            const o = sim.obs[sim.obs.length - 1];
+            if (!o || o === last) continue;
+
+            if (sim.clock <= 180) assert.notEqual(KINDS[o[1]][0], 1, 'seed ' + seed + ': птица раньше 6 с');
+            if (last) assert.ok(DinoSim.box(o)[0] - DinoSim.box(last)[2] > sim.speed * 32 / DFP, 'seed ' + seed + ': тесно');
+        }
+    }
+});
+
+// --- Space Invaders -------------------------------------------------------------------------------
+
+test('Space Invaders: выстрел под противником — осмысленный и сбивает его; пуля одна', function () {
+    const sim = new InvadersSim(1, {});
+    sim.input(START);
+    const c = 1, x = sim.fx + c * ISX + 7;
+    sim.px = sim.target = x;
+
+    sim.input(1);
+    sim.input(1);
+    assert.deepEqual([sim.acts, sim.good], [1, 1], 'вторая пуля, пока первая летит, не вылетает');
+
+    run(sim, 30);
+    assert.equal(sim.reactions, 1);
+    assert.equal(sim.alive[(sim.rows - 1) * sim.cols + c], 0, 'сбит нижний в колонке');
+});
+
+test('Space Invaders: выстрел в пустоту — нет; цель ближе к колонке противников — да', function () {
+    const sim = new InvadersSim(1, {});
+    sim.input(START);
+    sim.px = sim.target = ISW;
+
+    sim.input(1);
+    assert.deepEqual([sim.acts, sim.good], [1, 0]);
+
+    sim.input(0, sim.w / 2);
+    sim.input(0, ISW);
+    assert.deepEqual([sim.acts, sim.good], [3, 1]);
+});
+
+test('Space Invaders: бомба в корабль — смерть', function () {
+    const sim = new InvadersSim(1, {});
+    sim.input(START);
+    sim.bombs = [[sim.px, ISHIP_Y - 2]];
+    run(sim, 2);
+    assert.ok(sim.dead > 0);
+});
+
+test('Space Invaders: первые 2 с жизни противники не стреляют', function () {
+    for (let seed = 1; seed <= 200; seed++) {
+        const sim = new InvadersSim(seed, {});
+        sim.input(START);
+        for (let i = 0; i < 60; i++) {
+            sim.advance();
+            assert.equal(sim.bombs.length, 0, 'seed ' + seed + ', тик ' + sim.tick);
+        }
+    }
+});
+
+test('Space Invaders: следующая волна больше', function () {
+    const sim = new InvadersSim(1, {});
+    sim.input(START);
+    const size = sim.alive.length;
+
+    sim.alive = sim.alive.map(function () { return 0; });
+    run(sim, 1);
+    assert.equal(sim.wave, 1);
+    assert.ok(sim.alive.length > size);
+});
+
+// --- Platformer -----------------------------------------------------------------------------------
+
+/** Ровная земля высотой 2 без препятствий на всех экранах; герой на старте. */
+function flat(sim) {
+    for (let c = 0; c < sim.len; c++) { sim.g[c] = 2; sim.spikes[c] = 0; }
+    sim.restart();
+    sim.input(START);
+    return sim;
+}
+
+test('Platformer: на каждом из трёх экранов — два обрыва, два шипа и ступени; перед препятствием два ровных шага', function () {
+    for (const size of [{ cols: 18, rows: 8 }, { cols: 20, rows: 11 }, { cols: 40, rows: 24 }]) {
+        for (let seed = 1; seed <= 300; seed++) {
+            const sim = new PlatformerSim(seed, size);
+            const g = sim.g;
+            assert.equal(g.length, SCREENS * (sim.cols - 3) + 3);
+
+            for (let s = 0; s < SCREENS; s++) {
+                const base = s * (sim.cols - 3), at = 'seed ' + seed + ', ' + size.cols + '×' + size.rows + ', экран ' + s;
+                let pits = 0, spikes = 0, steps = 0;
+
+                for (let c = base; c < base + sim.cols; c++) {
+                    assert.ok(g[c] === 0 || (g[c] >= 2 && g[c] <= 4), at + ': высота ' + g[c]);
+                    const pit   = g[c] === 0 && g[c - 1] > 0;
+                    const spike = sim.spikes[c] === 1;
+                    if (pit) pits++;
+                    if (spike) spikes++;
+                    if (pit || spike)
+                        assert.ok(c >= base + 3 && g[c - 1] > 0 && g[c - 1] === g[c - 2] && !sim.spikes[c - 1] && !sim.spikes[c - 2], at + ': разбег перед ' + c);
+                    if (c > base && g[c] && g[c - 1]) {
+                        assert.ok(Math.abs(g[c] - g[c - 1]) <= 1, at + ': ступень выше одной клетки');
+                        if (g[c] !== g[c - 1]) steps++;
+                    }
+                }
+
+                assert.ok(pits >= 2 && spikes >= 2, at + ': обрывов ' + pits + ', шипов ' + spikes);
+                assert.ok(steps >= 1, at + ': без ступеней');
+                const coin = base + sim.cols - 2;
+                assert.ok(g[base] > 0 && g[base + 1] > 0 && g[base + 2] > 0, at + ': старт ровный');
+                assert.ok(g[coin - 1] === g[coin] && g[coin + 1] === g[coin] && !sim.spikes[coin], at + ': у монетки ровно');
+            }
+        }
+    }
+});
+
+test('Platformer: монетку можно достать — бот доходит на большинстве карт', function () {
+    let reached = 0;
+    for (let seed = 1; seed <= 100; seed++) {
+        const sim = new PlatformerSim(seed, {});
+        const b   = platformerBot(seed);
+        while (sim.tick < 900 && !sim.reactions) {
+            for (const a of b(sim)) if (!sim.dead) sim.input(a[0], a[1] || 0);
+            sim.advance();
+        }
+        if (sim.reactions) reached++;
+    }
+    assert.ok(reached >= 90, 'дошёл на ' + reached + ' из 100');
+});
+
+test('Platformer: шип и обрыв — смерть', function () {
+    const spike = flat(new PlatformerSim(1, {}));
+    spike.spikes[5] = 1;
+    spike.input(1);
+    run(spike, 60);
+    assert.ok(spike.dead > 0 || spike.idle, 'наткнулся на шип');
+
+    const pit = flat(new PlatformerSim(1, {}));
+    pit.g[5] = pit.g[6] = 0;
+    pit.input(1);
+    run(pit, 120);
+    assert.ok(pit.dead > 0 || pit.idle, 'упал в обрыв');
+});
+
+test('Platformer: монетка — очко и следующий экран, герой остаётся на месте; после третьего — снова первый', function () {
+    const sim = flat(new PlatformerSim(1, {}));
+    sim.input(1);
+
+    const shift = sim.cols - 3;
+    for (let s = 1; s <= SCREENS; s++) {
+        let guard = 0;
+        while (sim.reactions < s && guard++ < 400) sim.advance();
+        assert.equal(sim.reactions, s);
+        assert.equal(sim.screen, s % SCREENS);
+        if (s < SCREENS) assert.equal(sim.column(), s * shift + 1, 'на второй клетке нового экрана');
+    }
+    assert.equal(sim.x, (PT + 3) * PFP, 'с первого экрана заново');
+});
+
+test('Platformer: края экрана — стены; смерть возвращает в начало текущего экрана', function () {
+    const sim = flat(new PlatformerSim(1, {}));
+    sim.input(3);
+    run(sim, 30);
+    assert.ok(sim.x / PFP < 2, 'левый край — стена');
+
+    sim.screen = 1;
+    sim.restart();
+    sim.input(3);
+    run(sim, 30);
+    const wall = (sim.cols - 3) * PT;
+    assert.ok(sim.x / PFP >= wall && sim.x / PFP < wall + 2, 'левый край второго экрана — стена');
+
+    sim.lose();
+    run(sim, sim.dead);
+    assert.equal(sim.column(), sim.cols - 3 + 1);
+});
+
+test('Platformer: прыжок перепрыгивает обрыв в две клетки и забирается на ступень', function () {
+    const pit = flat(new PlatformerSim(1, {}));
+    pit.g[4] = pit.g[5] = 0;
+    pit.input(1);
+    while (pit.x / PFP + PPW < 4 * PT - 4) pit.advance();
+    pit.input(4);
+    run(pit, 60);
+    assert.equal(pit.dead, 0);
+    assert.ok(pit.column() > 6, 'за обрывом');
+
+    const step = flat(new PlatformerSim(1, {}));
+    for (let c = 5; c < step.len; c++) step.g[c] = 3;
+    step.input(1);
+    while (step.x / PFP + PPW < 5 * PT - 4) step.advance();
+    step.input(4);
+    run(step, 30);
+    assert.ok(step.column() >= 5 && step.floor, 'на ступени');
+});
+
+test('Platformer: вправо — осмысленно, влево — нет, повтор не считается; прыжок — только у опасности', function () {
+    const sim = flat(new PlatformerSim(1, {}));
+    sim.input(1);
+    sim.input(1);
+    sim.input(3);
+    sim.input(5);
+    assert.deepEqual([sim.acts, sim.good], [2, 1]);
+
+    sim.input(4);
+    assert.deepEqual([sim.acts, sim.good], [3, 1], 'прыжок на ровном месте');
+
+    const edge = flat(new PlatformerSim(1, {}));
+    edge.g[4] = 0;
+    edge.input(1);
+    while (edge.x / PFP + PPW < 4 * PT - 10) edge.advance();
+    edge.input(4);
+    assert.deepEqual([edge.acts, edge.good], [2, 2], 'прыжок на бегу у края обрыва');
+});
+
+test('Перезапуск: DinoRun, Space Invaders и платформер начинают жизнь с чистого поля', function () {
+    const d = new DinoSim(1, {});
+    die(d);
+    assert.deepEqual([d.obs.length, d.y, d.speed], [0, DGROUND * DFP, 1024]);
+
+    const inv = new InvadersSim(1, {});
+    die(inv);
+    assert.deepEqual([inv.wave, inv.bombs.length, inv.alive.indexOf(0)], [0, 0, -1]);
+
+    const p = new PlatformerSim(1, {});
+    const g = p.g.slice();
+    die(p);
+    assert.deepEqual([p.x, p.dir, p.floor], [(PT + 3) * PFP, 0, 1]);
+    assert.deepEqual(p.g, g, 'карта та же');
 });
 
 // --- Puzzle ---------------------------------------------------------------------------------------

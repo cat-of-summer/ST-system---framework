@@ -5,8 +5,11 @@
 
 - [Arkanoid](Arkanoid/)
 - [BattleCity](BattleCity/)
+- [Dino](Dino/)
 - [Flappy](Flappy/)
+- [Invaders](Invaders/)
 - [PacMan](PacMan/)
+- [Platformer](Platformer/)
 - [Puzzle](Puzzle/)
 - [Snake](Snake/)
 - [Tetris](Tetris/)

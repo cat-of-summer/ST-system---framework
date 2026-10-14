@@ -28,10 +28,10 @@
 - `drivers.default` — класс драйвера по умолчанию (`InvisibleCaptchaDriver`).
 - `drivers.available` - карта имя → класс: `invisible`, `checkbox`, `swipe`, `text`,
   [`math`](Drivers/MathCaptchaDriver.php.md), [`puzzle`](Drivers/Game/Puzzle/PuzzleCaptchaDriver.php.md),
-  `smart`, `recaptcha`, `snake`, `flappy`, `arkanoid`, `tetris`, `pacman`, `battlecity`. `smart` и
-  `recaptcha` живут в `Captcha\Drivers\Service` - это капчи внешних сервисов поверх общего
-  `Service\ServiceCaptchaDriver`. `puzzle` и шесть последних - мини-игры из `Captcha\Drivers\Game`
-  поверх [GameCaptchaDriver](Drivers/Game/GameCaptchaDriver.php.md).
+  `smart`, `recaptcha`, `snake`, `flappy`, `arkanoid`, `tetris`, `pacman`, `battlecity`, `dino`,
+  `invaders`, `platformer`. `smart` и `recaptcha` живут в `Captcha\Drivers\Service` - это капчи
+  внешних сервисов поверх общего `Service\ServiceCaptchaDriver`. `puzzle` и девять последних -
+  мини-игры из `Captcha\Drivers\Game` поверх [GameCaptchaDriver](Drivers/Game/GameCaptchaDriver.php.md).
 
 `CaptchaManager::setConfig([...])` одним вызовом настраивает и сам менеджер, и конкретные
 драйверы — ключи `drivers.<имя>.<параметр>` (кроме служебных `drivers.default` и

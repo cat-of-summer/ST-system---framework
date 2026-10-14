@@ -60,7 +60,7 @@ public static function resetEmitted(): void                    // сбросит
 | Тип | `REQUIRED` | Что нужно |
 |-----|------------|-----------|
 | text, math, puzzle, checkbox, swipe, invisible | `true` | решить задачу **и** набрать поведенческий скоринг `≥ min_score` |
-| snake, flappy, arkanoid, tetris, pacman, battlecity | `false` | взвешенная сумма оценки задачи и поведения не ниже порога |
+| snake, flappy, arkanoid, tetris, pacman, battlecity, dino, invaders, platformer | `false` | взвешенная сумма оценки задачи и поведения не ниже порога |
 
 Для необязательных `verify()` отвечает только «данные пригодны», а насколько осмысленно
 решали — `taskScore()` (0..1, у игр — [оценка игры](Drivers/Game/GameCaptchaDriver.php.md)).

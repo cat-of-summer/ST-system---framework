@@ -28,6 +28,9 @@ use ST_system\View;
  * @method static self tetris(mixed $key, array $config = [])
  * @method static self pacman(mixed $key, array $config = [])
  * @method static self battlecity(mixed $key, array $config = [])
+ * @method static self dino(mixed $key, array $config = [])
+ * @method static self invaders(mixed $key, array $config = [])
+ * @method static self platformer(mixed $key, array $config = [])
  * @method string putCaptcha(array $params = [])
  * @method bool check(mixed $payload)
  * @method array refresh(string $id = '')
@@ -57,6 +60,9 @@ final class CaptchaManager {
             'tetris'     => \ST_system\Captcha\Drivers\Game\Tetris\TetrisCaptchaDriver::class,
             'pacman'     => \ST_system\Captcha\Drivers\Game\PacMan\PacManCaptchaDriver::class,
             'battlecity' => \ST_system\Captcha\Drivers\Game\BattleCity\BattleCityCaptchaDriver::class,
+            'dino'       => \ST_system\Captcha\Drivers\Game\Dino\DinoCaptchaDriver::class,
+            'invaders'   => \ST_system\Captcha\Drivers\Game\Invaders\InvadersCaptchaDriver::class,
+            'platformer' => \ST_system\Captcha\Drivers\Game\Platformer\PlatformerCaptchaDriver::class,
         ];
 
         return [

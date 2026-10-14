@@ -10,7 +10,10 @@
     "../Tetris",
     "../PacMan",
     "../BattleCity",
-    "../Puzzle"
+    "../Puzzle",
+    "../Dino",
+    "../Invaders",
+    "../Platformer"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

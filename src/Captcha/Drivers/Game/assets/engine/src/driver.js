@@ -451,23 +451,30 @@ function mount(driver, spec) {
         if (phase === 'dead' && !launcher && !paused) {
             veil('rgba(7,16,37,' + (0.45 * fade).toFixed(3) + ')');
             badge('retry', cx, cy, pop(fade) * breathe(view.now, since), fade);
+            caption(touchUi ? hint.retry_touch : hint.retry_keys, cx, cy, fade);
             return;
         }
 
         if (phase !== 'ready' && !launcher && !paused) return;
 
-        const text  = touchUi ? hint.touch : hint.keys;
-        const lines = phase === 'ready' && text ? wrap(text, W - 32) : [];
-
         // Кнопка всегда по центру окна, подсказка — под ней и кнопку не сдвигает.
         veil('rgba(7,16,37,0.6)');
         badge('play', cx, cy, breathe(view.now, since), 1);
+        if (phase === 'ready') caption(touchUi ? hint.touch : hint.keys, cx, cy, 1);
+    }
 
+    /** Подсказка под кнопкой в центре (cx, cy): по строкам в ширину окна. */
+    function caption(text, cx, cy, alpha) {
+        if (!text) return;
+
+        ctx.save();
+        ctx.globalAlpha  = Math.min(1, alpha);
         ctx.fillStyle    = COLORS.text;
         ctx.font         = '600 12px ' + FONT;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        lines.forEach(function (line, i) { ctx.fillText(line, cx, cy + R + 22 + i * 15); });
+        wrap(text, W - 32).forEach(function (line, i) { ctx.fillText(line, cx, cy + R + 22 + i * 15); });
+        ctx.restore();
     }
 
     /**
@@ -582,6 +589,9 @@ function mount(driver, spec) {
 
     const keys = keymap(spec.pad, spec.keys);
 
+    // Клавиши, которые не жмут кнопку перезапуска: переход фокуса, выход, модификаторы.
+    const IDLE_KEYS = { Tab: 1, Escape: 1, Shift: 1, Control: 1, Alt: 1, Meta: 1, CapsLock: 1 };
+
     /** Кнопка геймпада (или клавиша, унаследованная от неё). */
     function pushButton(name, down, repeat) {
         if (done) return false;
@@ -604,6 +614,9 @@ function mount(driver, spec) {
             e.preventDefault();
             return;
         }
+
+        // Кнопку перезапуска жмёт любая клавиша — так и написано под ней.
+        if (started && !e.repeat && !(e.key in IDLE_KEYS) && begin()) { e.preventDefault(); return; }
 
         if (!done && controls.key && controls.key(e.key, true, e.repeat)) { e.preventDefault(); return; }
 

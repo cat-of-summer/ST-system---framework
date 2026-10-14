@@ -22,6 +22,9 @@ export const GAMES = {
     tetris:     { dir: 'Tetris',     cls: 'TetrisSim',     tps: 20, goal: 1, goalRatio: 70, codes: [0, 1, 2, 3] },
     pacman:     { dir: 'PacMan',     cls: 'PacManSim',     tps: 10, goal: 2, codes: [0, 1, 2, 3], layout: { cols: 19, rows: 11 } },
     battlecity: { dir: 'BattleCity', cls: 'BattleCitySim', tps: 20, goal: 2, codes: [0, 1, 2, 3, 4, 5], layout: { cols: 20, rows: 11 } },
+    dino:       { dir: 'Dino',       cls: 'DinoSim',       tps: 30, goal: 3, codes: [0], layout: { w: 267 } },
+    invaders:   { dir: 'Invaders',   cls: 'InvadersSim',   tps: 30, goal: 3, codes: [0, 1], values: [11, 345], layout: { w: 356 } },
+    platformer: { dir: 'Platformer', cls: 'PlatformerSim', tps: 30, goal: 1, codes: [1, 3, 4, 5], layout: { cols: 20, rows: 11 } },
     puzzle: {
         dir: 'Puzzle', cls: 'PuzzleSim', tps: 10, goal: 9, goalRatio: 0, collect: false, maxTime: 60, required: true,
         codes: [0, 1], values: [0, 9 * 64],
@@ -54,6 +57,9 @@ const OWN = {
     tetris:     { actions: 12, quality: [0.55, 0.85] },
     pacman:     { actions: 12, quality: [0.53, 0.80] },
     battlecity: { actions: 20, quality: [0.50, 0.75] },
+    dino:       { actions: 4,  quality: [0.45, 0.80] },
+    invaders:   { actions: 16, quality: [0.50, 0.80] },
+    platformer: { actions: 8,  quality: [0.55, 0.80] },
 };
 
 /** Порог сбора данных, как его отдаёт браузеру PHP; null — порога нет (пазл). */

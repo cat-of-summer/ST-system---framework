@@ -14,7 +14,7 @@ use ST_system\Tests\TestCase;
  */
 final class GameCaptchaTest extends TestCase {
 
-    private const GAMES = ['snake', 'flappy', 'arkanoid', 'tetris', 'pacman', 'battlecity', 'puzzle'];
+    private const GAMES = ['snake', 'flappy', 'arkanoid', 'tetris', 'pacman', 'battlecity', 'dino', 'invaders', 'platformer', 'puzzle'];
 
     private string $images = '';
 
@@ -153,6 +153,10 @@ final class GameCaptchaTest extends TestCase {
         $public = self::publicConfig($this->captcha($name, ['hint' => ['keys' => 'Arrows to move']])->putCaptcha());
         $this->assertSame('Arrows to move', $public['hint']['keys']);
         $this->assertNotSame('', $public['hint']['touch'], 'частичный hint дополняется подсказкой игры');
+        $this->assertNotSame('', $public['hint']['retry_keys'], 'подсказка у перезапуска — общая');
+
+        $public = self::publicConfig($this->captcha($name, ['hint' => ['retry_touch' => 'Tap to retry']])->putCaptcha());
+        $this->assertSame('Tap to retry', $public['hint']['retry_touch']);
     }
 
     public function testBigButtonSide(): void {
@@ -182,6 +186,8 @@ final class GameCaptchaTest extends TestCase {
         $this->assertSame([[240, 320], ['w' => 240]], $layout('flappy', [240, 320]), 'вертикальный холст — мир уже');
         $this->assertSame([[400, 260], ['cols' => 25, 'rows' => 15]], $layout('pacman', [400, 260]), 'стороны лабиринта нечётные');
         $this->assertSame([[400, 260], ['cols' => 25, 'rows' => 15]], $layout('battlecity', [400, 260]));
+        $this->assertSame([[400, 260], ['cols' => 25, 'rows' => 15]], $layout('platformer', [400, 260]));
+        $this->assertSame([[240, 320], ['w' => 120]], $layout('dino', [240, 320]), 'мир не уже 120');
         $this->assertSame([[200, 960], []], $layout('tetris', [100, 2000]), 'размер зажат в 200..960 × 140..960');
     }
 

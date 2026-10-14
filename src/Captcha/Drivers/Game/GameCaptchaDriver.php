@@ -91,6 +91,19 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         return ['keys' => '', 'touch' => ''];
     }
 
+    /**
+     * Подсказка под кнопкой перезапуска — общая для всех игр: `retry_keys` и `retry_touch` в том же
+     * ключе конфига `hint`.
+     */
+    private const RETRY_HINT = [
+        'retry_keys'  => 'Нажмите любую клавишу, чтобы продолжить',
+        'retry_touch' => 'Нажмите любую кнопку, чтобы продолжить',
+    ];
+
+    private static function hint(): array {
+        return static::defaultHint() + self::RETRY_HINT;
+    }
+
     /** Параметры партии для обеих копий игры. */
     protected function params(): array {
         return ['per_life' => (bool)$this->attributes['per_life']];
@@ -104,7 +117,7 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
             'collect'     => static::defaultCollect(),
             'size'        => [320, 200],
             'scale'       => 1,
-            'hint'        => static::defaultHint(),
+            'hint'        => self::hint(),
             'big_button'  => 'left',
             'max_time'    => static::defaultMaxTime(),
             'max_events'  => 4000,
@@ -120,7 +133,7 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         $this->attributes['collect']    = self::resolveCollect(static::defaultCollect());
         $this->attributes['size']       = [320, 200];
         $this->attributes['scale']      = 1.0;
-        $this->attributes['hint']       = static::defaultHint();
+        $this->attributes['hint']       = self::hint();
         $this->attributes['big_button'] = 'left';
 
         $this->applyGame($config);
@@ -142,7 +155,7 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         if (isset($config['scale']))       $this->attributes['scale']       = max(0.5, min(4.0, (float)$config['scale']));
         if (isset($config['big_button'])) $this->attributes['big_button'] = $config['big_button'] === 'right' ? 'right' : 'left';
         if (isset($config['hint']) && is_array($config['hint']))
-            $this->attributes['hint'] = array_map('strval', array_intersect_key($config['hint'], ['keys' => 1, 'touch' => 1]))
+            $this->attributes['hint'] = array_map('strval', array_intersect_key($config['hint'], self::hint()))
                 + $this->attributes['hint'];
         if (isset($config['max_time']))    $this->attributes['max_time']    = max(10,  min(600,   (int)$config['max_time']));
         if (isset($config['max_events']))  $this->attributes['max_events']  = max(50,  min(20000, (int)$config['max_events']));

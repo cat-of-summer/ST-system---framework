@@ -1,0 +1,8 @@
+{
+  "name": "@st-captcha/platformer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.js --bundle --format=iife --minify --target=es2017 --legal-comments=none --outfile=dist/game.min.js"
+  }
+}
