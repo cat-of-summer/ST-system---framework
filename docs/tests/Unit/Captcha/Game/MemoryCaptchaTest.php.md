@@ -1,0 +1,1 @@
+# MemoryCaptchaTest.php
