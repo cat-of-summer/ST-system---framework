@@ -13,7 +13,13 @@
     "../Puzzle",
     "../Dino",
     "../Invaders",
-    "../Platformer"
+    "../Platformer",
+    "../Minesweeper",
+    "../Simon",
+    "../Memory",
+    "../FruitNinja",
+    "../Pinball",
+    "../Racing"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

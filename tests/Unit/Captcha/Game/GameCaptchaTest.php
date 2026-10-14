@@ -14,7 +14,7 @@ use ST_system\Tests\TestCase;
  */
 final class GameCaptchaTest extends TestCase {
 
-    private const GAMES = ['snake', 'flappy', 'arkanoid', 'tetris', 'pacman', 'battlecity', 'dino', 'invaders', 'platformer', 'puzzle'];
+    private const GAMES = ['snake', 'flappy', 'arkanoid', 'tetris', 'pacman', 'battlecity', 'dino', 'invaders', 'platformer', 'puzzle', 'minesweeper', 'simon', 'memory', 'fruitninja', 'pinball', 'racing'];
 
     private string $images = '';
 
@@ -203,6 +203,8 @@ final class GameCaptchaTest extends TestCase {
         $this->assertSame([[400, 260], ['cols' => 25, 'rows' => 15]], $layout('platformer', [400, 260]));
         $this->assertSame([[240, 320], ['w' => 120]], $layout('dino', [240, 320]), 'мир не уже 120');
         $this->assertSame([[200, 960], []], $layout('tetris', [100, 2000]), 'размер зажат в 200..960 × 140..960');
+        $this->assertSame([[240, 320], ['cols' => 6, 'rows' => 9, 'mines' => 8]], $layout('minesweeper', [240, 320]), 'вертикальный холст — поле стоя');
+        $this->assertSame([[240, 320], ['w' => 120]], $layout('fruitninja', [240, 320]), 'мир Fruit Ninja не уже 120');
     }
 
     /** @dataProvider gameProvider */

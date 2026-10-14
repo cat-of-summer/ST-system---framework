@@ -31,6 +31,12 @@ use ST_system\View;
  * @method static self dino(mixed $key, array $config = [])
  * @method static self invaders(mixed $key, array $config = [])
  * @method static self platformer(mixed $key, array $config = [])
+ * @method static self minesweeper(mixed $key, array $config = [])
+ * @method static self simon(mixed $key, array $config = [])
+ * @method static self memory(mixed $key, array $config = [])
+ * @method static self fruitninja(mixed $key, array $config = [])
+ * @method static self pinball(mixed $key, array $config = [])
+ * @method static self racing(mixed $key, array $config = [])
  * @method string putCaptcha(array $params = [])
  * @method bool check(mixed $payload)
  * @method array refresh(string $id = '')
@@ -63,6 +69,13 @@ final class CaptchaManager {
             'dino'       => \ST_system\Captcha\Drivers\Game\Dino\DinoCaptchaDriver::class,
             'invaders'   => \ST_system\Captcha\Drivers\Game\Invaders\InvadersCaptchaDriver::class,
             'platformer' => \ST_system\Captcha\Drivers\Game\Platformer\PlatformerCaptchaDriver::class,
+
+            'minesweeper' => \ST_system\Captcha\Drivers\Game\Minesweeper\MinesweeperCaptchaDriver::class,
+            'simon'       => \ST_system\Captcha\Drivers\Game\Simon\SimonCaptchaDriver::class,
+            'memory'      => \ST_system\Captcha\Drivers\Game\Memory\MemoryCaptchaDriver::class,
+            'fruitninja'  => \ST_system\Captcha\Drivers\Game\FruitNinja\FruitNinjaCaptchaDriver::class,
+            'pinball'     => \ST_system\Captcha\Drivers\Game\Pinball\PinballCaptchaDriver::class,
+            'racing'      => \ST_system\Captcha\Drivers\Game\Racing\RacingCaptchaDriver::class,
         ];
 
         return [

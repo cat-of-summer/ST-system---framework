@@ -3,10 +3,10 @@
 namespace ST_system\Captcha\Drivers\Game\Puzzle;
 
 use ST_system\Captcha\Drivers\Game\GameCaptchaDriver;
+use ST_system\Captcha\Drivers\Game\ImageSources;
 use ST_system\Captcha\Drivers\Image\Adapters;
 use ST_system\Captcha\Drivers\Image\Jigsaw;
 use ST_system\Captcha\Drivers\Image\PuzzleAdapterInterface;
-use ST_system\Storage\File;
 
 /**
  * Пазл на столе: картинка разрезана на кусочки настоящей формы (Jigsaw — у каждого стыка свой
@@ -20,6 +20,8 @@ use ST_system\Storage\File;
  * остальные уже стоят на своих местах и закреплены.
  */
 class PuzzleCaptchaDriver extends GameCaptchaDriver {
+
+    use ImageSources;
 
     private const MAX_PIECES = 100;
     private const MAX_BOARD  = 400;
@@ -211,7 +213,7 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
             'params' => ['rows' => $rows, 'cols' => $cols] + ($loose < $n ? ['fixed' => self::fixed($order, $n - $loose)] : []),
             'secret' => ['order' => $order],
             'public' => [
-                'sprite' => 'data:'.self::mime($sprite).';base64,'.base64_encode($sprite),
+                'sprite'  => self::dataUri($sprite),
                 'board'   => [$cw * $cols, $ch * $rows],
                 'bleed'   => $bleed,
                 'density' => self::DENSITY,
@@ -235,13 +237,6 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
         return $fixed;
     }
 
-    private static function mime(string $bytes): string {
-        if (strncmp($bytes, "\xFF\xD8", 2) === 0)                                  return 'image/jpeg';
-        if (strncmp($bytes, 'RIFF', 4) === 0 && substr($bytes, 8, 4) === 'WEBP') return 'image/webp';
-
-        return 'image/png';
-    }
-
     /** Случайная перестановка: в ячейке спрайта k — кусочек order[k]. */
     private static function shuffle(int $n): array {
         $order = range(0, $n - 1);
@@ -263,54 +258,5 @@ class PuzzleCaptchaDriver extends GameCaptchaDriver {
             throw new \InvalidArgumentException('PuzzleCaptchaDriver: order must be a permutation of 0..'.($n - 1));
 
         return $order;
-    }
-
-    /** Локальный путь картинки: URL скачивается (и кешируется) через File::fetch(). */
-    private static function local(File $file): string {
-        return $file->is_uri ? $file->fetch()->getPathname() : $file->getPathname();
-    }
-
-    /** File, путь к файлу или каталогу, URL — по одному или списком. */
-    private function resolveImages($value): array {
-        $images = [];
-        $paths  = [];
-
-        foreach (is_array($value) ? $value : [$value] as $source) {
-            if ($source instanceof File) {
-                $images[] = $source;
-                continue;
-            }
-
-            $source = trim((string)$source);
-            if ($source === '') continue;
-
-            if (filter_var($source, FILTER_VALIDATE_URL)) {
-                $images[] = File::make($source);
-                continue;
-            }
-
-            $absolute = strpos($source, '/') === 0
-                || strpos($source, '~') === 0
-                || preg_match('#^[a-zA-Z]:[\\\\/]#', $source);
-
-            $paths[] = $absolute ? $source : '~/'.ltrim($source, '/\\');
-        }
-
-        if ($paths) {
-            $extensions = [];
-            foreach ((array)$this->attributes['extensions'] as $ext) {
-                $extensions[] = strtolower($ext);
-                $extensions[] = strtoupper($ext);
-            }
-
-            foreach (File::find($paths, [
-                'extension' => array_values(array_unique($extensions)),
-                'recursive' => true,
-                'max_files' => (int)$this->attributes['max_images'],
-            ]) as $file)
-                if ($file instanceof File) $images[] = $file;
-        }
-
-        return array_slice($images, 0, (int)$this->attributes['max_images']);
     }
 }

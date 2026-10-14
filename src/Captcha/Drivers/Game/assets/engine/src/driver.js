@@ -28,10 +28,14 @@ import { keymap } from './keys.js';
  *   icon      — (ctx, x, y, r) значок счёта в HUD
  *   score     — (sim) → число в HUD; по умолчанию sim.reactions
  *   pad       — {dpad: ['up', 'right', 'down', 'left'] | ['left', 'right'] | null, big: bool, repeat: [кнопки]}
+ *               или две половинки крестовины по краям: {zones: {left: ['up', 'down'], right: ['left', 'right']}}
  *   keys      — {клавиша: кнопка | null}: свои клавиши поверх унаследованных от геймпада
+ *   status    — (sim, view) → строка справа в HUD (жизни, раунд, лучший круг); score тоже получает view
  *   pointer   — true: мышь и палец по полю уходят в press/move/up
- *   controls  — (api) → { button(name, down, repeat), key(key, down, repeat), press(x, y), move(x, y),
- *               up(x, y, ok), release() }; button() и key() возвращают true, если ввод взят.
+ *   hover     — true: движение мыши без нажатия тоже уходит в move, уход курсора с поля — в leave()
+ *   over      — (sim) → true, когда партия закончена (все пары, круг пройден): ответ форме сразу
+ *   controls  — (api) → { button(name, down, repeat), key(key, down, repeat), press(x, y, button, kind), move(x, y),
+ *               up(x, y, ok), leave(), release() }; button() и key() возвращают true, если ввод взят.
  */
 
 export const COLORS = {
@@ -73,28 +77,30 @@ const INLINE_CSS = ':host{display:block;outline:none;-webkit-tap-highlight-color
     + '-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;background:' + COLORS.bg + '}';
 
 // Геймпад: две зоны по краям — в одной большая кнопка, в другой крестовина (сторона — cfg.big_button).
-// Портрет — зоны под полем, альбом — по бокам от поля.
+// Портрет — зоны под полем, альбом — по бокам от поля. Колонки сжимаются меньше содержимого, кнопки —
+// по ширине экрана, холст не участвует в размере сцены: на узком телефоне всё помещается целиком.
 const OVERLAY_CSS = ':host{all:initial}'
-    + '.screen{position:fixed;inset:0;box-sizing:border-box;display:grid;gap:12px;'
-    + 'grid-template-columns:1fr 1fr;grid-template-rows:auto minmax(0,1fr) auto;'
+    + '.screen{position:absolute;inset:0;box-sizing:border-box;display:grid;gap:12px;'
+    + 'grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;'
     + 'grid-template-areas:"bar bar" "stage stage" "l r";'
     + 'padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));'
     + 'background:#05080f;touch-action:none;overscroll-behavior:contain;'
     + 'user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;font-family:' + FONT + '}'
     + '.bar{grid-area:bar;display:flex;justify-content:flex-end}'
     + '.close{width:40px;height:40px;border:0;border-radius:50%;background:rgba(255,255,255,.12);color:' + COLORS.text + ';font-size:18px;line-height:40px;padding:0}'
-    + '.stage{grid-area:stage;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0}'
-    + '.stage canvas{display:block;border-radius:10px;touch-action:none;outline:none;background:' + COLORS.bg + '}'
+    + '.stage{grid-area:stage;position:relative;overflow:hidden;min-width:0;min-height:0}'
+    + '.stage canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:block;border-radius:10px;touch-action:none;outline:none;background:' + COLORS.bg + '}'
     + '.zone{align-self:center;display:flex;align-items:center;justify-content:center;min-width:0}'
     + '.zl{grid-area:l;justify-self:start}.zr{grid-area:r;justify-self:end}'
-    + '.dpad{display:grid;gap:6px;grid-template:repeat(3,58px)/repeat(3,58px)}'
-    + '.dpad.h{grid-template:68px/repeat(2,76px);gap:12px}'
+    + '.dpad{display:grid;gap:6px;grid-template:repeat(3,min(58px,15vw))/repeat(3,min(58px,15vw))}'
+    + '.dpad.h{grid-template:min(68px,18vw)/repeat(2,min(76px,20vw));gap:12px}'
+    + '.dpad.v{grid-template:repeat(2,min(68px,18vw))/min(76px,20vw);gap:12px}'
     + '.btn{box-sizing:border-box;border:0;border-radius:14px;padding:0;background:rgba(255,255,255,.14);'
     + 'color:' + COLORS.text + ';font:600 22px/1 ' + FONT + ';touch-action:none;display:flex;align-items:center;justify-content:center;pointer-events:auto}'
     + '.btn.on{background:rgba(52,211,153,.55)}'
     + '.up{grid-area:1/2}.left{grid-area:2/1}.right{grid-area:2/3}.down{grid-area:3/2}'
-    + '.h .left{grid-area:1/1}.h .right{grid-area:1/2}'
-    + '.big{width:108px;height:108px;border-radius:50%}'
+    + '.h .left{grid-area:1/1}.h .right{grid-area:1/2}.v .up{grid-area:1/1}.v .down{grid-area:2/1}'
+    + '.big{width:min(108px,28vw);height:min(108px,28vw);border-radius:50%}'
     + '.big::after{content:"";width:30px;height:30px;border-radius:50%;background:' + COLORS.text + '}'
     + '@media (orientation:landscape){'
     + '.screen{grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto minmax(0,1fr);grid-template-areas:"bar bar bar" "l stage r"}}';
@@ -308,8 +314,14 @@ function mount(driver, spec) {
         else pending = [code, value];
     }
 
+    /** Ход от игры — сразу; отложенный ввод, ещё не дошедший до тика, им отменяется. */
+    function recordNow(code, value) {
+        pending = null;
+        record(code, value);
+    }
+
     const controls = spec.controls({
-        record:  record,
+        record:  recordNow,
         queue:   queue,
         sim:     function () { return sim; },
         started: function () { return started; },
@@ -349,8 +361,8 @@ function mount(driver, spec) {
                 sim.advance();
                 died();
 
-                // Данных достаточно или время вышло — ответ форме, решает сервер.
-                if ((!spec.open && collectMet(sim, collect, tps)) || sim.tick >= maxTicks) { finish(); break; }
+                // Данных достаточно, партия закончена или время вышло — ответ форме, решает сервер.
+                if ((!spec.open && collectMet(sim, collect, tps)) || (spec.over && spec.over(sim)) || sim.tick >= maxTicks) { finish(); break; }
             }
         }
 
@@ -403,14 +415,14 @@ function mount(driver, spec) {
         };
 
         (controls.render || spec.render)(ctx, sim, view);
-        hud();
+        hud(view);
         setPhase(currentPhase());
         overlayScreen(view);
     }
 
     /** Значок и счёт. Цели здесь нет — её знает только сервер; у пазла своя шкала (spec.progress). */
-    function hud() {
-        const text = spec.progress ? spec.progress(sim).join(' / ') : String(spec.score ? spec.score(sim) : sim.reactions);
+    function hud(view) {
+        const text = spec.progress ? spec.progress(sim).join(' / ') : String(spec.score ? spec.score(sim, view) : sim.reactions);
 
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
         ctx.fillRect(0, 0, W, HUD);
@@ -422,6 +434,12 @@ function mount(driver, spec) {
         ctx.textBaseline = 'middle';
         ctx.textAlign    = 'left';
         ctx.fillText(text, 22, HUD / 2 + 1);
+
+        const status = spec.status ? spec.status(sim, view) : '';
+        if (status) {
+            ctx.textAlign = 'right';
+            ctx.fillText(String(status), W - 8, HUD / 2 + 1);
+        }
     }
 
     // Кнопки на поле — круг R и знак внутри, в одном стиле: старт, перезапуск, готово.
@@ -677,14 +695,28 @@ function mount(driver, spec) {
 
         try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
 
-        if (controls.press) controls.press(p[0], p[1]);
+        if (controls.press) controls.press(p[0], p[1], e.button | 0, e.pointerType || 'mouse');
     });
 
+    /** Курсор над полем без нажатия (spec.hover): только мышь и только в идущей партии. */
+    function hovering(e) {
+        return spec.hover && e.pointerType === 'mouse' && !done && !paused && !starting && !startable();
+    }
+
     canvas.addEventListener('pointermove', function (e) {
-        if (!e.isTrusted || !pointer) return;
+        if (!e.isTrusted || !(pointer || hovering(e))) return;
 
         const p = at(e);
         if (controls.move) controls.move(p[0], p[1]);
+    });
+
+    canvas.addEventListener('pointerleave', function (e) {
+        if (e.isTrusted && !pointer && e.pointerType === 'mouse' && spec.hover && controls.leave) controls.leave();
+    });
+
+    // Правая кнопка у игр с жестами — ход (флажок сапёра), а не меню браузера.
+    canvas.addEventListener('contextmenu', function (e) {
+        if (spec.pointer) e.preventDefault();
     });
 
     function release(e) {
@@ -728,6 +760,16 @@ function mount(driver, spec) {
             dpad.forEach(function (name) { cross.append(padButton(name, 'btn ' + name, ARROWS[name])); });
             (bigLeft ? right : left).append(cross);
         }
+
+        // Две половинки крестовины по краям: вверх-вниз — столбиком, влево-вправо — в ряд.
+        const zones = pad.zones || {};
+        [['left', left], ['right', right]].forEach(function (z) {
+            const names = zones[z[0]] || [];
+            if (!names.length) return;
+            const half = el('div', 'dpad ' + (names.indexOf('up') >= 0 || names.indexOf('down') >= 0 ? 'v' : 'h'));
+            names.forEach(function (name) { half.append(padButton(name, 'btn ' + name, ARROWS[name])); });
+            z[1].append(half);
+        });
 
         if (pad.big) (bigLeft ? left : right).append(padButton('big', 'btn big', ''));
 
@@ -842,6 +884,29 @@ function mount(driver, spec) {
         };
     }
 
+    /**
+     * Оверлей — ровно по видимой области экрана (visualViewport), а не по position: fixed: если
+     * страница шире телефона, раскладочная область шире видимой, и игра с геймпадом уехала бы за край.
+     */
+    function fitOverlay() {
+        if (!expanded || !overlay) return;
+
+        const vv = window.visualViewport, st = overlay.host.style;
+        if (!vv) return;
+
+        st.left   = vv.offsetLeft + 'px';
+        st.top    = vv.offsetTop + 'px';
+        st.width  = vv.width + 'px';
+        st.height = vv.height + 'px';
+        st.right  = st.bottom = 'auto';
+        layout();
+    }
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', fitOverlay);
+        window.visualViewport.addEventListener('scroll', fitOverlay);
+    }
+
     function expand() {
         if (expanded) return;
         if (!overlay) overlay = buildOverlay();
@@ -854,6 +919,7 @@ function mount(driver, spec) {
 
         expanded = true;
         paused   = false;
+        fitOverlay();
         layout();
     }
 

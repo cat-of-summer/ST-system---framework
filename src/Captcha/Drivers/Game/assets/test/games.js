@@ -25,6 +25,12 @@ export const GAMES = {
     dino:       { dir: 'Dino',       cls: 'DinoSim',       tps: 30, goal: 3, codes: [0], layout: { w: 267 } },
     invaders:   { dir: 'Invaders',   cls: 'InvadersSim',   tps: 30, goal: 3, codes: [0, 1], values: [11, 345], layout: { w: 356 } },
     platformer: { dir: 'Platformer', cls: 'PlatformerSim', tps: 30, goal: 1, codes: [1, 3, 4, 5], layout: { cols: 20, rows: 11 } },
+    minesweeper: { dir: 'Minesweeper', cls: 'MinesweeperSim', tps: 10, goal: 6, maxTime: 60, codes: [0, 1, 2], values: [0, 54], layout: { cols: 9, rows: 6, mines: 8 } },
+    simon:      { dir: 'Simon', cls: 'SimonSim', tps: 20, goal: 9, maxTime: 60, collect: false, codes: [0], values: [0, 4], layout: { buttons: 4, rounds: 2 } },
+    memory:     { dir: 'Memory', cls: 'MemorySim', tps: 10, goal: 8, goalRatio: 50, maxTime: 90, collect: false, codes: [0], values: [0, 16], layout: { pairs: 8, lives: 4, show: 50 } },
+    fruitninja: { dir: 'FruitNinja', cls: 'FruitNinjaSim', tps: 30, goal: 6, codes: [0, 0, 0, 0, 1], values: [0, 267 * 160], layout: { w: 267 } },
+    pinball:    { dir: 'Pinball', cls: 'PinballSim', tps: 60, goal: 3, goalRatio: 70, maxTime: 40, codes: [0, 1, 2, 3, 4, 5] },
+    racing:     { dir: 'Racing', cls: 'RacingSim', tps: 30, goal: 8, maxTime: 90, collect: false, codes: [0], values: [0, 16], layout: { laps: 1 } },
     puzzle: {
         dir: 'Puzzle', cls: 'PuzzleSim', tps: 10, goal: 9, goalRatio: 0, collect: false, maxTime: 60, required: true,
         codes: [0, 1], values: [0, 9 * 128],
@@ -60,12 +66,18 @@ const OWN = {
     dino:       { actions: 4,  quality: [0.45, 0.80] },
     invaders:   { actions: 16, quality: [0.50, 0.80] },
     platformer: { actions: 8,  quality: [0.55, 0.80] },
+    minesweeper: { time: 12, actions: 6, quality: [0.45, 0.85] },
+    simon:      { quality: [0.45, 0.85] },
+    memory:     { quality: [0.25, 0.65] },
+    fruitninja: { actions: 6, quality: [0.40, 0.80] },
+    pinball:    { time: 15, actions: 8, quality: [0.55, 0.90] },
+    racing:     { quality: [0.60, 0.90] },
 };
 
 /** Порог сбора данных, как его отдаёт браузеру PHP; null — порога нет (пазл). */
 export function collectFor(name) {
     if (GAMES[name] && GAMES[name].collect === false) return null;
-    return { time: COLLECT.time, actions: (OWN[name] || {}).actions || COLLECT.actions };
+    return { time: (OWN[name] || {}).time || COLLECT.time, actions: (OWN[name] || {}).actions || COLLECT.actions };
 }
 
 /** Доли осмысленных действий: [случайные нажатия, человек] — оценка осмысленности 0 и 1. */

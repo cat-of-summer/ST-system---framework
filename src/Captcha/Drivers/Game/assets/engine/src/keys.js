@@ -10,9 +10,11 @@ export const BUTTON_KEYS = {
     big:   [' ', 'Enter'],
 };
 
-/** Кнопки геймпада игры: крестовина (полная или часть) и большая кнопка. */
+/** Кнопки геймпада игры: крестовина (полная, часть или две половинки по краям) и большая кнопка. */
 export function padButtons(pad) {
     const out = (pad && pad.dpad ? pad.dpad : []).slice();
+    const zones = (pad && pad.zones) || {};
+    for (const side of ['left', 'right']) for (const name of zones[side] || []) out.push(name);
     if (pad && pad.big) out.push('big');
     return out;
 }

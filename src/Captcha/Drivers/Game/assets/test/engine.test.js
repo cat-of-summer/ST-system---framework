@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Rng, idiv } from '../engine/src/rng.js';
 import { Sim, START, replay, goalMet, taskScore, collectMet } from '../engine/src/sim.js';
 import { crc32 } from '../engine/src/digest.js';
+import { isin, icos, isqrt, iatan2, adiff } from '../engine/src/imath.js';
 
 /** Пробная игра: 1 — очко, 2 — смерть, 3 — осмысленное действие, 4 — бессмысленное. */
 class Probe extends Sim {
@@ -173,4 +174,18 @@ test('state(): база, счётчики и состояние игры', funct
     assert.deepEqual(sim.state().slice(0, 7), [0, 0, 0, 0, 0, 1, 1]);
     assert.equal(sim.state()[7], sim.rng.s);
     assert.deepEqual(sim.state().slice(8), [1, 0]);
+});
+
+test('imath: синус из таблицы, корень, угол вектора', function () {
+    assert.deepEqual([isin(0), isin(64), isin(128), isin(192), isin(256 + 64), isin(-64)], [0, 1024, 0, -1024, 1024, -1024]);
+    assert.equal(icos(0), 1024);
+    assert.equal(isin(32), 724, 'sin 45° ×1024');
+
+    for (const n of [0, 1, 2, 15, 16, 17, 99, 100, 123456789, 1e12]) assert.equal(isqrt(n), Math.floor(Math.sqrt(n)), 'isqrt ' + n);
+
+    for (let a = 0; a < 256; a++) assert.equal(iatan2(isin(a) * 100, icos(a) * 100), a, 'угол ' + a);
+    assert.deepEqual([iatan2(0, 5), iatan2(5, 0), iatan2(0, -5), iatan2(-5, 0), iatan2(0, 0)], [0, 64, 128, 192, 0]);
+
+    assert.equal(adiff(250, 5), 11, 'через ноль — короткой дорогой');
+    assert.equal(adiff(5, 250), -11);
 });
