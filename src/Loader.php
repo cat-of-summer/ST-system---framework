@@ -158,10 +158,10 @@ final class Loader {
                     $relative = $class_name;
                 }
 
-                $file = $directory->make(str_replace('\\', '/', $relative) . '.php');
+                $path = rtrim($directory->getDirectory(), '/') . '/' . str_replace('\\', '/', $relative) . '.php';
 
-                if ($file->exists())
-                    require_once $file->getPathname();
+                if (is_file($path))
+                    require_once $path;
             }, $config['throw'], $config['prepend']);
 
             $directories_map[$mapKey] = true;
