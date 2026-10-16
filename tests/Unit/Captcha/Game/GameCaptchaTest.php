@@ -14,7 +14,7 @@ use ST_system\Tests\TestCase;
  */
 final class GameCaptchaTest extends TestCase {
 
-    private const GAMES = ['snake', 'flappy', 'arkanoid', 'tetris', 'pacman', 'battlecity', 'dino', 'invaders', 'platformer', 'puzzle', 'minesweeper', 'simon', 'memory', 'fruitninja', 'pinball', 'racing'];
+    private const GAMES = ['snake', 'flappy', 'arkanoid', 'tetris', 'pacman', 'battlecity', 'dino', 'invaders', 'platformer', 'puzzle', 'minesweeper', 'simon', 'memory', 'fruitninja', 'pinball', 'racing', 'asteroids'];
 
     private string $images = '';
 

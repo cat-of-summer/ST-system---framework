@@ -19,7 +19,8 @@
     "../Memory",
     "../FruitNinja",
     "../Pinball",
-    "../Racing"
+    "../Racing",
+    "../Asteroids"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

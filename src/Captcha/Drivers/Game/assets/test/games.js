@@ -31,6 +31,7 @@ export const GAMES = {
     fruitninja: { dir: 'FruitNinja', cls: 'FruitNinjaSim', tps: 30, goal: 6, codes: [0, 0, 0, 0, 1], values: [0, 267 * 160], layout: { w: 267 } },
     pinball:    { dir: 'Pinball', cls: 'PinballSim', tps: 60, goal: 3, goalRatio: 70, maxTime: 40, codes: [0, 1, 2, 3, 4, 5] },
     racing:     { dir: 'Racing', cls: 'RacingSim', tps: 30, goal: 8, maxTime: 90, collect: false, codes: [0], values: [0, 16], layout: { laps: 1 } },
+    asteroids:  { dir: 'Asteroids', cls: 'AsteroidsSim', tps: 30, goal: 4, codes: [0, 0, 1, 2], values: [0, 150], layout: { w: 267 } },
     puzzle: {
         dir: 'Puzzle', cls: 'PuzzleSim', tps: 10, goal: 9, goalRatio: 0, collect: false, maxTime: 60, required: true,
         codes: [0, 1], values: [0, 9 * 128],
@@ -72,6 +73,7 @@ const OWN = {
     fruitninja: { actions: 6, quality: [0.40, 0.80] },
     pinball:    { time: 15, actions: 8, quality: [0.55, 0.90] },
     racing:     { quality: [0.60, 0.90] },
+    asteroids:  { quality: [0.50, 0.85] },
 };
 
 /** Порог сбора данных, как его отдаёт браузеру PHP; null — порога нет (пазл). */

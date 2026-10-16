@@ -25,11 +25,12 @@
 | `fruitninja` | [Fruit Ninja](FruitNinja/FruitNinjaCaptchaDriver.php.md): разрезать фигуры | разрезана фигура | 6 | 30 |
 | `pinball` | [Pinball](Pinball/PinballCaptchaDriver.php.md) | мяч отбит флиппером | 3 | 60 |
 | `racing` | [Racing](Racing/RacingCaptchaDriver.php.md): круг на время | пройден чекпоинт | все за `laps` кругов (8) | 30 |
+| `asteroids` | [Астероиды](Asteroids/AsteroidsCaptchaDriver.php.md): ракета против астероидов | сбит астероид или увёрт от него | 4 | 30 |
 | `puzzle` | [Пазл](Puzzle/PuzzleCaptchaDriver.php.md) из ваших картинок | кусочек на своём месте | все | 10 |
 
 Поле каждой игры подстраивается под размер холста `size`: сетка змейки, лабиринт пакмана, поле
 танков и экран платформера получают столько клеток, сколько помещается; мир Flappy Bird,
-арканоида, DinoRun, Space Invaders и Fruit Ninja - ширину под пропорции; тетрис, пазл и сапёр подбирают размер клетки, у сапёра на вертикальном холсте поле встаёт длинной стороной вниз; круг Simon вписан в игровую зону, карточки Memory раскладываются столбцами, при которых они крупнее; стол пинбола фиксированный и вписывается по высоте; трасса гонки больше экрана - камера следует за машиной. Как именно - на странице игры.
+арканоида, DinoRun, Space Invaders, Fruit Ninja и астероидов - ширину под пропорции; тетрис, пазл и сапёр подбирают размер клетки, у сапёра на вертикальном холсте поле встаёт длинной стороной вниз; круг Simon вписан в игровую зону, карточки Memory раскладываются столбцами, при которых они крупнее; стол пинбола фиксированный и вписывается по высоте; трасса гонки больше экрана - камера следует за машиной. Как именно - на странице игры.
 
 ```php
 $captcha = CaptchaManager::snake('contacts', ['goal' => 3, 'size' => [400, 240]]);
@@ -273,8 +274,8 @@ npm test        # JS-тесты + фикстуры tests/Fixtures/Captcha/Game/<
    осмысленное действие - `this.intent(good)`.
 3. `<Игра>Simulation.php` - то же на PHP.
 4. `src/index.js` - `createDriver({name, Sim, render, icon, pad, controls})`:
-   - `pad: {dpad: ['up', 'right', 'down', 'left'] | ['left', 'right'], big: true, repeat: [...]}` -
-     нужные кнопки; `pad: {zones: {left: ['up', 'down'], right: ['left', 'right']}}` - две
+   - `pad: {dpad: ['up', 'right', 'down', 'left'] | ['left', 'right'] | ['up', 'down'], big: true, repeat: [...]}` -
+     нужные кнопки; из двух кнопок вверх-вниз встают столбиком, влево-вправо - в ряд; `pad: {zones: {left: ['up', 'down'], right: ['left', 'right']}}` - две
      половинки крестовины по краям, под два больших пальца (Racing);
    - `controls(api).button(name, down, repeat)` получает `up | right | down | left | big` и
      возвращает `true`, если кнопка взята;

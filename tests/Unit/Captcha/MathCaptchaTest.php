@@ -191,7 +191,7 @@ final class MathCaptchaTest extends TestCase {
         foreach (['text', 'math', 'checkbox', 'swipe', 'puzzle'] as $name)
             $this->assertTrue(CaptchaManager::config('drivers.available.'.$name)::required(), $name);
 
-        foreach (['snake', 'flappy', 'arkanoid', 'tetris', 'pacman', 'battlecity', 'dino', 'invaders', 'platformer', 'minesweeper', 'simon', 'memory', 'fruitninja', 'pinball', 'racing'] as $name)
+        foreach (['snake', 'flappy', 'arkanoid', 'tetris', 'pacman', 'battlecity', 'dino', 'invaders', 'platformer', 'minesweeper', 'simon', 'memory', 'fruitninja', 'pinball', 'racing', 'asteroids'] as $name)
             $this->assertFalse(CaptchaManager::config('drivers.available.'.$name)::required(), $name);
     }
 

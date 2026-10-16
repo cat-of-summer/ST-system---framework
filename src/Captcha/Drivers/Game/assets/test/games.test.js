@@ -17,6 +17,7 @@ import { FruitNinjaSim, FP as NFP, H as NH, G as NG, PACK, MAXSEG, LIVES as NLIV
 import { PinballSim, FP as PBFP, FLIPPERS as PBFLIP, BALL0, CHARGE as PBCHARGE, BUMPER_ZONE, BUMPER_GAP, BUMP_POINTS, WINDOW as PBWINDOW } from '../../Pinball/src/sim.js';
 import { RacingSim, FP as RFP, N as RN, ROAD as RROAD, WALL as RWALL, CHECKS as RCHECKS, UP as RUP, LEFT as RLEFT, RIGHT as RRIGHT, DOWN as RDOWN } from '../../Racing/src/sim.js';
 import { bot as racingBot } from '../../Racing/test/bot.js';
+import { AsteroidsSim, FP as AFP_, N as AN, RX as ARX, NOSE as ANOSE, SHOT as ASHOT, FIRE as AFIRE, DANGER as ADANGER, YMIN as AYMIN, YMAX as AYMAX, HIT as AHIT, SHRINK as ASHRINK, BOOM as ABOOM, DODGE as ADODGE, tierOf, reachOf, overlap } from '../../Asteroids/src/sim.js';
 import { SimonSim, FIRST, WAIT, SHOW, INPUT, DONE, PAUSE, SUCCESS, TIMEOUT, onTicks, offTicks } from '../../Simon/src/sim.js';
 import { START } from '../engine/src/sim.js';
 
@@ -1573,4 +1574,149 @@ test('Racing: руль в сторону поворота трассы — ос�
     sim.input(0, 0);
     sim.input(0, RUP);
     assert.equal(sim.acts - acts, 2, 'газ — не действие');
+});
+
+// --- Asteroids ------------------------------------------------------------------------------------
+
+/** Партия без своих астероидов: на поле только те, что положил тест (rock()). */
+function asteroids() {
+    const sim = new AsteroidsSim(1, { w: 267 });
+    sim.input(START);
+    sim.next = 1e9;
+    return sim;
+}
+
+/** Ровный астероид (все вершины на 14/16 радиуса) в точке (x, y) единиц мира, неподвижный, если не сказано иначе. */
+function rock(sim, x, y, hp, extra) {
+    const a = Object.assign({
+        id: sim.ids++, x: x * AFP_, y: y * AFP_, vx: 0, vy: 0, rot: 0, spin: 0, hp: hp, tier: tierOf(hp),
+        m: new Array(AN).fill(14), j: new Array(AN).fill(0), seen: 0, threat: 0, py: 0, ty: 0, passed: 0,
+    }, extra || {});
+    sim.rocks.push(a);
+    return a;
+}
+
+test('Asteroids: контуры — касание ребром и вершина внутри пересекаются, зазор в единицу — нет', function () {
+    const square = function (x, y, s) { return [[x, y], [x + s, y], [x + s, y + s], [x, y + s]]; };
+
+    assert.ok(overlap(square(0, 0, 10), square(10, 0, 10)), 'общее ребро');
+    assert.ok(overlap(square(0, 0, 10), square(10, 10, 10)), 'общая вершина');
+    assert.ok(overlap(square(0, 0, 10), [[5, 5], [30, 4], [30, 6]]), 'вершина внутри');
+    assert.ok(overlap(square(0, 0, 10), square(2, 2, 3)), 'целиком внутри — без пересечения рёбер');
+    assert.ok(!overlap(square(0, 0, 10), square(11, 0, 10)), 'зазор');
+    assert.ok(!overlap(square(0, 0, 10), [[11, 5], [20, -5], [20, 15]]), 'треугольник носом к ребру, не доходя');
+});
+
+test('Asteroids: пуля — отрезок пути за тик, тонкий контур между концами не проскакивает', function () {
+    const thin = [[104, 0], [105, 0], [105, 20], [104, 20]];
+
+    assert.equal(AsteroidsSim.entry(thin, 100, 109, 10), 104, 'первая точка контура на пути');
+    assert.equal(AsteroidsSim.entry(thin, 106, 115, 10), -1, 'уже позади');
+    assert.equal(AsteroidsSim.entry(thin, 104, 113, 10), 104, 'начало на контуре');
+    assert.equal(AsteroidsSim.entry(thin, 100, 109, 25), -1, 'выше контура');
+});
+
+test('Asteroids: ХП 6–10 — большой, 3–5 — средний, 1–2 — маленький; на пороге новый контур, на нуле взрыв и очко', function () {
+    const sim = asteroids(), a = rock(sim, 150, 75, 10);
+    const tiers = [];
+
+    for (let i = 0; i < 9; i++) {
+        sim.damage(a, a.x, a.y);
+        tiers.push(a.tier);
+    }
+    assert.deepEqual(tiers, [2, 2, 2, 2, 1, 1, 1, 0, 0]);
+    assert.ok(reachOf(0) < reachOf(1) && reachOf(1) < reachOf(2));
+    assert.equal(sim.events.filter(function (e) { return e[1] === ASHRINK; }).length, 2, 'обломился дважды');
+    assert.notDeepEqual(a.m, new Array(AN).fill(14), 'неровности разыграны заново');
+    assert.equal(sim.reactions, 0);
+
+    sim.damage(a, a.x, a.y);
+    assert.equal(sim.reactions, 1);
+    assert.equal(sim.events[sim.events.length - 1][1], ABOOM);
+});
+
+test('Asteroids: пули по астероиду на линии огня снимают ХП, пока он не разлетится', function () {
+    const sim = asteroids(), a = rock(sim, 150, sim.y / AFP_, 7);
+    sim.input(1);
+
+    for (let t = 0; t < 120 && sim.rocks.length; t++) sim.advance();
+    assert.equal(sim.rocks.length, 0, 'сбит');
+    assert.equal(sim.reactions, 1);
+    assert.equal(sim.events.filter(function (e) { return e[1] === AHIT && e[4] === a.id; }).length > 0, true);
+});
+
+test('Asteroids: зажатый огонь — выстрел раз в FIRE тиков, отпущенный — ни одного', function () {
+    const sim = asteroids();
+    let fired = 0, last = 0;
+    const count = function () {
+        for (const s of sim.shots) if (s[0] === (ARX + ANOSE + ASHOT) * AFP_) fired++;
+    };
+
+    sim.input(1);
+    for (let t = 0; t < AFIRE * 3; t++) { sim.advance(); count(); }
+    assert.equal(fired, 3);
+
+    sim.input(2);
+    last = fired;
+    for (let t = 0; t < AFIRE * 3; t++) { sim.advance(); count(); }
+    assert.equal(fired, last);
+});
+
+test('Asteroids: увёрт — астероид шёл в ракету, она ушла на MOVED и больше; мимо без угрозы — не очко', function () {
+    const sim = asteroids();
+    rock(sim, ARX + ANOSE + ADANGER + 10, sim.y / AFP_, 5, { vx: -2 * AFP_ });
+
+    while (!sim.rocks[0].seen) sim.advance();
+    assert.equal(sim.rocks[0].threat, 1, 'прогноз — удар');
+
+    sim.input(0, AYMIN);
+    for (let t = 0; t < 150 && sim.rocks.length; t++) sim.advance();
+    assert.equal(sim.dead, 0);
+    assert.equal(sim.reactions, 1);
+    assert.ok(sim.events.some(function (e) { return e[1] === ADODGE; }));
+
+    const calm = asteroids();
+    calm.y = calm.target = AYMIN * AFP_;
+    rock(calm, ARX + ANOSE + ADANGER + 10, AYMAX - 25, 5, { vx: -2 * AFP_ });
+    for (let t = 0; t < 150 && calm.rocks.length; t++) calm.advance();
+    assert.equal(calm.rocks.length, 0, 'улетел');
+    assert.equal(calm.reactions, 0);
+});
+
+test('Asteroids: контур задел ракету — смерть, новая жизнь — счёт с нуля', function () {
+    const sim = asteroids();
+    sim.reactions = sim.peak = 2;
+    // Средний, вершины на 14/16 от 13: левая вершина (k = 5, угол 128) — на оси ракеты, в 0,625 от носа.
+    rock(sim, ARX + ANOSE + 12, sim.y / AFP_, 5);
+    sim.advance();
+    assert.equal(sim.dead, 0, 'вершина не дошла до носа');
+
+    sim.rocks[0].x -= AFP_;
+    sim.advance();
+    assert.ok(sim.dead > 0);
+    assert.equal(sim.reactions, 0);
+    assert.equal(sim.peak, 2);
+
+    run(sim, sim.dead);
+    assert.equal(sim.idle, 1);
+    assert.deepEqual([sim.rocks.length, sim.shots.length, sim.firing], [0, 0, 0]);
+});
+
+test('Asteroids: огонь по астероиду на линии — осмысленно, в пустоту — нет; под угрозой осмысленно уйти из полосы удара', function () {
+    const sim = asteroids();
+    sim.input(1);
+    assert.deepEqual([sim.acts, sim.good], [1, 0], 'в пустоту');
+    sim.input(2);
+
+    rock(sim, 150, sim.y / AFP_, 5);
+    sim.input(1);
+    assert.deepEqual([sim.acts, sim.good], [2, 1], 'по астероиду');
+    sim.input(1);
+    assert.equal(sim.acts, 2, 'огонь уже включён — не новое действие');
+
+    sim.rocks[0].threat = 1;
+    sim.rocks[0].py = sim.y;
+    sim.input(0, sim.y / AFP_ + 2);
+    sim.input(0, AYMIN);
+    assert.deepEqual([sim.acts, sim.good], [4, 2], 'в полосе удара — нет, за ней — да');
 });

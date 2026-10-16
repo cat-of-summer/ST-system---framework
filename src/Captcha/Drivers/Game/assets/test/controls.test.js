@@ -10,6 +10,8 @@ import { memoryControls, layout as memoryLayout, ASPECT as MEMORY_ASPECT } from 
 import { fruitControls } from '../../FruitNinja/src/controls.js';
 import { pinballControls } from '../../Pinball/src/controls.js';
 import { racingControls } from '../../Racing/src/controls.js';
+import { asteroidsControls } from '../../Asteroids/src/controls.js';
+import { AsteroidsSim, FP as ASTEROIDS_FP, YMIN as ASTEROIDS_YMIN, YMAX as ASTEROIDS_YMAX } from '../../Asteroids/src/sim.js';
 import { PACK as FRUIT_PACK } from '../../FruitNinja/src/sim.js';
 import { HUD } from '../engine/src/driver.js';
 
@@ -510,4 +512,57 @@ test('Racing: крестовина — маска зажатых кнопок п
     c.release();
 
     assert.deepEqual(api.sent, [[0, 1], [0, 9], [0, 1], [0, 3], [0, 0]]);
+});
+
+// --- Asteroids ------------------------------------------------------------------------------------
+
+/** api, у которого лог сразу уходит в настоящую симуляцию: управление смотрит на sim.firing. */
+function asteroidsApi() {
+    const sim = new AsteroidsSim(1, {});
+    const api = fakeApi(sim);
+    const record = api.record;
+    api.record = function (code, value) { record(code, value); sim.input(code, value); };
+    return api;
+}
+
+test('Asteroids: ▲ ▼ — нажатие к краю, отпускание — стоп там, где ракета; автоповтор ничего не шлёт', function () {
+    const api = asteroidsApi();
+    const c   = asteroidsControls(api);
+    const sim = api.sim();
+
+    c.button('up', true, false);
+    c.button('up', true, true);
+    sim.y = 40 * ASTEROIDS_FP;
+    c.button('up', false, false);
+    c.button('down', true, false);
+    assert.equal(c.button('left', true, false), false, 'влево у ракеты нет');
+
+    assert.deepEqual(api.sent, [[0, ASTEROIDS_YMIN], [0, 40], [0, ASTEROIDS_YMAX]]);
+});
+
+test('Asteroids: большая кнопка — огонь на нажатие, стоп на отпускание; после смерти новое нажатие включает снова', function () {
+    const api = asteroidsApi();
+    const c   = asteroidsControls(api);
+    const sim = api.sim();
+
+    c.button('big', true, false);
+    c.button('big', true, true);
+    c.button('big', false, false);
+    assert.deepEqual(api.sent, [[1], [2]]);
+
+    c.button('big', true, false);
+    sim.firing = 0;
+    c.button('big', true, false);
+    assert.deepEqual(api.sent.slice(2), [[1], [1]]);
+});
+
+test('Asteroids: потеря фокуса — огонь выключен, ракета стоит', function () {
+    const api = asteroidsApi();
+    const c   = asteroidsControls(api);
+
+    c.button('down', true, false);
+    c.button('big', true, false);
+    c.release();
+    c.release();
+    assert.deepEqual(api.sent, [[0, ASTEROIDS_YMAX], [1], [2], [0, Math.round(api.sim().y / ASTEROIDS_FP)]]);
 });

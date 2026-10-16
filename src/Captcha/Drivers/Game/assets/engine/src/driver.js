@@ -756,7 +756,8 @@ function mount(driver, spec) {
         close.addEventListener('click', collapse);
 
         if (dpad.length) {
-            const cross = el('div', 'dpad' + (dpad.length === 2 ? ' h' : ''));
+            // Две кнопки: вверх-вниз — столбиком, влево-вправо — в ряд.
+            const cross = el('div', 'dpad' + (dpad.length === 2 ? (dpad.indexOf('up') >= 0 ? ' v' : ' h') : ''));
             dpad.forEach(function (name) { cross.append(padButton(name, 'btn ' + name, ARROWS[name])); });
             (bigLeft ? right : left).append(cross);
         }
