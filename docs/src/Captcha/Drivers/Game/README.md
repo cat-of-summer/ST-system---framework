@@ -4,6 +4,7 @@
 ## Папки
 
 - [Arkanoid](Arkanoid/)
+- [Asteroids](Asteroids/)
 - [BattleCity](BattleCity/)
 - [Dino](Dino/)
 - [Flappy](Flappy/)
