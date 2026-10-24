@@ -100,16 +100,18 @@
 
 ## Примеры использования
 
+Относительный путь считается от файла, из которого вызван `Loader` (`Main::caller()`, см. [Main](Main.php.md)): `__DIR__` не нужен, на какой бы глубине стека ни прошёл вызов через сам фреймворк.
+
 ```php
 // Строгое подключение обязательного файла — fatal error при отсутствии/ошибке
-Loader::require(__DIR__ . '/bootstrap.php');
+Loader::require('bootstrap.php');
 
 // Мягкое, отказоустойчивое подключение всех файлов из директории:
 // синтаксически неверные или падающие с исключением файлы будут молча пропущены
-Loader::include_once(__DIR__ . '/plugins/*.php');
+Loader::include_once('plugins/*.php');
 
 // Директорийная автозагрузка с namespace-префиксом (PSR-4-подобно)
-Loader::registerDir(__DIR__ . '/src', [
+Loader::registerDir('src', [
     'prefix'  => 'My\\Namespace',
     'prepend' => false,
     'throw'   => true,
@@ -120,7 +122,7 @@ Loader::registerClass('MyClass', 'classes/MyClass', 'My\\Namespace');
 
 // Инстанс, привязанный к конкретному файлу — require без аргументов
 // подключает именно этот файл
-Loader::create(__DIR__ . '/config.php')->require();
+Loader::create('config.php')->require();
 ```
 
 ## Приватные методы

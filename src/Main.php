@@ -335,12 +335,54 @@ final class Main {
         return $out;
     }
 
+    /**
+     * Место вызова: первый кадр стека, файл которого вне фреймворка (src/) и вне $skip.
+     * file и line - строка, откуда вызвали function (class, type - её класс, -> или ::).
+     *
+     * depth - индекс кадра в стеке: с него Debug::backtrace() начинает цепочку.
+     *
+     * @param string[]   $skip  каталоги (всё внутри) и файлы, которые тоже пропускаются: обёртки
+     *                          проекта вокруг фреймворка, например глобальные хелперы
+     * @param array|null $trace готовый debug_backtrace(), иначе снимается здесь
+     * @return array{file: string, line: int, function: string, class: ?string, type: ?string, depth: int}|null
+     */
+    public static function caller(array $skip = [], ?array $trace = null): ?array {
+        $paths = [str_replace('\\', '/', __DIR__)];
+        foreach ($skip as $path) $paths[] = rtrim(str_replace('\\', '/', (string)$path), '/');
+
+        foreach ($trace ?? debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS) as $depth => $frame) {
+            $file = str_replace('\\', '/', (string)($frame['file'] ?? ''));
+            if ($file === '') continue;
+
+            foreach ($paths as $path)
+                if ($file === $path || strncmp($file, $path.'/', strlen($path) + 1) === 0) continue 2;
+
+            return [
+                'file'     => $file,
+                'line'     => (int)($frame['line'] ?? 0),
+                'function' => (string)($frame['function'] ?? ''),
+                'class'    => $frame['class'] ?? null,
+                'type'     => $frame['type'] ?? null,
+                'depth'    => $depth,
+            ];
+        }
+
+        return null;
+    }
+
+    /** Файл места вызова, см. caller(). */
+    public static function callerFile(array $skip = [], ?array $trace = null): ?string {
+        return static::caller($skip, $trace ?? debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS))['file'] ?? null;
+    }
+
     public static function preparePath(string $path, $base = 0, bool $strict = false): string {
         if (strpos($path, '~') === 0) {
             $path = (Config::env('DOCUMENT_ROOT') ?: Config::env('COMPOSER_ROOT')).'/'.trim($path, '/~');
         } elseif (strpos($path, '/') !== 0) {
+            // Число - каталог места вызова вне фреймворка (caller()), на какой бы глубине стека
+            // ни оказался вызов: Loader::registerDir('lib') из файла проекта - его lib/.
             if (is_int($base))
-                $base = dirname(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS)[$base]['file']);
+                $base = dirname(static::caller()['file'] ?? getcwd().'/.');
             $path = rtrim((string)$base, '/').'/'.trim($path, '/');
         }
 

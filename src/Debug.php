@@ -67,6 +67,11 @@ final class Debug {
                     'config'  => ['append' => true],
                 ],
             ],
+            // Место вызова в backtrace: кроме фреймворка пропускаются эти каталоги и файлы -
+            // обёртки проекта вокруг Debug (глобальные хелперы вроде here()).
+            'caller' => [
+                'skip' => [],
+            ],
             'dump_methods' => [
                 'toEmail' => function(string $output, array $config = []): bool {
                     static::applyConfig($config, [
@@ -104,16 +109,18 @@ final class Debug {
             $config
         );
 
-        $result = "";
-        if ($config['chain']) {
-            $full_backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | DEBUG_BACKTRACE_PROVIDE_OBJECT);
+        // Цепочка и строка "откуда вызвано" начинаются с места вызова (Main::caller): кадры
+        // фреймворка и обёрток из caller.skip конфига не показываются.
+        $trace  = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+        $caller = Main::caller((array)static::config('caller.skip'), $trace);
+        $start  = $caller['depth'] ?? count($trace) - 1;
 
-            for ($level = $config['skip_start'] + 2; $level < count($full_backtrace) - $config['skip_end']; $level++)
-                $result .= str_repeat("    ", $level - $config['skip_start'] - 2).'↘ '.$get_trace_func($full_backtrace[$level]);
-        } else {
-            $bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | DEBUG_BACKTRACE_PROVIDE_OBJECT);
-            $result = $get_trace_func($bt[min(4, count($bt) - 1)] ?? []);
-        }
+        if (!$config['chain'])
+            return $get_trace_func($trace[$start] ?? []);
+
+        $result = "";
+        for ($level = $start + $config['skip_start']; $level < count($trace) - $config['skip_end']; $level++)
+            $result .= str_repeat("    ", $level - $start - $config['skip_start']).'↘ '.$get_trace_func($trace[$level]);
 
         return $result;
     }

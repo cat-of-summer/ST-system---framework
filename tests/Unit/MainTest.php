@@ -247,4 +247,31 @@ final class MainTest extends TestCase {
         $this->assertIsNumeric(Main::timestamp());
         $this->assertSame(date('Y'), Main::timestamp('Y'));
     }
+
+    public function testCallerIsFirstFrameOutsideFramework(): void {
+        $line   = __LINE__ + 1;
+        $caller = Main::caller();
+
+        $this->assertSame(str_replace('\\', '/', __FILE__), $caller['file']);
+        $this->assertSame($line, $caller['line']);
+        $this->assertSame('caller', $caller['function']);
+        $this->assertSame(Main::class, $caller['class']);
+        $this->assertSame(0, $caller['depth']);
+        $this->assertSame($caller['file'], Main::callerFile());
+    }
+
+    public function testCallerSkipsGivenFilesAndDirs(): void {
+        $wrapper = $this->tmpDir('caller').'/wrapper.php';
+        file_put_contents($wrapper, '<?php return static fn(array $skip) => \ST_system\Main::caller($skip);');
+        $call = require $wrapper;
+
+        $this->assertSame(str_replace('\\', '/', $wrapper), $call([])['file']);
+
+        $line   = __LINE__ + 1;
+        $caller = $call([$wrapper]);
+        $this->assertSame(str_replace('\\', '/', __FILE__), $caller['file']);
+        $this->assertSame($line, $caller['line']);
+
+        $this->assertSame(str_replace('\\', '/', __FILE__), $call([dirname($wrapper)])['file']);
+    }
 }

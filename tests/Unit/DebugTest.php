@@ -37,8 +37,12 @@ final class DebugTest extends TestCase {
         $base = ['output_type' => 'json', 'pre' => false, 'time' => false];
 
         $this->assertSame(1, substr_count($this->log($dir, 'none.log', 1, ['backtrace' => false] + $base), "\n"));
-        $this->assertStringContainsString(' on line ', $this->log($dir, 'short.log', 1, $base));
-        $this->assertStringContainsString('↘ ', $this->log($dir, 'full.log', 1, ['backtrace' => true] + $base));
+        // "Откуда вызвано" - место вызова Debug в этом файле, а не кадры самого фреймворка.
+        $this->assertMatchesRegularExpression('~ in \S*/DebugTest\.php on line \d+\.~', $this->log($dir, 'short.log', 1, $base));
+
+        $full = $this->log($dir, 'full.log', 1, ['backtrace' => true] + $base);
+        $this->assertStringStartsWith('↘ ', $full);
+        $this->assertMatchesRegularExpression('~^↘ \S+ in \S*/DebugTest\.php on line \d+\.~', $full);
     }
 
     public function testTimeLineIsOptional(): void {
