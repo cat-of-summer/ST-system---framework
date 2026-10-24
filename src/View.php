@@ -4,14 +4,13 @@ namespace ST_system;
 
 use ST_system\Traits\HasConfig;
 use ST_system\Cache\CacheManager;
+use ST_system\Traits\Events\HasStaticEvents;
 
 final class View {
 
     use HasConfig {
         setConfig as private traitSetConfig;
     }
-
-    use \ST_system\Traits\Events\HasStaticEvents;
 
     protected static function getDefaultConfig(): array {
         return [
@@ -33,6 +32,8 @@ final class View {
             ],
         ];
     }
+    
+    use HasStaticEvents;
 
     protected static function getReservedEvents(): array {
         return [
