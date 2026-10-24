@@ -15,7 +15,7 @@ class JsMime extends Mime {
         $async = ($config['async'] ?? false) ? 'async' : '';
         $defer = ($config['defer'] ?? false) ? 'defer' : '';
 
-        return "<script src='{$this->file->getRelativePath()}' type='{$type}' $async $defer></script>";
+        return "<script src='{$this->href()}' type='{$type}' $async $defer></script>";
     }
 
     protected function __combine(array $files, array $config): string {

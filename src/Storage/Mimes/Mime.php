@@ -32,4 +32,15 @@ class Mime {
     }
 
     public function toHTML(array $config = []): string { return ''; }
+
+    /**
+     * Адрес файла для тега <link>/<script>. Локальному файлу - версия ?v=<mtime>: адрес без неё
+     * браузер кеширует, и после обновления файла страница держит старую копию.
+     */
+    protected function href(): string {
+        $path  = $this->file->getRelativePath();
+        $mtime = $this->file->mtime;
+
+        return $mtime > 0 ? $path.(strpos($path, '?') === false ? '?' : '&').'v='.$mtime : $path;
+    }
 }

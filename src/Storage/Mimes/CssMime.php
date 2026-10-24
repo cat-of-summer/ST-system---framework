@@ -15,7 +15,7 @@ class CssMime extends Mime {
         $type = $config['type'] ?? 'text/css';
         $media = ($config['media'] ?? null) ? "media='{$config['media']}'" : '';
 
-        return "<link rel='stylesheet' href='{$this->file->getRelativePath()}' type='{$type}' $media>";
+        return "<link rel='stylesheet' href='{$this->href()}' type='{$type}' $media>";
     }
 
     public static function __minify(string $content, array $config): string {

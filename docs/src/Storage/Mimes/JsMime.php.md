@@ -12,7 +12,7 @@
 
 ## Публичные методы
 
-- `toHTML(array $config = []): string` — рендерит `<script src="..." type="..." ...>`. Поддерживает `$config['type']` (по умолчанию `text/javascript`), `$config['async']` и `$config['defer']` (булевы флаги атрибутов).
+- `toHTML(array $config = []): string` — рендерит `<script src="..." type="..." ...>`. Поддерживает `$config['type']` (по умолчанию `text/javascript`), `$config['async']` и `$config['defer']` (булевы флаги атрибутов). Адрес локального файла - с версией `?v=<mtime>` (`Mime::href()`).
 - `__minify(string $content, array $config): string` — точка входа минификации, вызываемая трейтом `Minifiable`. Блокирует потенциально проблемные последовательности (`lock()`), прогоняет посимвольный минификатор (`minifyToString()`), затем восстанавливает заблокированные участки (`unlock()`); при ошибке чистит внутреннее состояние (`clean()`) и пробрасывает исключение дальше.
 
 ## Protected-контракт для трейтов

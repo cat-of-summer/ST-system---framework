@@ -61,4 +61,17 @@ final class JsMimeTest extends TestCase {
         $this->assertSame("var a = 1;\nvar b = 2", $combined->getRaw());
         $this->assertStringEndsWith('.combined.js', $combined->getPathname());
     }
+
+    public function testTagsCarryFileVersion(): void {
+        $dir = $this->tmpDir('tags');
+        $js  = $this->writeFile("{$dir}/app.js", 'var a = 1');
+        $css = $this->writeFile("{$dir}/app.css", '.a{}');
+        touch($js, 1700000000);
+        touch($css, 1700000100);
+        clearstatcache();
+
+        // Версия - mtime: после обновления файла адрес новый, и браузер не держит старую копию.
+        $this->assertMatchesRegularExpression("~src='[^']*app\.js\?v=1700000000'~", File::make($js)->toHTML(['type' => 'module']));
+        $this->assertMatchesRegularExpression("~href='[^']*app\.css\?v=1700000100'~", File::make($css)->toHTML());
+    }
 }
