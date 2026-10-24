@@ -53,6 +53,7 @@
 | `cache_replay` | `(array $payload)` | узел взят из кеша — восстановить состояние |
 | `slot_reserve` / `slot_enter` / `slot_leave` | `(array &$slots)` / `(array $slots)` / `()` | место потомка-«дырки» в документе |
 | `compose_collect` | `(array &$contrib)` | преобразовать слот узла в координаты корня (composed) |
+| `source_call` | `(string &$source, string &$view)` | сахар `View::<источник>(...)`: переписать источник и путь до резолва (см. "Источники шаблонов") |
 
 Три независимых канала, подменять их друг другом нельзя:
 
@@ -101,6 +102,18 @@ View::class => ['cache' => ['key' => [
 ## Источники шаблонов
 
 `View::page('index', $props)` — синтаксический сахар через `__callStatic`: любое имя статического метода, не входящее в `RESERVED` и присутствующее среди зарегистрированных источников, трактуется как имя источника, а вызов превращается в `View::template('page/index', $props)`.
+
+**`source_call(string &$source, string &$view)`** - срабатывает в `__callStatic()`, то есть **только на сахаре** `View::<источник>(...)` каталога (у источника-файла пути нет, и события нет), и позволяет переписать и источник, и путь до резолва - так же, как одноимённое событие [Lang.php](Lang.php.md). Источник, с которого переписывают, должен быть зарегистрирован: проверка имени идёт до события. Основной сценарий - общий вызов, который каждый потребитель резолвит в свой каталог:
+
+```php
+// View::page('options') из файла модуля → View::template('st_system_redirects/pages/options')
+View::on('source_call', function (string &$source, string &$view) {
+    if ($source === 'page' && ($module = moduleOfCaller()) !== null)
+        [$source, $view] = [$module, 'pages/'.$view];
+});
+```
+
+`View::template()` событие не зовёт. Событие зарезервировано (`getReservedEvents()`), внешний `trigger('source_call', …)` запрещён.
 
 `sources()` (приватный, мемоизирован в `self::$sources`) строит карту `имя => {dir, ext, config}` одним из двух способов, в зависимости от формы `config('source')`:
 

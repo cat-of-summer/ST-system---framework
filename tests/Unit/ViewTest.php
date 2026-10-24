@@ -25,6 +25,7 @@ final class ViewTest extends TestCase {
             'ui/auto.php'         => '<section><?php \ST_system\View::ui("card", ["title" => "Auto"]); ?></section>',
             'ui/global.php'       => '<?= \ST_system\View::get("site.name") ?>',
             'single.php'          => 'single file view',
+            'alt/x.php'           => 'alt <?= \ST_system\View::prop("v") ?>',
 
             // Свои props: View::prop()/props()/hasSlot() читают только кадр компонента.
             'ui/own.php'          => '<?= \ST_system\View::prop("title", "none") ?>',
@@ -69,7 +70,7 @@ final class ViewTest extends TestCase {
         }
 
         View::setConfig([
-            'source'       => ['ui' => self::$dir.'/ui', 'single' => self::$dir.'/single.php'],
+            'source'       => ['ui' => self::$dir.'/ui', 'alt' => self::$dir.'/alt', 'single' => self::$dir.'/single.php'],
             'contributors' => [],
             'cache'        => ['use' => false, 'dir' => self::$dir.'/.cache'],
         ]);
@@ -357,6 +358,23 @@ final class ViewTest extends TestCase {
         $this->expectException(\BadMethodCallException::class);
 
         View::nothing('x');
+    }
+
+    public function testSourceCallEventCanRewriteSourceAndPath(): void {
+        View::on('source_call', function (string &$source, string &$view) {
+            if ($source === 'ui' && $view === 'alias-card') $view = 'card';
+            if ($source === 'ui' && $view === 'from-alt') [$source, $view] = ['alt', 'x'];
+        });
+
+        $this->assertSame('<div class="card">Alias|</div>', (string)View::ui('alias-card', ['title' => 'Alias']));
+        $this->assertSame('alt 1', (string)View::ui('from-alt', ['v' => 1]));
+        $this->assertSame('<div class="card">untitled|</div>', (string)View::ui('card'));
+    }
+
+    public function testSourceCallCannotBeTriggeredExternally(): void {
+        $this->expectException(\LogicException::class);
+
+        View::trigger('source_call');
     }
 
     public function testSlotOutsideRenderThrows(): void {

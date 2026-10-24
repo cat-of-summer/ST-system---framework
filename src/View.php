@@ -39,6 +39,7 @@ final class View {
             'render_open', 'render_finalize', 'render_close',
             'cache_key', 'cache_open', 'cache_close', 'cache_replay',
             'slot_reserve', 'slot_enter', 'slot_leave', 'compose_collect',
+            'source_call',
         ];
     }
 
@@ -121,6 +122,8 @@ final class View {
             return self::template($name, ...$args);
 
         $view = (string)array_shift($args);
+
+        self::fire('source_call', $name, $view);
 
         return self::template($name.'/'.$view, ...$args);
     }
