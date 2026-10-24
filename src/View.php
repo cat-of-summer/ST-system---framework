@@ -59,13 +59,15 @@ final class View {
         }
     }
 
-    private const RESERVED = ['template', 'get', 'set', 'slot', 'capture', 'config', 'setConfig', 'applyConfig', 'sources', 'name', 'path', 'deep', 'cache', 'cascade', 'live'];
+    private const RESERVED = ['template', 'get', 'set', 'prop', 'props', 'slot', 'hasSlot', 'capture', 'config', 'setConfig', 'applyConfig', 'sources', 'name', 'path', 'deep', 'cache', 'cascade', 'live'];
 
     private const MAX_DEPTH = 50;
 
     private const ABSENT = "\0__view_ctx_absent__";
 
     private static array  $frames     = [];
+    private static array  $scopes     = [];
+    private static int    $frameSeq   = 0;
     private static array  $globals    = [];
     private static ?array $sources    = null;
     private static ?array $excludes   = null;
@@ -78,6 +80,7 @@ final class View {
     private string $file;
     private array  $props;
     private        $children;
+    private ?int   $owner;
     private array  $config;
     private array  $bundle;
     private array  $parentBundle;
@@ -91,6 +94,7 @@ final class View {
         $this->file         = $file;
         $this->props        = $props;
         $this->children     = $children;
+        $this->owner        = self::$scopes ? self::$scopes[array_key_last(self::$scopes)] : null;
 
         $this->parentBundle = self::$frames
             ? (self::$frames[array_key_last(self::$frames)]['bundle'] ?? [])
@@ -292,7 +296,7 @@ final class View {
 
         try {
             $mode   = Main::dotGet($this->config, 'cache.use', false);
-            $cached = ($mode === true || $mode === 'full');
+            $cached = ($mode === true || $mode === 'full') && self::isSerializable($this->children);
 
             if ($top) {
                 $html = $cached ? $this->renderComposedRoot() : $this->build();
@@ -317,13 +321,16 @@ final class View {
         $keyParts = [];
         self::fire('cache_key', $keyParts);
 
-        return CacheManager::make([
+        $key = [
             'c' => __CLASS__,
             'n' => $this->name,
             'p' => $this->props,
             'k' => $this->keyExtra(),
             'x' => $keyParts,
-        ], [
+        ];
+        if ($this->children !== null) $key['ch'] = $this->children;
+
+        return CacheManager::make($key, [
             'driver' => (string) Main::dotGet($this->config, 'cache.driver', 'filesystem'),
             'dir'    => (string) Main::dotGet($this->config, 'cache.dir', ''),
             'ttl'    => -1,
@@ -489,7 +496,11 @@ final class View {
         if (self::$boundaries)
             self::$boundaries[array_key_last(self::$boundaries)]['deps'][$this->file] = true;
 
+        $id = ++self::$frameSeq;
+
         self::$frames[] = [
+            'id'         => $id,
+            'owner'      => $this->owner,
             'props'      => $this->props,
             'children'   => $this->children,
             'name'       => $this->name,
@@ -497,14 +508,16 @@ final class View {
             'file'       => $this->file,
             'directives' => [],
         ];
+        self::$scopes[] = $id;
 
         ob_start();
 
         try {
-            (static function ($__file, $props) { require $__file; })($this->file, $this->props);
+            (static function ($__file) { require $__file; })($this->file);
         } finally {
             $html  = ob_get_clean();
             $frame = array_pop(self::$frames);
+            array_pop(self::$scopes);
         }
 
         if (!empty($frame['directives'])) {
@@ -768,6 +781,57 @@ final class View {
         return $value === $sentinel ? $default : $value;
     }
 
+    public static function prop(string $key, $default = null) {
+        $at = self::scopeIndex();
+        if ($at === null) return $default;
+
+        $sentinel = self::sentinel();
+        $value    = Main::dotGet(self::$frames[$at]['props'], $key, $sentinel);
+
+        return $value === $sentinel ? $default : $value;
+    }
+
+    public static function props(array $defaults = [], &$rest = null): array {
+        $at       = self::scopeIndex();
+        $own      = $at === null ? [] : self::$frames[$at]['props'];
+        $props    = $own;
+        $known    = [];
+        $sentinel = self::sentinel();
+
+        foreach (Main::dotFlatten($defaults) as $path => $value) {
+            $known[explode('.', $path, 2)[0]] = true;
+            if (Main::dotGet($own, $path, $sentinel) === $sentinel)
+                Main::dotSet($props, $path, $value);
+        }
+
+        $rest = array_diff_key($own, $known);
+
+        return $props;
+    }
+
+    public static function hasSlot(string $name = 'default'): bool {
+        $at = self::scopeIndex();
+        if ($at === null) return false;
+
+        $children = self::$frames[$at]['children'];
+
+        if ($name === 'default' && is_callable($children)) return true;
+
+        return is_array($children) && isset($children[$name]);
+    }
+
+    private static function scopeIndex(): ?int {
+        if (!self::$scopes) return null;
+
+        $id = self::$scopes[array_key_last(self::$scopes)];
+        if ($id === null) return null;
+
+        for ($i = count(self::$frames) - 1; $i >= 0; $i--)
+            if ((self::$frames[$i]['id'] ?? null) === $id) return $i;
+
+        return null;
+    }
+
     public static function name(?int $i = null): string {
         $idx = self::frameIndex($i);
         if ($idx === null) return '';
@@ -817,22 +881,31 @@ final class View {
             $defaults = $args[0];
         }
 
-        $top      = count(self::$frames) - 1;
+        $at = self::scopeIndex();
+        if ($at === null)
+            throw new \LogicException(__CLASS__.'::slot() called from a slot of a view created outside of a render');
+
         $sentinel = self::sentinel();
 
         foreach (Main::dotFlatten($defaults) as $path => $value)
             if (self::get($path, $sentinel) === $sentinel)
-                Main::dotSet(self::$frames[$top]['props'], $path, $value);
+                Main::dotSet(self::$frames[$at]['props'], $path, $value);
 
-        $children = self::$frames[$top]['children'];
+        $children = self::$frames[$at]['children'];
 
-        if ($name === null) {
-            if (is_callable($children))
-                $children();
-            elseif (is_array($children) && isset($children['default']))
-                $children['default']();
-        } elseif (is_array($children) && isset($children[$name])) {
-            $children[$name]();
+        self::$scopes[] = self::$frames[$at]['owner'];
+
+        try {
+            if ($name === null) {
+                if (is_callable($children))
+                    $children();
+                elseif (is_array($children) && isset($children['default']))
+                    $children['default']();
+            } elseif (is_array($children) && isset($children[$name])) {
+                $children[$name]();
+            }
+        } finally {
+            array_pop(self::$scopes);
         }
     }
 
