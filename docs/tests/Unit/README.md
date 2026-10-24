@@ -16,6 +16,7 @@
 ## Файлы
 
 - [AccessTest.php](AccessTest.php.md)
+- [CallerTest.php](CallerTest.php.md)
 - [CensorTextTest.php](CensorTextTest.php.md)
 - [ConfigTest.php](ConfigTest.php.md)
 - [DebugTest.php](DebugTest.php.md)
