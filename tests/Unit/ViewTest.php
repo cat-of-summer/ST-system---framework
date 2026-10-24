@@ -377,6 +377,45 @@ final class ViewTest extends TestCase {
         View::trigger('source_call');
     }
 
+    public function testSourceResolveMapsUnknownNameToRegisteredSource(): void {
+        // Имя-сокращение, которого нет в источниках: каталог ui с путём первым аргументом.
+        View::on('source_resolve', function (string &$name, array &$args) {
+            if ($name === 'cardAlias') [$name, $args] = ['ui', array_merge(['card'], $args)];
+            if ($name === 'altAlias') $name = 'alt';
+            if ($name === 'singleAlias') $name = 'single';
+        });
+
+        $this->assertSame('<div class="card">Aliased|</div>', (string)View::cardAlias(['title' => 'Aliased']));
+        $this->assertSame('alt 2', (string)View::altAlias('x', ['v' => 2]));
+        $this->assertSame('single file view', (string)View::singleAlias());
+        $this->assertSame('<div class="card">untitled|</div>', (string)View::ui('card'));
+    }
+
+    public function testSourceResolveRunsBeforeSourceCall(): void {
+        $seen = [];
+        View::on('source_resolve', function (string &$name, array &$args) {
+            if ($name === 'orderAlias') [$name, $args] = ['ui', array_merge(['alias-order'], $args)];
+        });
+        View::on('source_call', function (string &$source, string &$view) use (&$seen) {
+            if ($view === 'alias-order') { $seen[] = "{$source}/{$view}"; $view = 'card'; }
+        });
+
+        $this->assertSame('<div class="card">untitled|</div>', (string)View::orderAlias());
+        $this->assertSame(['ui/alias-order'], $seen);
+    }
+
+    public function testUnresolvedNameStillThrows(): void {
+        $this->expectException(\BadMethodCallException::class);
+
+        View::nobodyResolvesThis();
+    }
+
+    public function testSourceResolveCannotBeTriggeredExternally(): void {
+        $this->expectException(\LogicException::class);
+
+        View::trigger('source_resolve');
+    }
+
     public function testSlotOutsideRenderThrows(): void {
         $this->expectException(\LogicException::class);
 

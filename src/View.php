@@ -40,7 +40,7 @@ final class View {
             'render_open', 'render_finalize', 'render_close',
             'cache_key', 'cache_open', 'cache_close', 'cache_replay',
             'slot_reserve', 'slot_enter', 'slot_leave', 'compose_collect',
-            'source_call',
+            'source_call', 'source_resolve',
         ];
     }
 
@@ -116,6 +116,11 @@ final class View {
     }
 
     public static function __callStatic(string $name, array $args) {
+        // До проверки имени: слушатель может отдать вызов под своим (незарегистрированным) именем
+        // зарегистрированному источнику, поправив аргументы.
+        if (!in_array($name, self::RESERVED, true))
+            self::fire('source_resolve', $name, $args);
+
         if (in_array($name, self::RESERVED, true) || !isset(self::sources()[$name]))
             throw new \BadMethodCallException("Method ".__CLASS__."::{$name}() not found");
 
