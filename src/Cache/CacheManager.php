@@ -40,8 +40,10 @@ final class CacheManager {
                 'dir' => '~/cache/',
                 'ttl' => 3600,
             ],
+            // Драйвер по умолчанию - файловый: в сессии кеш стал бы своим у каждого посетителя,
+            // а в CLI сессия не стартует. Сессию берут точечно (капча - через свой cache.driver).
             'drivers' => [
-                'default' => $drivers['session'],
+                'default' => $drivers['filesystem'],
                 'available' => $drivers
             ]
         ];
