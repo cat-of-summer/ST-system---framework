@@ -40,10 +40,10 @@ final class Access {
                 'rules'      => [],
             ],
             'bots' => [
-                'Googlebot'   => ['.googlebot.com'],
-                'yandex.com'  => ['yandex.ru', 'yandex.net', 'yandex.com'],
-                'Mail.RU_Bot' => ['mail.ru', 'smailru.net'],
-                'bingbot'     => ['search.msn.com'],
+                ['Googlebot',   ['.googlebot.com']],
+                ['yandex.com',  ['yandex.ru', 'yandex.net', 'yandex.com']],
+                ['Mail.RU_Bot', ['mail.ru', 'smailru.net']],
+                ['bingbot',     ['search.msn.com']],
             ],
             'handleGeo' => [
                 'drivers' => [
@@ -525,8 +525,8 @@ final class Access {
         if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) return false;
 
         $ptrOk = null;
-        foreach ($signatures ?? (array)self::config('bots') as $needle => $suffixes)
-            if (stripos($ua, (string)$needle) !== false) { $ptrOk = (array)$suffixes; break; }
+        foreach (self::botSignatures($signatures ?? (array)self::config('bots')) as [$needle, $suffixes])
+            if (stripos($ua, $needle) !== false) { $ptrOk = $suffixes; break; }
 
         if ($ptrOk === null) return false;
 
@@ -565,6 +565,26 @@ final class Access {
         if ($verified) self::fire('verifiedBot', $ip, $ua);
 
         return $verified;
+    }
+
+    private static function botSignatures(array $config, string $prefix = ''): array {
+        $list = [];
+
+        foreach ($config as $key => $value) {
+            if (is_int($key) && $prefix === '' && is_array($value) && isset($value[0]) && is_string($value[0])) {
+                $list[] = [$value[0], array_values(array_filter((array)($value[1] ?? []), 'is_string'))];
+                continue;
+            }
+
+            $needle = $prefix === '' ? (string)$key : $prefix.'.'.$key;
+
+            if (is_array($value) && $value && !Main::arrayIsList($value))
+                $list = array_merge($list, self::botSignatures($value, $needle));
+            elseif ($needle !== '')
+                $list[] = [$needle, array_values(array_filter((array)$value, 'is_string'))];
+        }
+
+        return $prefix === '' ? array_values(array_filter($list, static fn($s) => $s[0] !== '')) : $list;
     }
 
     private static function matchRules(string $ip): ?string {
