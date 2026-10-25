@@ -18,7 +18,7 @@ final class View {
             'extension' => 'php',
             'exclude'   => [],
             'cache' => [
-                'use'    => false,
+                'use'    => true,
                 'driver' => 'filesystem',
                 'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
                 'key'    => null,

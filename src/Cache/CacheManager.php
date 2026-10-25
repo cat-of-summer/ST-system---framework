@@ -41,7 +41,7 @@ final class CacheManager {
                 'ttl' => 3600,
             ],
             'drivers' => [
-                'default' => $drivers['filesystem'],
+                'default' => $drivers['session'],
                 'available' => $drivers
             ]
         ];
