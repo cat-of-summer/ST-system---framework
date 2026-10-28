@@ -16,6 +16,14 @@ final class Main {
         return (string)$ts;
     }
 
+    /**
+     * Текст для HTML: спецсимволы - в сущности, кавычки обоих видов тоже (значения атрибутов),
+     * неверный UTF-8 - в символ замены. null - пустая строка.
+     */
+    public static function e($value): string {
+        return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
     public static function pluralIndex(int $n, string $locale = 'ru'): int {
         $n = abs($n);
 

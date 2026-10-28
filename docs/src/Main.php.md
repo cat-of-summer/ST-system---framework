@@ -28,6 +28,17 @@ echo Main::timestamp('Y-m-d H:i:s'); // например: 2026-07-14 12:30:00
 
 ---
 
+### `Main::e($value): string`
+
+Экранирование для HTML: `htmlspecialchars` с `ENT_QUOTES | ENT_SUBSTITUTE` в UTF-8. Кавычки обоих видов уходят в сущности, поэтому результат годится и для текста, и для значения атрибута; неверный UTF-8 заменяется символом замены, а не обнуляет строку. `null` - пустая строка.
+
+```php
+echo '<a title="'.Main::e($title).'">'.Main::e($name).'</a>';
+Main::e('<b>"O\'Reilly"</b>'); // "&lt;b&gt;&quot;O&#039;Reilly&quot;&lt;/b&gt;"
+```
+
+---
+
 ### `Main::pluralIndex(int $n, string $locale = 'ru'): int`
 
 Возвращает **индекс** формы множественного числа для `$n` в локали `$locale`. Единственное место, где живёт правило склонения: [Lang.php](Lang.php.md) использует его же, добавляя поверх слой пользовательских правил из `config('plural')`.

@@ -171,20 +171,52 @@ final class Access {
         return isset($config['onPassed']) ? ($config['onPassed'])($details) : $details;
     }
 
+    /**
+     * HTTP Basic: без подходящих логина и пароля - 401 с окном браузера.
+     *   login, password - пара для сравнения (по умолчанию credentials);
+     *   verify - своя проверка вместо пары: fn(?string $login, ?string $password): bool, логин и
+     *            пароль - null, если браузер их не прислал (пользователь уже вошёл иначе);
+     *   realm  - подпись окна.
+     * Логин и пароль берутся из PHP_AUTH_USER/PHP_AUTH_PW, а под CGI/FPM - из заголовка
+     * Authorization (HTTP_AUTHORIZATION, REDIRECT_HTTP_AUTHORIZATION).
+     */
     public static function httpAccess(array $config = []) {
         static::applyConfig($config, [
             'login'    => 'string|html_decode|@credentials.name',
             'password' => 'string|html_decode|@credentials.value',
+            'verify'   => 'nullable|callable',
+            'realm'    => 'nullable|string',
         ]);
 
-        if (
-            !isset($_SERVER['PHP_AUTH_USER']) ||
-            !isset($_SERVER['PHP_AUTH_PW']) ||
-            $_SERVER['PHP_AUTH_USER'] !== $config['login'] ||
-            $_SERVER['PHP_AUTH_PW'] !== $config['password']
-        ) {
-            Response::status(401)->header('WWW-Authenticate', 'Basic realm="Restricted Area"')->send();
+        [$login, $password] = self::basicCredentials();
+
+        $passed = isset($config['verify'])
+            ? (bool)($config['verify'])($login, $password)
+            : $login !== null
+                && hash_equals((string)$config['login'], $login)
+                && hash_equals((string)$config['password'], (string)$password);
+
+        if (!$passed) {
+            $realm = str_replace('"', '', (string)($config['realm'] ?? '')) ?: 'Restricted Area';
+
+            Response::status(401)->header('WWW-Authenticate', 'Basic realm="'.$realm.'", charset="UTF-8"')->send();
         }
+    }
+
+    /** [логин, пароль] из Basic-авторизации запроса; [null, null] - её нет. */
+    public static function basicCredentials(): array {
+        if (isset($_SERVER['PHP_AUTH_USER']))
+            return [(string)$_SERVER['PHP_AUTH_USER'], (string)($_SERVER['PHP_AUTH_PW'] ?? '')];
+
+        foreach (['HTTP_AUTHORIZATION', 'REDIRECT_HTTP_AUTHORIZATION'] as $key) {
+            $header = trim((string)($_SERVER[$key] ?? ''));
+            if (stripos($header, 'Basic ') !== 0) continue;
+
+            $decoded = base64_decode(substr($header, 6), true);
+            if ($decoded !== false && strpos($decoded, ':') !== false) return explode(':', $decoded, 2);
+        }
+
+        return [null, null];
     }
 
     public static function call(callable $f, array $config = []) {
@@ -262,7 +294,7 @@ final class Access {
                     if ($remote === (string)$cidr || self::ipInCidr($remote, (string)$cidr)) {
                         $candidate = trim((string)($_SERVER[$serverKey] ?? ''));
                         if ($candidate !== '')
-                            $ip = trim(explode(',', $candidate)[0]);
+                            $ip = self::lastUntrusted(array_map('trim', explode(',', $candidate)), $proxies);
                         break;
                     }
                 }
@@ -277,6 +309,25 @@ final class Access {
         }
 
         return $data;
+    }
+
+    /**
+     * Адрес посетителя в цепочке прокси: справа налево первый не из доверенных. Прокси дописывают
+     * адреса справа, а левые элементы X-Forwarded-For присылает сам клиент - первым из них мог бы
+     * представиться кто угодно.
+     */
+    private static function lastUntrusted(array $chain, array $proxies): string {
+        $chain = array_values(array_filter($chain, static fn($ip) => $ip !== ''));
+
+        for ($i = count($chain) - 1; $i >= 0; $i--) {
+            $trusted = false;
+            foreach (array_keys($proxies) as $cidr)
+                if (self::ipMatches($chain[$i], (string)$cidr)) $trusted = true;
+
+            if (!$trusted) return $chain[$i];
+        }
+
+        return $chain[0] ?? '';
     }
 
     private static function normalizeIp(string $ip): string {
@@ -315,7 +366,20 @@ final class Access {
         return ($ipBin[$bytes] & $mask) === ($subnetBin[$bytes] & $mask);
     }
 
-    private static function ipMatches(string $ip, string $pattern): bool {
+    /** Шаблон IP настроек фаервола: адрес, подсеть (10.0.0.0/8) или начало адреса с точкой (192.168.). */
+    public static function isIpPattern(string $pattern): bool {
+        if (filter_var($pattern, FILTER_VALIDATE_IP)) return true;
+        if (substr($pattern, -1) === '.') return (bool)preg_match('/^[0-9a-f:.]+\.$/i', $pattern);
+        if (strpos($pattern, '/') === false) return false;
+
+        [$ip, $bits] = explode('/', $pattern, 2);
+
+        return (bool)filter_var($ip, FILTER_VALIDATE_IP) && ctype_digit($bits)
+            && (int)$bits <= (strpos($ip, ':') !== false ? 128 : 32);
+    }
+
+    /** IP подходит под шаблон: адрес, подсеть или начало адреса с точкой. */
+    public static function ipMatches(string $ip, string $pattern): bool {
         if ($pattern === '') return false;
         if (strpos($pattern, '/') !== false) return self::ipInCidr($ip, $pattern);
         if (substr($pattern, -1) === '.') return strncmp($ip, $pattern, strlen($pattern)) === 0;
@@ -462,7 +526,8 @@ final class Access {
             $cache->set(self::seal($state), $ttl);
 
         if ($violated) {
-            self::fire('ban', $ip);
+            $until = $state['ban'];
+            self::fire('ban', $ip, $until);
             self::throw(429);
         }
     }
@@ -484,7 +549,20 @@ final class Access {
             $entryTtl = max($entryTtl, (int)($l[1] ?? 0));
 
         $cache->set(self::seal($state), $entryTtl);
-        self::fire('ban', $ip);
+        $until = $state['ban'];
+        self::fire('ban', $ip, $until);
+    }
+
+    /** Когда истекает бан IP (unix-время); 0 - IP не забанен. */
+    public static function banUntil(string $ip): int {
+        $self = self::getInstance();
+
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) return 0;
+
+        $state = self::unseal($self->cache->make(['access:fw', substr(hash('sha256', self::salt().'|'.$ip), 0, 32)])->get());
+        $until = (int)($state['ban'] ?? 0);
+
+        return $until > time() ? $until : 0;
     }
 
     public static function unbanIp(string $ip): void {

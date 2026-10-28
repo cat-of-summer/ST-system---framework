@@ -72,7 +72,7 @@ final class AccessTest extends TestCase {
 
     /** @dataProvider ipMatchCases */
     public function testIpMatches(string $ip, string $pattern, bool $expected): void {
-        $this->assertSame($expected, self::callPrivate(Access::class, 'ipMatches', $ip, $pattern));
+        $this->assertSame($expected, Access::ipMatches($ip, $pattern));
     }
 
     public function ipMatchCases(): array {
@@ -129,6 +129,98 @@ final class AccessTest extends TestCase {
         $_SERVER['HTTP_X_REAL_IP'] = '198.51.100.4';
 
         $this->assertSame('198.51.100.4', Access::getClientIp());
+    }
+
+    /**
+     * Доверенный прокси дописывает адрес справа: левые элементы прислал клиент.
+     *
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testClientIpSkipsForgedForwardedForBehindTrustedProxy(): void {
+        Access::setConfig(['firewall' => ['proxies' => ['10.0.0.0/8' => 'HTTP_X_FORWARDED_FOR']]]);
+        $_SERVER['REMOTE_ADDR'] = '10.1.2.3';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '1.2.3.4, 198.51.100.4, 10.0.0.7';
+
+        $this->assertSame('198.51.100.4', Access::getClientIp());
+    }
+
+    /**
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testClientIpAllTrustedTakesLeftmost(): void {
+        Access::setConfig(['firewall' => ['proxies' => ['10.0.0.0/8' => 'HTTP_X_FORWARDED_FOR']]]);
+        $_SERVER['REMOTE_ADDR'] = '10.1.2.3';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '10.0.0.5, 10.0.0.7';
+
+        $this->assertSame('10.0.0.5', Access::getClientIp());
+    }
+
+    /** @dataProvider ipPatternCases */
+    public function testIsIpPattern(string $pattern, bool $expected): void {
+        $this->assertSame($expected, Access::isIpPattern($pattern));
+    }
+
+    public function ipPatternCases(): array {
+        return [
+            ['192.168.1.10', true],
+            ['2001:db8::1', true],
+            ['10.0.0.0/8', true],
+            ['2001:db8::/32', true],
+            ['192.168.', true],
+            ['10.0.0.0/33', false],
+            ['10.0.0.0/x', false],
+            ['example.com', false],
+            ['', false],
+        ];
+    }
+
+    /**
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testBasicCredentialsFromAuthorizationHeader(): void {
+        unset($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW']);
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Basic '.base64_encode('admin:p:ss');
+
+        $this->assertSame(['admin', 'p:ss'], Access::basicCredentials());
+    }
+
+    /**
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testBasicCredentialsAbsent(): void {
+        unset($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'], $_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+
+        $this->assertSame([null, null], Access::basicCredentials());
+    }
+
+    /**
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testBanUntilAndBanEvent(): void {
+        $dir = sys_get_temp_dir().'/st-access-'.uniqid();
+        Access::setConfig(['firewall' => ['dir' => $dir, 'limits' => [[5, 1, 10]]]]);
+
+        $events = [];
+        Access::on('ban', static function (string $ip, int $until) use (&$events): void {
+            $events[] = [$ip, $until];
+        });
+
+        $this->assertSame(0, Access::banUntil('203.0.113.9'));
+
+        Access::banIp('203.0.113.9', 120);
+        $until = Access::banUntil('203.0.113.9');
+
+        $this->assertGreaterThanOrEqual(time() + 119, $until);
+        $this->assertSame([['203.0.113.9', $until]], $events);
+
+        Access::unbanIp('203.0.113.9');
+        $this->assertSame(0, Access::banUntil('203.0.113.9'));
+        $this->assertSame(0, Access::banUntil('not-an-ip'));
     }
 
     public function testNormalizeIpExpandsIpv6(): void {

@@ -22,6 +22,13 @@ final class MainTest extends TestCase {
         ];
     }
 
+    public function testEscape(): void {
+        $this->assertSame('&lt;b&gt;&quot;O&#039;Reilly&quot;&lt;/b&gt;', Main::e('<b>"O\'Reilly"</b>'));
+        $this->assertSame('', Main::e(null));
+        $this->assertSame('42', Main::e(42));
+        $this->assertSame("a\u{FFFD}b", Main::e("a\xC3b"));
+    }
+
     public function testPluralForm(): void {
         $forms = ['файл', 'файла', 'файлов'];
 
