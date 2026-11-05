@@ -63,6 +63,8 @@ final class ViewTest extends TestCase {
             'ui/pslot.php'        => '<section><?php \ST_system\View::ui("card", ["title" => "C"], function () { echo \ST_system\View::prop("who"); })->cache(); ?></section>',
         ];
 
+        $files += self::liveTemplates();
+
         foreach ($files as $path => $content) {
             if (!is_dir(dirname(self::$dir.'/'.$path)))
                 mkdir(dirname(self::$dir.'/'.$path), 0777, true);
@@ -75,6 +77,158 @@ final class ViewTest extends TestCase {
             'cache'        => ['use' => false, 'dir' => self::$dir.'/.cache'],
         ]);
         self::setStatic(View::class, 'sources', null);
+    }
+
+    /** Шаблоны печатают номер прогона в момент выполнения: [1] во втором прогоне - вывод из кеша. */
+    private static function liveTemplates(): array {
+        $templates = [
+            'l-leaf'     => 'leaf[R]',
+            'l-other'    => 'other[R]',
+            'l-tree'     => 'tree[R] <?php V::ui("l-leaf"); ?>',
+            'l-self'     => '<?php V::live(); ?>self[R] <?php V::ui("l-leaf"); ?>',
+            'l-before'   => 'before[R] <?php V::ui("l-leaf"); V::live(); ?>',
+            'l-parent'   => 'parent[R] <?php V::ui("l-self"); ?>',
+            'l-slot'     => '<?php V::live(); ?>slot[R] <?php V::slot(); ?>',
+            'l-siblings' => 'sib[R] <?php V::ui("l-other"); ?> <?php V::ui("l-slot", function () { V::ui("l-leaf"); }); ?> <?php V::ui("l-other", ["n" => 2]); ?>',
+            'l-true'     => '<?php V::live(); ?>on[R] <?php V::ui("l-tree")->cache(true); ?>',
+            'l-full'     => '<?php V::live(); ?>on[R] <?php V::ui("l-tree")->cache("full"); ?>',
+            'l-false'    => '<?php V::live(); ?>on[R] <?php V::ui("l-tree")->cache(false); ?>',
+            'l-cascade'  => '<?php V::live(); ?>on[R] <?php V::ui("l-tree")->cache(true)->cascade(); ?>',
+            'l-in-full'  => '<?php V::live(); ?>fl[R] <?php V::ui("l-tree")->cache("full"); ?> <?php V::ui("l-leaf"); ?>',
+            'l-file'     => '<?php V::setConfig("cache.use", "full"); ?>file[R] <?php V::ui("l-leaf"); ?>',
+            'l-file-up'  => '<?php V::live(); ?>up[R] <?php V::ui("l-file"); ?>',
+            'l-inline'   => 'inl[R] <?php V::ui("l-leaf")->cache("inline"); ?>',
+            'l-inl-live' => '<?php V::live(); ?>il[R] <?php V::ui("l-leaf")->cache("inline"); ?>',
+        ];
+
+        $files = [];
+        foreach ($templates as $name => $body)
+            $files["ui/{$name}.php"] = strtr($body, ['[R]' => '[<?= $GLOBALS["vr"] ?>]', 'V::' => '\ST_system\View::']);
+
+        // Источник, зарегистрированный из шаблона: файл без рекурсии.
+        $files['ui/l-source.php'] = '<?php \ST_system\View::setConfig("source.fromtemplate", dirname(__FILE__)."/l-leaf.php"); ?><?= \ST_system\View::fromtemplate() ?>';
+
+        return $files;
+    }
+
+    /** Прогоны одного и того же рендера на чистом кеше, с cache.use = true по умолчанию. */
+    private function runs(callable $make, int $count = 2): array {
+        self::removeDir(self::$dir.'/.cache');
+        self::setStatic(View::class, 'directives', null);
+        self::setStatic(View::class, 'directiveLayer', []);
+        View::setConfig('cache.use', true);
+
+        try {
+            $out = [];
+            for ($run = 1; $run <= $count; $run++) {
+                $GLOBALS['vr'] = $run;
+                $out[] = (string)$make();
+            }
+            return $out;
+        } finally {
+            View::setConfig('cache.use', false);
+        }
+    }
+
+    private function second(string $name): string {
+        return $this->runs(static fn() => View::ui($name))[1];
+    }
+
+    public function testPlainLeafIsServedFromCache(): void {
+        $this->assertSame('leaf[1]', $this->second('l-leaf'));
+    }
+
+    public function testLiveCoversNodeAndItsHoles(): void {
+        $this->assertSame('self[2] leaf[2]', $this->second('l-self'));
+    }
+
+    public function testLiveCoversHolesCreatedBeforeTheCall(): void {
+        $this->assertSame('before[2] leaf[2]', $this->second('l-before'));
+    }
+
+    public function testLiveChildKeepsParentSkeletonCached(): void {
+        $this->assertSame('parent[1] self[2] leaf[2]', $this->second('l-parent'));
+    }
+
+    public function testLiveDoesNotTouchSiblings(): void {
+        $this->assertSame('sib[2] other[1] slot[2] leaf[2] other[1]', $this->second('l-siblings'));
+    }
+
+    public function testChildOptsInToCacheUnderLive(): void {
+        $this->assertSame('on[2] tree[1] leaf[1]', $this->second('l-true'));
+        $this->assertSame('on[2] tree[1] leaf[1]', $this->second('l-full'));
+        $this->assertSame('on[2] tree[1] leaf[1]', $this->second('l-cascade'));
+    }
+
+    public function testCacheFalseStaysLiveDownTheTree(): void {
+        $this->assertSame('on[2] tree[2] leaf[2]', $this->second('l-false'));
+    }
+
+    public function testChildOptsInInsideFullBoundary(): void {
+        $html = $this->runs(static fn() => View::ui('l-in-full')->cache('full'))[1];
+
+        $this->assertSame('fl[2] tree[1] leaf[1] leaf[2]', $html);
+    }
+
+    public function testChildOptsInFromItsOwnFile(): void {
+        // Директива известна со второго прогона: первый узнаёт её, второй записывает, третий читает.
+        $this->assertSame(
+            ['up[1] file[1] leaf[1]', 'up[2] file[2] leaf[2]', 'up[3] file[2] leaf[2]'],
+            $this->runs(static fn() => View::ui('l-file-up'), 3)
+        );
+    }
+
+    public function testLiveOutsideRenderIsNoop(): void {
+        View::live();
+        $this->assertSame('leaf[1]', $this->second('l-leaf'));
+    }
+
+    public function testInlineChildHasNoOwnCacheAndKeepsComposed(): void {
+        $this->assertSame(['inl[1] leaf[1]', 'inl[1] leaf[1]'], $this->runs(static fn() => View::ui('l-inline')));
+
+        $entries = glob(self::$dir.'/.cache/*', GLOB_ONLYDIR);
+        $this->assertCount(1, $entries, 'у встроенного узла не должно быть своей записи');
+        $this->assertFileExists($entries[0].'/composed');
+    }
+
+    public function testInlineChildUnderLiveIsFresh(): void {
+        $this->assertSame('il[2] leaf[2]', $this->second('l-inl-live'));
+        $this->assertSame([], glob(self::$dir.'/.cache/*', GLOB_ONLYDIR));
+    }
+
+    public function testSourceRegisteredAfterRender(): void {
+        $this->assertSame('<div class="card">x|</div>', (string)View::ui('card', ['title' => 'x']));
+
+        View::setConfig('source.late', self::$dir.'/alt');
+
+        $this->assertSame('alt 1', (string)View::late('x', ['v' => 1]));
+    }
+
+    public function testSourceRegisteredFromTemplate(): void {
+        $GLOBALS['vr'] = 7;
+
+        $this->assertSame('leaf[7]', (string)View::ui('l-source'));
+    }
+
+    public function testCacheWriteFailureDoesNotBreakRender(): void {
+        $blocker = self::$dir.'/.blocked-'.bin2hex(random_bytes(3));
+        file_put_contents($blocker, '');
+
+        $log = ini_set('error_log', $blocker.'.log');
+        View::setConfig('cache.dir', $blocker.'/sub');
+        View::setConfig('cache.use', true);
+        self::setStatic(View::class, 'directives', null);
+        $GLOBALS['vr'] = 1;
+
+        try {
+            $this->assertSame('tree[1] leaf[1]', (string)View::ui('l-tree'));
+            $this->assertSame('tree[1] leaf[1]', (string)View::ui('l-tree'));
+        } finally {
+            ini_set('error_log', (string)$log);
+            View::setConfig('cache.use', false);
+            View::setConfig('cache.dir', self::$dir.'/.cache');
+            self::setStatic(View::class, 'directives', null);
+        }
     }
 
     public function testRendersTemplateWithProps(): void {

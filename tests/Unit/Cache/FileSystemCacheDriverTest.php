@@ -17,6 +17,19 @@ final class FileSystemCacheDriverTest extends CacheDriverContractTest {
         return new FileSystemCacheDriver($key, $config + ['dir' => $this->dir, 'ttl' => 60]);
     }
 
+    public function testWriteSurvivesRemovedDirectory(): void {
+        $first = $this->makeDriver('removed');
+        $first->set('one', 60);
+
+        // Другой процесс очистил кеш: запомненная проверка каталога больше не верна.
+        static::removeDir($first->dir);
+
+        $second = $this->makeDriver('removed');
+        $second->set('two', 60);
+
+        $this->assertSame('two', $this->makeDriver('removed')->get());
+    }
+
     public function testLayoutOnDisk(): void {
         $driver = $this->makeDriver('layout');
         $driver->set('x', 60, 'blob');

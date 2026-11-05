@@ -16,6 +16,10 @@ final class LangTest extends TestCase {
     protected function setUp(): void {
         $this->dir = $this->tmpDir('lang');
 
+        self::setStatic(Lang::class, 'runtime', []);
+        self::setStatic(Lang::class, 'usedFiles', []);
+        self::setStatic(Lang::class, 'recording', []);
+
         $this->writeFile("{$this->dir}/common/en.php", '<?php return '.var_export([
             'hello'   => 'Hello, :name!',
             'apples'  => 'one apple|:count apples',
@@ -61,6 +65,41 @@ final class LangTest extends TestCase {
         $this->assertSame('Deep', Lang::get('common.nested.deep.key', [], null, 'en'));
         $this->assertSame('dflt', Lang::get('no.such.key', [], 'dflt'));
         $this->assertSame('no.such.key', Lang::get('no.such.key'));
+    }
+
+    public function testPhraseMissingInSectionUsesFallbackAndDefault(): void {
+        $this->writeFile("{$this->dir}/sec/ru.php", '<?php return ["a" => "ру"];');
+        $this->writeFile("{$this->dir}/sec/en.php", '<?php return ["a" => "en", "only_en" => "EN", "forms" => "one|many"];');
+        Lang::setConfig('dir', $this->dir);
+
+        // Фразы раздела не заменяют конкретную фразу: ни резервный язык, ни значение по умолчанию.
+        $this->assertSame('EN', Lang::get('sec.only_en'));
+        $this->assertSame('D', Lang::get('sec.nope', [], 'D'));
+        $this->assertSame('one', Lang::choice('sec.forms', 1));
+        $this->assertSame('D', Lang::choice('sec.nope', 1, [], 'D'));
+
+        $this->assertTrue(Lang::has('sec'));
+        $this->assertTrue(Lang::has('sec.a'));
+        $this->assertTrue(Lang::has('sec.only_en'));
+        $this->assertFalse(Lang::has('sec.nope'));
+
+        // Без $default чтение области работает как прежде.
+        $this->assertSame('ру', Lang::get('sec.nope')['a']);
+        $this->assertSame('ру', Lang::get('sec')['a']);
+        $this->assertSame('D', Lang::get('sec.nope', [], 'D', 'de'));
+    }
+
+    public function testCacheWriteFailureDoesNotBreakPhrases(): void {
+        $blocker = $this->writeFile("{$this->dir}/blocked", '');
+
+        $log = ini_set('error_log', $blocker.'.log');
+        Lang::setConfig(['cache' => ['use' => true, 'dir' => $blocker.'/sub']]);
+
+        try {
+            $this->assertSame('Привет, A!', Lang::get('common.hello', ['name' => 'A']));
+        } finally {
+            ini_set('error_log', (string)$log);
+        }
     }
 
     public function testHas(): void {

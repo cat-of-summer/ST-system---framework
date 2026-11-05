@@ -89,7 +89,7 @@ final class McpHttpTest extends TestCase {
 
         curl_exec($ch);
         $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        curl_close($ch);
+        if (PHP_VERSION_ID < 80000) curl_close($ch);
 
         return ['status' => $status, 'headers' => $responseHeaders, 'body' => $raw, 'events' => $events];
     }

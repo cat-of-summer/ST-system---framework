@@ -115,7 +115,7 @@ final class Response {
             $f = finfo_open(FILEINFO_MIME_TYPE);
             if ($f) {
                 $m = finfo_file($f, $full_path);
-                finfo_close($f);
+                if (PHP_VERSION_ID < 80100) finfo_close($f);
                 if ($m !== false)
                     $mime_type = $m;
                 

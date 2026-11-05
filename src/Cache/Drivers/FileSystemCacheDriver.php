@@ -49,8 +49,14 @@ class FileSystemCacheDriver extends CacheDriver {
         return static::$initialized[$dir] = is_dir($dir) && is_writable($dir);
     }
 
-    protected function writeBlob(string $file, string $payload): void {
+    // Каталог могли удалить после первой проверки (очистка кеша другим процессом).
+    private function ensureDir(): void {
+        unset(static::$initialized[$this->attributes['dir']]);
         $this->initDir($this->attributes['dir']);
+    }
+
+    protected function writeBlob(string $file, string $payload): void {
+        $this->ensureDir();
         @file_put_contents($this->attributes['dir'].'/'.$file, $payload, LOCK_EX);
     }
 
@@ -75,8 +81,8 @@ class FileSystemCacheDriver extends CacheDriver {
     }
 
     protected function writeMeta(string $file, array $meta): void {
-        $this->initDir($this->attributes['dir']);
-        $path = $this->attributes['dir'].'/'.$file.'.meta';
+        $this->ensureDir();
+        $path =$this->attributes['dir'].'/'.$file.'.meta';
 
         $lock = fopen($path.'.lock', 'c+');
         if ($lock === false) throw new \RuntimeException("Cannot open lock file {$path}.lock");

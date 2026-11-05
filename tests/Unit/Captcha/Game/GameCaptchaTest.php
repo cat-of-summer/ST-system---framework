@@ -69,7 +69,7 @@ final class GameCaptchaTest extends TestCase {
     private static function simulation(string $name): string {
         $class  = (string)CaptchaManager::config('drivers.available.'.$name);
         $method = new \ReflectionMethod($class, 'simulation');
-        $method->setAccessible(true);
+        if (PHP_VERSION_ID < 80100) $method->setAccessible(true);
 
         return $method->invoke(null);
     }
@@ -131,7 +131,7 @@ final class GameCaptchaTest extends TestCase {
         // Цель и пороги качества остаются на сервере — те же, что в games.js.
         $class   = get_class($captcha->driver);
         $quality = new \ReflectionMethod($class, 'defaultQuality');
-        $quality->setAccessible(true);
+        if (PHP_VERSION_ID < 80100) $quality->setAccessible(true);
 
         $this->assertSame($fixture['goal'], $captcha->goal);
         $this->assertSame($fixture['goal_ratio'], $captcha->goal_ratio);

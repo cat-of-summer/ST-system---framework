@@ -64,7 +64,7 @@ final class MathCaptchaTest extends TestCase {
     public function testChallengeAnswerMatchesExpression(string $level): void {
         $driver    = $this->captcha('math', ['level' => $level])->driver;
         $challenge = new \ReflectionMethod(MathCaptchaDriver::class, 'challenge');
-        $challenge->setAccessible(true);
+        if (PHP_VERSION_ID < 80100) $challenge->setAccessible(true);
 
         $kinds = [];
 
@@ -133,7 +133,7 @@ final class MathCaptchaTest extends TestCase {
     /** @dataProvider answerFormatProvider */
     public function testAnswerNormalization(string $given, string $expected): void {
         $normalize = new \ReflectionMethod(MathCaptchaDriver::class, 'normalize');
-        $normalize->setAccessible(true);
+        if (PHP_VERSION_ID < 80100) $normalize->setAccessible(true);
 
         $this->assertSame($expected, $normalize->invoke($this->captcha()->driver, $given));
     }
@@ -146,7 +146,7 @@ final class MathCaptchaTest extends TestCase {
     public function testTimesSignIsConfigurable(): void {
         $driver    = $this->captcha('math', ['times' => 'x'])->driver;
         $challenge = new \ReflectionMethod(MathCaptchaDriver::class, 'challenge');
-        $challenge->setAccessible(true);
+        if (PHP_VERSION_ID < 80100) $challenge->setAccessible(true);
 
         for ($i = 0; $i < 100; $i++) {
             [$text] = $challenge->invoke($driver);

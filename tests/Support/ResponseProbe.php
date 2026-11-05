@@ -35,7 +35,7 @@ final class ResponseProbe {
 
     private static function field(Response $response, string $name) {
         $property = new \ReflectionProperty(Response::class, $name);
-        $property->setAccessible(true);
+        if (PHP_VERSION_ID < 80100) $property->setAccessible(true);
 
         return $property->getValue($response);
     }

@@ -63,6 +63,8 @@ final class View {
 
     private const RESERVED = ['template', 'get', 'set', 'prop', 'props', 'slot', 'hasSlot', 'capture', 'config', 'setConfig', 'applyConfig', 'sources', 'name', 'path', 'deep', 'cache', 'cascade', 'live'];
 
+    private const STRUCTURAL = ['source', 'extension', 'exclude'];
+
     private const MAX_DEPTH = 50;
 
     private const ABSENT = "\0__view_ctx_absent__";
@@ -90,6 +92,7 @@ final class View {
     private        $keyExtra    = self::ABSENT;
     private bool   $auto_echo   = false;
     private bool   $rendered    = false;
+    private bool   $live        = false;
 
     private function __construct(string $name, string $file, array $props, $children) {
         $this->name         = $name;
@@ -268,6 +271,24 @@ final class View {
     public static function setConfig($key = [], $value = null): void {
         $flat = is_string($key) ? [$key => $value] : Main::dotFlatten((array)$key);
 
+        $structural = [];
+        foreach ($flat as $k => $v) {
+            $root = ($p = strpos($k, '.')) !== false ? substr($k, 0, $p) : $k;
+            if (!in_array($root, self::STRUCTURAL, true)) continue;
+
+            $structural[$k] = $v;
+            unset($flat[$k]);
+        }
+
+        // Карта источников общая для всех узлов: такие ключи не зависят от места вызова.
+        if ($structural) {
+            self::$sources  = null;
+            self::$excludes = null;
+            self::traitSetConfig($structural);
+        }
+
+        if (!$flat) return;
+
         if (self::$frames) {
             $config = [];
             foreach ($flat as $k => $v) Main::dotSet($config, $k, $v);
@@ -305,7 +326,7 @@ final class View {
 
         try {
             $mode   = Main::dotGet($this->config, 'cache.use', false);
-            $cached = ($mode === true || $mode === 'full') && self::isSerializable($this->children);
+            $cached = !$this->isLive() && ($mode === true || $mode === 'full') && self::isSerializable($this->children);
 
             if ($top) {
                 $html = $cached ? $this->renderComposedRoot() : $this->build();
@@ -323,6 +344,40 @@ final class View {
             return $html;
         } finally {
             if ($top) self::fire('render_close');
+        }
+    }
+
+    private function isLive(): bool {
+        return ($this->live || self::liveScope()) && !$this->explicitlyCached();
+    }
+
+    private static function liveScope(): bool {
+        return self::$frames && !empty(self::$frames[array_key_last(self::$frames)]['live']);
+    }
+
+    // Кеш, включённый самим узлом, вызовом или каскадом. Значения по умолчанию (глобальное,
+    // источника) живой регион перекрывает: они не говорят, что вывод можно хранить.
+    private function explicitlyCached(): bool {
+        $mode = Main::dotGet($this->config, 'cache.use', false);
+        if ($mode !== true && $mode !== 'full') return false;
+
+        foreach ([$this->override, $this->parentBundle, self::directivesFor($this->file)] as $layer)
+            if (Main::dotGet($layer, 'cache.use', self::ABSENT) !== self::ABSENT) return true;
+
+        return false;
+    }
+
+    private static function store(CacheManager $cache, $data, string $file = '', array $meta = []): bool {
+        try {
+            $cache->set($data, -1, $file, $meta);
+            return true;
+        } catch (\Throwable $e) {
+            static $reported = false;
+            if (!$reported) {
+                $reported = true;
+                error_log(__CLASS__.': cache write failed, rendering without cache: '.$e->getMessage());
+            }
+            return false;
         }
     }
 
@@ -405,7 +460,7 @@ final class View {
 
         self::$directives = $registry;
         self::$directiveLayer[$file] = $config;
-        self::directiveCache()->set($registry, -1);
+        self::store(self::directiveCache(), $registry);
     }
 
     private function renderComposedRoot(): string {
@@ -438,7 +493,7 @@ final class View {
 
         if (!empty($c['composable'])) {
             $deps = array_keys($c['deps']);
-            $cache->set($assembled, -1, 'composed', [
+            self::store($cache, $assembled, 'composed', [
                 'stamp'       => self::depStamp($deps),
                 'deps'        => $deps,
                 'descendants' => $c['descendants'],
@@ -505,7 +560,8 @@ final class View {
         if (self::$boundaries)
             self::$boundaries[array_key_last(self::$boundaries)]['deps'][$this->file] = true;
 
-        $id = ++self::$frameSeq;
+        $live = $this->isLive();
+        $id   = ++self::$frameSeq;
 
         self::$frames[] = [
             'id'         => $id,
@@ -516,6 +572,7 @@ final class View {
             'bundle'     => $this->bundle,
             'file'       => $this->file,
             'directives' => [],
+            'live'       => $live,
         ];
         self::$scopes[] = $id;
 
@@ -612,7 +669,12 @@ final class View {
 
             if (!$poisoned) {
                 try {
-                    $payload = base64_encode(\serialize(['holes' => $holes, 'sets' => $sets, 'contrib' => $contrib]));
+                    $stored = array_map(static function (array $hole): array {
+                        unset($hole['seq'], $hole['live']);
+                        return $hole;
+                    }, $holes);
+
+                    $payload = base64_encode(\serialize(['holes' => $stored, 'sets' => $sets, 'contrib' => $contrib]));
                 } catch (\Throwable $e) {
                     $poisoned = true;
                 }
@@ -624,7 +686,7 @@ final class View {
             }
 
             $files = array_values(array_unique(array_merge(array_keys($b['deps']), $extraDeps)));
-            $cache->set($skeleton, -1, '', [
+            self::store($cache, $skeleton, '', [
                 'stamp'       => self::depStamp($files),
                 'deps'        => $files,
                 'payload'     => $payload,
@@ -677,6 +739,7 @@ final class View {
             foreach ($holes as $token => $d) {
                 $child = new self($d['name'], $d['file'], $d['props'], $d['children'] ?? null);
                 $child->override = (array)($d['override'] ?? []);
+                $child->live     = !empty($d['live']);
                 $child->recomputeConfig();
 
                 $slots = (array)($d['slots'] ?? []);
@@ -732,7 +795,11 @@ final class View {
         if (self::$boundaries) {
             $i = array_key_last(self::$boundaries);
 
-            if (self::$boundaries[$i]['mode'] === 'full') {
+            if (self::$boundaries[$i]['mode'] === 'full' || Main::dotGet($this->config, 'cache.use', false) === 'inline') {
+                // Граница уже травлена живым предком: явно кешируемому потомку нужна своя.
+                if (self::liveScope() && $this->explicitlyCached())
+                    return $this->output();
+
                 if (!self::isSerializable($this->props))
                     self::$boundaries[$i]['poisoned'] = true;
                 return $this->build();
@@ -746,6 +813,8 @@ final class View {
                     'props'    => $this->props,
                     'children' => $this->children,
                     'override' => $this->override,
+                    'seq'      => self::$frameSeq,
+                    'live'     => self::liveScope(),
                 ];
                 $slots = [];
                 self::fire('slot_reserve', $slots);
@@ -919,8 +988,22 @@ final class View {
     }
 
     public static function live(): void {
-        foreach (array_keys(self::$boundaries) as $i)
+        $from = PHP_INT_MAX;
+
+        if (self::$frames) {
+            $top = array_key_last(self::$frames);
+            self::$frames[$top]['live'] = true;
+            $from = self::$frames[$top]['id'] ?? 0;
+        }
+
+        foreach (array_keys(self::$boundaries) as $i) {
             self::$boundaries[$i]['poisoned'] = true;
+
+            // Дыры, созданные с начала этого узла: его потомки, а не соседи.
+            foreach (self::$boundaries[$i]['holes'] as $token => $hole)
+                if (($hole['seq'] ?? 0) >= $from)
+                    self::$boundaries[$i]['holes'][$token]['live'] = true;
+        }
 
         if (self::$compose !== null) self::$compose['composable'] = false;
     }

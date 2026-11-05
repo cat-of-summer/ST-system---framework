@@ -35,20 +35,20 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase {
 
     protected static function getStatic(string $class, string $property) {
         $ref = new \ReflectionProperty($class, $property);
-        $ref->setAccessible(true);
+        if (PHP_VERSION_ID < 80100) $ref->setAccessible(true);
 
         return $ref->getValue();
     }
 
     protected static function setStatic(string $class, string $property, $value): void {
         $ref = new \ReflectionProperty($class, $property);
-        $ref->setAccessible(true);
+        if (PHP_VERSION_ID < 80100) $ref->setAccessible(true);
         $ref->setValue(null, $value);
     }
 
     protected static function getProperty(object $object, string $property) {
         $ref = new \ReflectionProperty($object, $property);
-        $ref->setAccessible(true);
+        if (PHP_VERSION_ID < 80100) $ref->setAccessible(true);
 
         return $ref->getValue($object);
     }
@@ -56,7 +56,7 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase {
     /** Вызов private/protected метода: объекта или класса (для статических). */
     protected static function callPrivate($objectOrClass, string $method, ...$args) {
         $ref = new \ReflectionMethod($objectOrClass, $method);
-        $ref->setAccessible(true);
+        if (PHP_VERSION_ID < 80100) $ref->setAccessible(true);
 
         return $ref->invokeArgs(is_object($objectOrClass) ? $objectOrClass : null, $args);
     }

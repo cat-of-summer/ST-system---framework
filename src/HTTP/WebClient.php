@@ -465,7 +465,7 @@ final class WebClient {
                         $content = curl_multi_getcontent($ch);
                         curl_multi_remove_handle($mh, $ch);
                         $result = self::buildResult($ch, $entry['state'], is_string($content) ? $content : null, $entry['spec']);
-                        curl_close($ch);
+                        if (PHP_VERSION_ID < 80000) curl_close($ch);
 
                         $owner = $entry['owner'];
                         if ($owner->finalize($entry['spec'], $result, $entry['cache'], $entry['attempts'])) {
@@ -484,7 +484,7 @@ final class WebClient {
         } finally {
             foreach ($active as $entry) {
                 curl_multi_remove_handle($mh, $entry['ch']);
-                curl_close($entry['ch']);
+                if (PHP_VERSION_ID < 80000) curl_close($entry['ch']);
             }
             curl_multi_close($mh);
         }

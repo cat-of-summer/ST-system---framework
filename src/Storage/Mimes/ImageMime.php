@@ -530,7 +530,7 @@ class ImageMime extends Mime {
                     $image->destroy();
                 break;
                 case 'gd':
-                    imagedestroy($image);
+                    if (PHP_VERSION_ID < 80000) imagedestroy($image);
                 break;
             }
 
@@ -689,7 +689,7 @@ class ImageMime extends Mime {
                     $src['width'], $src['height']
                 );
 
-                imagedestroy($image_src);
+                if (PHP_VERSION_ID < 80000) imagedestroy($image_src);
             break;
         }
 

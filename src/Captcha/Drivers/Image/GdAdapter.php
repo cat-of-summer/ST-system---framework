@@ -37,13 +37,13 @@ class GdAdapter implements ImageAdapterInterface, PuzzleAdapterInterface {
             random_int(0, max(0, $sw - $cropW)), random_int(0, max(0, $sh - $cropH)),
             $w, $h, $cropW, $cropH
         );
-        imagedestroy($src);
+        if (PHP_VERSION_ID < 80000) imagedestroy($src);
 
         @imagefilter($image, IMG_FILTER_BRIGHTNESS, random_int(-12, 12));
         @imagefilter($image, IMG_FILTER_CONTRAST, random_int(-10, 10));
 
         $pad = self::mirrorPad($image, $w, $h, $b);
-        imagedestroy($image);
+        if (PHP_VERSION_ID < 80000) imagedestroy($image);
 
         $cw       = intdiv($w, $cols);
         $ch       = intdiv($h, $rows);
@@ -68,7 +68,7 @@ class GdAdapter implements ImageAdapterInterface, PuzzleAdapterInterface {
             else                          imagecopy($sprite, $pad, $dx, $dy, $sx, $sy, $cellW, $cellH);
         }
 
-        imagedestroy($pad);
+        if (PHP_VERSION_ID < 80000) imagedestroy($pad);
 
         ob_start();
         if ($outlines) {
@@ -82,7 +82,7 @@ class GdAdapter implements ImageAdapterInterface, PuzzleAdapterInterface {
         }
         $bytes = (string)ob_get_clean();
 
-        imagedestroy($sprite);
+        if (PHP_VERSION_ID < 80000) imagedestroy($sprite);
 
         if ($bytes === '')
             throw new \RuntimeException('GdAdapter: cannot encode the puzzle sprite');
@@ -112,7 +112,7 @@ class GdAdapter implements ImageAdapterInterface, PuzzleAdapterInterface {
 
         $mask = imagecreatetruecolor($w, $h);
         imagecopyresampled($mask, $big, 0, 0, 0, 0, $w, $h, $w * self::SS, $h * self::SS);
-        imagedestroy($big);
+        if (PHP_VERSION_ID < 80000) imagedestroy($big);
 
         for ($y = 0; $y < $h; $y++)
             for ($x = 0; $x < $w; $x++) {
@@ -124,7 +124,7 @@ class GdAdapter implements ImageAdapterInterface, PuzzleAdapterInterface {
                     ((127 - intdiv($cover * 127, 255)) << 24) | ($rgb & 0xFFFFFF));
             }
 
-        imagedestroy($mask);
+        if (PHP_VERSION_ID < 80000) imagedestroy($mask);
     }
 
     /** Картинка с зеркальным полем $b со всех сторон: у краёв в язычках — продолжение, а не пустота. */
@@ -147,9 +147,9 @@ class GdAdapter implements ImageAdapterInterface, PuzzleAdapterInterface {
         imagecopy($pad, $flipB, 0,       $b + $h, $w - $b, 0,      $b, $b);
         imagecopy($pad, $flipB, $b + $w, $b + $h, 0,      0,       $b, $b);
 
-        imagedestroy($flipH);
-        imagedestroy($flipV);
-        imagedestroy($flipB);
+        if (PHP_VERSION_ID < 80000) imagedestroy($flipH);
+        if (PHP_VERSION_ID < 80000) imagedestroy($flipV);
+        if (PHP_VERSION_ID < 80000) imagedestroy($flipB);
 
         return $pad;
     }
@@ -195,7 +195,7 @@ class GdAdapter implements ImageAdapterInterface, PuzzleAdapterInterface {
             $box = @imagettfbbox($size, $angle, $font, $char);
 
             if ($box === false) {
-                imagedestroy($image);
+                if (PHP_VERSION_ID < 80000) imagedestroy($image);
                 throw new \RuntimeException("GdAdapter: cannot measure glyph with font '{$font}'");
             }
 
@@ -203,7 +203,7 @@ class GdAdapter implements ImageAdapterInterface, PuzzleAdapterInterface {
             $y     = (int)round(($height - $glyph) / 2 - $box[5]) + random_int(-3, 3);
 
             if (@imagettftext($image, $size, $angle, (int)round($x), $y, $ink, $font, $char) === false) {
-                imagedestroy($image);
+                if (PHP_VERSION_ID < 80000) imagedestroy($image);
                 throw new \RuntimeException("GdAdapter: cannot render glyph with font '{$font}'");
             }
 
@@ -230,7 +230,7 @@ class GdAdapter implements ImageAdapterInterface, PuzzleAdapterInterface {
                 );
             }
 
-            imagedestroy($image);
+            if (PHP_VERSION_ID < 80000) imagedestroy($image);
             $image = $copy;
         }
 
@@ -259,7 +259,7 @@ class GdAdapter implements ImageAdapterInterface, PuzzleAdapterInterface {
         imagepng($image, null, 9);
         $png = (string)ob_get_clean();
 
-        imagedestroy($image);
+        if (PHP_VERSION_ID < 80000) imagedestroy($image);
 
         if ($png === '')
             throw new \RuntimeException('GdAdapter: cannot encode PNG');

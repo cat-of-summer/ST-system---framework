@@ -135,18 +135,22 @@ final class Lang {
 
     public static function get(string $key, array $params = [], $default = null, ?string $locale = null) {
         $locale = $locale ?? static::config('locale');
-        $value  = self::find($key, $locale, $isScope);
+        $value  = self::find($key, $locale, $isScope, $inherited);
 
         if (($fb = static::config('fallback')) !== '' && $fb !== $locale) {
-            $fbValue = self::find($key, $fb, $fbIsScope);
+            $fbValue = self::find($key, $fb, $fbIsScope, $fbInherited);
 
-            if ($isScope && $fbIsScope)
-                $value = self::$merged[$key."\0".$locale."\0".$fb] ??= self::mergeTree($fbValue, $value);
-            elseif ($value === self::ABSENT)
-                $value = $fbValue;
+            if ($isScope && $fbIsScope) {
+                $value     = self::$merged[$key."\0".$locale."\0".$fb] ??= self::mergeTree($fbValue, $value);
+                $inherited = $inherited && $fbInherited;
+            } elseif ($value === self::ABSENT || ($inherited && $fbValue !== self::ABSENT)) {
+                $value     = $fbValue;
+                $inherited = $fbInherited;
+            }
         }
 
-        if ($value === self::ABSENT)
+        // Значение по умолчанию просят для конкретной фразы: фразы предков её не заменяют.
+        if ($value === self::ABSENT || ($inherited && $default !== null))
             $value = $default ?? $key;
 
         return is_string($value) && $params ? strtr($value, self::placeholders($params)) : $value;
@@ -154,12 +158,16 @@ final class Lang {
 
     public static function choice(string $key, $number, array $params = [], $default = null, ?string $locale = null): string {
         $locale = $locale ?? static::config('locale');
-        $value  = self::find($key, $locale);
+        $value  = self::find($key, $locale, $isScope, $inherited);
         $used   = $locale;
 
+        if ($inherited) $value = self::ABSENT;
+
         if ($value === self::ABSENT && ($fb = static::config('fallback')) !== '' && $fb !== $locale) {
-            $value = self::find($key, $fb);
+            $value = self::find($key, $fb, $isScope, $inherited);
             $used  = $fb;
+
+            if ($inherited) $value = self::ABSENT;
         }
 
         if ($value === self::ABSENT)
@@ -179,10 +187,10 @@ final class Lang {
     public static function has(string $key, ?string $locale = null): bool {
         $locale = $locale ?? static::config('locale');
 
-        if (self::find($key, $locale) !== self::ABSENT) return true;
+        if (self::find($key, $locale, $isScope, $inherited) !== self::ABSENT && !$inherited) return true;
 
         $fb = static::config('fallback');
-        return $fb !== '' && $fb !== $locale && self::find($key, $fb) !== self::ABSENT;
+        return $fb !== '' && $fb !== $locale && self::find($key, $fb, $isScope, $inherited) !== self::ABSENT && !$inherited;
     }
 
     public static function set($key, $value = null, ?string $locale = null): void {
@@ -256,8 +264,9 @@ final class Lang {
         foreach ($deps as $p) self::$recording[$i][] = $p;
     }
 
-    private static function find(string $key, string $locale, ?bool &$isScope = null) {
-        $isScope = false;
+    private static function find(string $key, string $locale, ?bool &$isScope = null, ?bool &$inherited = null) {
+        $isScope   = false;
+        $inherited = false;
 
         if (isset(self::$runtime[$locale]) && array_key_exists($key, self::$runtime[$locale]))
             return self::$runtime[$locale][$key];
@@ -272,20 +281,21 @@ final class Lang {
 
         $memoKey = $sourceName."\0".$locale."\0".$path;
         if (array_key_exists($memoKey, self::$found)) {
-            [$value, $isScope] = self::$found[$memoKey];
+            [$value, $isScope, $inherited] = self::$found[$memoKey];
             return $value;
         }
 
-        $value = self::resolve($sourceName, $path, $locale, $map, $isScope);
+        $value = self::resolve($sourceName, $path, $locale, $map, $isScope, $inherited);
 
-        self::$found[$memoKey] = [$value, $isScope];
+        self::$found[$memoKey] = [$value, $isScope, $inherited];
 
         return $value;
     }
 
-    private static function resolve(string $sourceName, string $path, string $locale, array $map, ?bool &$isScope) {
-        $isScope  = false;
-        $segments = self::pathSegments($path);
+    private static function resolve(string $sourceName, string $path, string $locale, array $map, ?bool &$isScope, ?bool &$inherited) {
+        $isScope   = false;
+        $inherited = false;
+        $segments  = self::pathSegments($path);
 
         for ($j = 0, $n = count($segments); $j < $n; $j++) {
             $candidate = $j === 0 ? $path : implode('.', array_slice($segments, $j));
@@ -301,8 +311,21 @@ final class Lang {
         $tree = self::scopeTree($sourceName, $path, $locale, $map);
         if ($tree === self::ABSENT) return self::ABSENT;
 
-        $isScope = true;
+        $isScope   = true;
+        $inherited = $path !== '' && !self::scopeExists($sourceName, $path, $locale, $map);
+
         return $tree;
+    }
+
+    // Есть ли у самого пути фразы (свои, в дочерних ветках, рантайм), а не только у его предков.
+    private static function scopeExists(string $sourceName, string $path, string $locale, array $map): bool {
+        $pfx = $path.'.';
+        $len = strlen($pfx);
+
+        foreach ($map as $k => $_)
+            if (strncmp($k, $pfx, $len) === 0) return true;
+
+        return self::runtimeTree($sourceName, $path, $locale) !== [];
     }
 
     private static function pathSegments(string $path): array {
@@ -472,11 +495,20 @@ final class Lang {
 
         [$map, $deps, $files] = self::buildMap($source, $locale);
 
-        $cache->set($map, -1, '', [
-            'stamp' => self::depStamp($deps),
-            'deps'  => $deps,
-            'files' => $files,
-        ]);
+        try {
+            $cache->set($map, -1, '', [
+                'stamp' => self::depStamp($deps),
+                'deps'  => $deps,
+                'files' => $files,
+            ]);
+        } catch (\Throwable $e) {
+            // Фразы уже прочитаны из файлов, без скомпилированной карты они просто соберутся заново.
+            static $reported = false;
+            if (!$reported) {
+                $reported = true;
+                error_log(__CLASS__.': cache write failed, reading phrases without cache: '.$e->getMessage());
+            }
+        }
 
         self::$mapDeps[$memoKey] = [$deps, $files];
         self::recordDeps($deps, $files);
