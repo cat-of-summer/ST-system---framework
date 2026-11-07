@@ -47,6 +47,48 @@ final class CommandTest extends TestCase {
         $this->assertSame('', NamelessCommand::getName());
     }
 
+    public function testDefinitionDescribesTheSignature(): void {
+        $definition = RestCommand::definition();
+
+        $this->assertSame(
+            [
+                ['name' => 'target', 'required' => true, 'default' => null, 'rest' => false],
+                ['name' => 'text', 'required' => true, 'default' => null, 'rest' => true],
+            ],
+            $definition['arguments']
+        );
+        $this->assertSame(['depth'], array_keys($definition['options']));
+        $this->assertSame('3', $definition['options']['depth']['default']);
+    }
+
+    public function testRestArgumentTakesTheTailAsOneString(): void {
+        $command = new RestCommand(['a', 'one', 'two', 'three']);
+
+        $this->assertSame(['target' => 'a', 'text' => 'one two three'], $command->handle());
+    }
+
+    public function testOptionalRestArgument(): void {
+        $this->assertSame(['text' => null], (new OptionalRestCommand())->handle());
+        $this->assertSame(['text' => 'one two'], (new OptionalRestCommand(['one', 'two']))->handle());
+    }
+
+    public function testMissingArgumentCanBeHandledBySubclass(): void {
+        $command = new SoftCommand();
+
+        $this->assertSame(['source' => null], $command->handle());
+        $this->assertSame(['source'], SoftCommand::$missing);
+    }
+
+    public function testWithInputReturnsACopy(): void {
+        $command = new SoftCommand();
+        $bound = $command->withInput(['x']);
+
+        $this->assertNotSame($command, $bound);
+        $this->assertInstanceOf(SoftCommand::class, $bound);
+        $this->assertSame(['source' => 'x'], $bound->handle());
+        $this->assertSame(['source' => null], $command->handle());
+    }
+
     /** Команда завершает процесс через exit(1), поэтому запускается отдельным PHP. */
     public function testMissingRequiredArgumentExits(): void {
         $script = sprintf(
@@ -75,6 +117,39 @@ final class SignatureCommand extends Command {
             'source'    => $this->argument('source'),
             'asked'     => $this->ask('Question?', 'dflt'),
         ];
+    }
+}
+
+final class RestCommand extends Command {
+
+    protected static string $signature = 'say {target} {text*} {--depth=3}';
+
+    public function handle() {
+        return $this->argument();
+    }
+}
+
+final class OptionalRestCommand extends Command {
+
+    protected static string $signature = 'say {text?*}';
+
+    public function handle() {
+        return $this->argument();
+    }
+}
+
+final class SoftCommand extends Command {
+
+    public static array $missing = [];
+
+    protected static string $signature = 'soft {source}';
+
+    protected static function missingArgument(string $name): void {
+        self::$missing[] = $name;
+    }
+
+    public function handle() {
+        return $this->argument();
     }
 }
 

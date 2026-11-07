@@ -28,6 +28,42 @@ abstract class Command {
     final public static function fetch(...$args) { return new static(...$args); }
 
     /**
+     * Разобранная сигнатура: позиционные аргументы и опции.
+     *
+     * @return array{arguments: list<array>, options: array<string, array>}
+     */
+    final public static function definition(): array {
+        [$arguments, $options] = static::parseSignature(static::getSignature());
+
+        return ['arguments' => $arguments, 'options' => $options];
+    }
+
+    /**
+     * Копия команды с другими значениями, сама команда не меняется: один объект живёт долго и
+     * запускается много раз, например в сервере.
+     *
+     * @return static
+     */
+    final public function withInput(array $positional = [], array $rawOptions = []) {
+        [$argDefs, $optDefs] = static::parseSignature(static::getSignature());
+
+        $copy = clone $this;
+        $copy->arguments = static::resolveArguments($positional, $argDefs);
+        $copy->options   = static::resolveOptions($rawOptions, $optDefs);
+
+        return $copy;
+    }
+
+    /**
+     * Не передан обязательный аргумент. В CLI это конец процесса; там, где процесс живёт дальше,
+     * подкласс переопределяет метод и решает сам. После возврата аргумент получает значение null.
+     */
+    protected static function missingArgument(string $name): void {
+        fwrite(STDERR, "Missing required argument: {$name}" . PHP_EOL);
+        exit(1);
+    }
+
+    /**
      * Возвращённый int становится кодом выхода процесса, всё остальное — 0.
      */
     abstract public function handle();
@@ -135,14 +171,19 @@ abstract class Command {
                     ];
                 }
             } else {
+                // {text*} и {text?*}: аргумент забирает остаток позиционных одной строкой
+                $rest = substr($token, -1) === '*';
+                if ($rest) {
+                    $token = substr($token, 0, -1);
+                }
                 if (substr($token, -1) === '?') {
                     $name = substr($token, 0, -1);
-                    $argDefs[] = ['name' => $name, 'required' => false, 'default' => null];
+                    $argDefs[] = ['name' => $name, 'required' => false, 'default' => null, 'rest' => $rest];
                 } elseif (strpos($token, '=') !== false) {
                     [$name, $default] = explode('=', $token, 2);
-                    $argDefs[] = ['name' => $name, 'required' => false, 'default' => $default];
+                    $argDefs[] = ['name' => $name, 'required' => false, 'default' => $default, 'rest' => $rest];
                 } else {
-                    $argDefs[] = ['name' => $token, 'required' => true, 'default' => null];
+                    $argDefs[] = ['name' => $token, 'required' => true, 'default' => null, 'rest' => $rest];
                 }
             }
         }
@@ -155,10 +196,10 @@ abstract class Command {
 
         foreach ($argDefs as $i => $def) {
             if (array_key_exists($i, $positional)) {
-                $result[$def['name']] = $positional[$i];
+                $result[$def['name']] = $def['rest'] ? implode(' ', array_slice($positional, $i)) : $positional[$i];
             } elseif ($def['required']) {
-                fwrite(STDERR, "Missing required argument: {$def['name']}" . PHP_EOL);
-                exit(1);
+                static::missingArgument($def['name']);
+                $result[$def['name']] = null;
             } else {
                 $result[$def['name']] = $def['default'];
             }
