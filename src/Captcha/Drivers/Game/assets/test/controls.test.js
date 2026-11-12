@@ -13,6 +13,8 @@ import { racingControls } from '../../Racing/src/controls.js';
 import { asteroidsControls } from '../../Asteroids/src/controls.js';
 import { AsteroidsSim, FP as ASTEROIDS_FP, YMIN as ASTEROIDS_YMIN, YMAX as ASTEROIDS_YMAX } from '../../Asteroids/src/sim.js';
 import { PACK as FRUIT_PACK } from '../../FruitNinja/src/sim.js';
+import { orbitControls, frame as orbitFrame } from '../../Orbit/src/controls.js';
+import { OrbitSim, PULL_Q, packPull, unpackPull } from '../../Orbit/src/sim.js';
 import { HUD } from '../engine/src/driver.js';
 
 // Мир арканоида под холст 320 × 200: 498 единиц в ширину.
@@ -565,4 +567,63 @@ test('Asteroids: потеря фокуса — огонь выключен, ра
     c.release();
     c.release();
     assert.deepEqual(api.sent, [[0, ASTEROIDS_YMAX], [1], [2], [0, Math.round(api.sim().y / ASTEROIDS_FP)]]);
+});
+
+// --- Orbit ----------------------------------------------------------------------------------------
+
+function orbitApi() {
+    return fakeApi(new OrbitSim(1, { w: 1778, h: 1000 }));
+}
+
+test('Orbit: мир по центру игровой зоны — 320 × 200 вмещает 1778 × 1000 под строкой счёта', function () {
+    const f = orbitFrame(orbitApi().sim(), 320, 200);
+    assert.equal(f.s, 320 / 1778);
+    assert.equal(f.x, 0);
+    assert.ok(f.y > HUD && f.y - HUD < 0.05);
+});
+
+test('Orbit: нажатие — начали тянуть (0), отпускание — натяжение от пальца к якорю (1), ракета летит туда', function () {
+    const api = orbitApi();
+    const c   = orbitControls(api);
+
+    c.press(200, 100, 0, 'mouse');
+    c.move(190, 120);
+    // Палец ушёл на (−9, +18) px холста — натяжение (+9, −18) px, в мире ÷ масштаб и в половинах единицы.
+    c.up(191, 118, true);
+    const s = orbitFrame(api.sim(), 320, 200).s;
+
+    const q = unpackPull(api.sent[1][1]);
+    assert.deepEqual(api.sent[0], [0]);
+    assert.equal(api.sent[1][0], 1);
+    assert.deepEqual(q, [Math.round(9 / s / 2), Math.round(-18 / s / 2)]);
+    assert.equal(c.ui.aim, null);
+});
+
+test('Orbit: натяжение — не длиннее MAX_PULL, в пределах кода; правая кнопка мыши не тянет', function () {
+    const api = orbitApi();
+    const c   = orbitControls(api);
+
+    c.press(100, 100, 2, 'mouse');
+    c.up(0, 100, true);
+    assert.deepEqual(api.sent, [], 'правая кнопка');
+
+    c.press(300, 100, 0, 'touch');
+    c.up(0, 100, true);
+    assert.deepEqual(api.sent, [[0], [1, packPull(PULL_Q, 0)]]);
+});
+
+test('Orbit: pointercancel и потеря фокуса — отмена прицеливания (2); без нажатия — ничего', function () {
+    const api = orbitApi();
+    const c   = orbitControls(api);
+
+    c.release();
+    c.up(10, 10, true);
+    assert.deepEqual(api.sent, []);
+
+    c.press(100, 100, 0, 'touch');
+    c.up(50, 50, false);
+    c.press(100, 100, 0, 'mouse');
+    c.release();
+    c.release();
+    assert.deepEqual(api.sent, [[0], [2], [0], [2]]);
 });

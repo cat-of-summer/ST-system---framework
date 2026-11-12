@@ -20,7 +20,8 @@
     "../FruitNinja",
     "../Pinball",
     "../Racing",
-    "../Asteroids"
+    "../Asteroids",
+    "../Orbit"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

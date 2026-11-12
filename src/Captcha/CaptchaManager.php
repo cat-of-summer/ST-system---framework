@@ -38,6 +38,7 @@ use ST_system\View;
  * @method static self pinball(mixed $key, array $config = [])
  * @method static self racing(mixed $key, array $config = [])
  * @method static self asteroids(mixed $key, array $config = [])
+ * @method static self orbit(mixed $key, array $config = [])
  * @method string putCaptcha(array $params = [])
  * @method bool check(mixed $payload)
  * @method array refresh(string $id = '')
@@ -78,6 +79,7 @@ final class CaptchaManager {
             'pinball'     => \ST_system\Captcha\Drivers\Game\Pinball\PinballCaptchaDriver::class,
             'racing'      => \ST_system\Captcha\Drivers\Game\Racing\RacingCaptchaDriver::class,
             'asteroids'   => \ST_system\Captcha\Drivers\Game\Asteroids\AsteroidsCaptchaDriver::class,
+            'orbit'       => \ST_system\Captcha\Drivers\Game\Orbit\OrbitCaptchaDriver::class,
         ];
 
         return [

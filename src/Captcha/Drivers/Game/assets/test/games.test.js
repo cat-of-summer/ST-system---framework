@@ -18,6 +18,7 @@ import { PinballSim, FP as PBFP, FLIPPERS as PBFLIP, BALL0, CHARGE as PBCHARGE, 
 import { RacingSim, FP as RFP, N as RN, ROAD as RROAD, WALL as RWALL, CHECKS as RCHECKS, UP as RUP, LEFT as RLEFT, RIGHT as RRIGHT, DOWN as RDOWN } from '../../Racing/src/sim.js';
 import { bot as racingBot } from '../../Racing/test/bot.js';
 import { AsteroidsSim, FP as AFP_, N as AN, RX as ARX, NOSE as ANOSE, SHOT as ASHOT, FIRE as AFIRE, DANGER as ADANGER, YMIN as AYMIN, YMAX as AYMAX, HIT as AHIT, SHRINK as ASHRINK, BOOM as ABOOM, DODGE as ADODGE, tierOf, reachOf, overlap } from '../../Asteroids/src/sim.js';
+import { OrbitSim, FP as OFP, ORBIT as O_ORBIT, FLIGHT as O_FLIGHT, CRASH as O_CRASH, LOST as O_LOST, RATE_AIM, RATE_FULL, PULL_Q, packPull, launchVelocity, outcome, preview } from '../../Orbit/src/sim.js';
 import { SimonSim, FIRST, WAIT, SHOW, INPUT, DONE, PAUSE, SUCCESS, TIMEOUT, onTicks, offTicks } from '../../Simon/src/sim.js';
 import { START } from '../engine/src/sim.js';
 
@@ -1719,4 +1720,152 @@ test('Asteroids: огонь по астероиду на линии — осмы
     sim.input(0, sim.y / AFP_ + 2);
     sim.input(0, AYMIN);
     assert.deepEqual([sim.acts, sim.good], [4, 2], 'в полосе удара — нет, за ней — да');
+});
+
+// --- Orbit ----------------------------------------------------------------------------------------
+
+/** Ракета на стартовой орбите: вверху первой планеты, игра идёт. */
+function orbit() {
+    const sim = new OrbitSim(1, { w: 1778, h: 1000 });
+    sim.input(START);
+    return sim;
+}
+
+/** Натяжение рогатки к другой планете: первое из перебора направлений, что кончается её орбитой. */
+function transfer(sim) {
+    for (let a = 0; a < 360; a += 2) {
+        const t = a * Math.PI / 180, qx = Math.round(Math.cos(t) * PULL_Q), qy = Math.round(Math.sin(t) * PULL_Q);
+        const r = outcome(sim, ...launchVelocity(qx, qy));
+        if (r >= 0 && r !== sim.planet) return { value: packPull(qx, qy), planet: r };
+    }
+    throw new Error('нет выстрела к другой планете');
+}
+
+/** Шагов физики, пока ракета не встанет на орбиту или не погибнет. */
+function settle(sim) {
+    for (let i = 0; i < 5000 && sim.mode === O_FLIGHT && !sim.dead; i++) sim.advance();
+}
+
+test('Orbit: раскладка — по пропорциям мира, вертикальная зона — вертикальная раскладка', function () {
+    const wide = new OrbitSim(1, { w: 1778, h: 1000 });
+    assert.deepEqual(wide.planets.map(function (p) { return [Math.round(p.x / OFP), p.y / OFP, p.r]; }), [[427, 620, 60], [925, 300, 36], [1387, 620, 85]]);
+
+    const tall = new OrbitSim(1, { w: 1000, h: 1500 });
+    assert.deepEqual(tall.planets.map(function (p) { return [p.x / OFP, p.y / OFP, p.r]; }), [[350, 1170, 60], [680, 780, 36], [420, 405, 85]]);
+});
+
+test('Orbit: без ввода ракета кружит по стартовой орбите, радиус держится', function () {
+    const sim = orbit();
+    const r0  = sim.radius, p = sim.planets[0];
+    run(sim, 3000);
+
+    assert.equal(sim.mode, O_ORBIT);
+    assert.equal(sim.dead, 0);
+    assert.equal(sim.radius, r0);
+    assert.ok(Math.abs(Math.hypot(sim.x - p.x, sim.y - p.y) - r0) <= 2, 'на окружности');
+});
+
+test('Orbit: рывок по натяжению — от V_MIN до V_MAX туда, куда тянули; в мёртвой зоне — ничего', function () {
+    assert.equal(launchVelocity(5, 5), null);
+    const weak = launchVelocity(0, -10), full = launchVelocity(PULL_Q, 0), over = launchVelocity(PULL_Q, PULL_Q);
+
+    assert.deepEqual(weak, [0, -380 * OFP]);
+    assert.deepEqual(full, [580 * OFP, 0]);
+    assert.ok(Math.abs(Math.hypot(over[0], over[1]) - 580 * OFP) < 4, 'натяжение сверх MAX_PULL — та же скорость');
+    assert.equal(over[0], over[1]);
+});
+
+test('Orbit: выстрел в свою планету — смерть, действие без смысла; новая жизнь — со стартовой орбиты', function () {
+    const sim = orbit();
+    sim.reactions = sim.peak = 2;
+    sim.input(1, packPull(0, 60));
+    assert.equal(sim.mode, O_FLIGHT);
+    settle(sim);
+
+    assert.ok(sim.dead > 0);
+    assert.deepEqual([sim.acts, sim.good, sim.reactions, sim.peak], [1, 0, 0, 2]);
+
+    run(sim, sim.dead);
+    assert.equal(sim.idle, 1);
+    assert.deepEqual([sim.mode, sim.planet, sim.x, sim.y], [O_ORBIT, 0, sim.planets[0].x, sim.planets[0].y - 135 * OFP]);
+});
+
+test('Orbit: вылет за поле — смерть', function () {
+    const sim = orbit();
+    assert.equal(outcome(sim, ...launchVelocity(0, -PULL_Q)), O_LOST);
+    sim.input(1, packPull(0, -PULL_Q));
+    settle(sim);
+    assert.ok(sim.dead > 0);
+    assert.deepEqual([sim.acts, sim.good], [1, 0]);
+});
+
+test('Orbit: перелёт на орбиту другой планеты — реакция и осмысленный запуск; ракета на её орбите', function () {
+    const sim  = orbit();
+    const shot = transfer(sim);
+    sim.input(1, shot.value);
+    settle(sim);
+
+    assert.equal(sim.dead, 0);
+    assert.deepEqual([sim.mode, sim.planet, sim.reactions, sim.acts, sim.good], [O_ORBIT, shot.planet, 1, 1, 1]);
+
+    const p = sim.planets[shot.planet];
+    run(sim, 600);
+    assert.equal(sim.mode, O_ORBIT);
+    assert.ok(Math.hypot(sim.x - p.x, sim.y - p.y) > (p.r + 20) * OFP - 2, 'с орбиты не падает');
+});
+
+test('Orbit: своя планета не ловит ракету, пока та в её поле; вышедшую и вернувшуюся — ловит без очка', function () {
+    const sim = orbit();
+    // Вверху орбиты по часовой — вправо: рывок по касательной, чужая орбита такую ракету взяла бы.
+    sim.input(1, packPull(PULL_Q, 0));
+    sim.advance();
+    assert.equal(sim.mode, O_FLIGHT, 'стартовая орбита не возвращает');
+
+    // Вернулась по касательной к своей планете после выхода из поля.
+    const p = sim.planets[0];
+    sim.ignore = -1;
+    sim.x = p.x; sim.y = p.y - 200 * OFP;
+    sim.vx = 300 * OFP; sim.vy = 0;
+    sim.advance();
+    assert.deepEqual([sim.mode, sim.planet, sim.reactions, sim.acts, sim.good], [O_ORBIT, 0, 0, 1, 0]);
+});
+
+test('Orbit: пока тянут рогатку, игра замедляется до 10 %; в полёте — нет; отпустили — темп возвращается', function () {
+    const sim = orbit();
+    sim.input(0);
+    run(sim, 60);
+    assert.equal(sim.rate, RATE_AIM);
+
+    const steps = sim.steps;
+    run(sim, 100);
+    assert.equal(sim.steps - steps, 10);
+
+    sim.input(2);
+    run(sim, 60);
+    assert.equal(sim.rate, RATE_FULL);
+
+    sim.input(1, packPull(0, -PULL_Q));
+    sim.input(0);
+    run(sim, 30);
+    assert.equal(sim.rate, RATE_FULL, 'ракету не запустить — замедления нет');
+});
+
+test('Orbit: запуск, пока ракета в полёте, ничего не делает и действием не считается', function () {
+    const sim = orbit();
+    sim.input(1, packPull(0, -PULL_Q));
+    const vx = sim.vx, vy = sim.vy;
+    sim.input(1, packPull(PULL_Q, 0));
+    assert.deepEqual([sim.vx, sim.vy, sim.acts], [vx, vy, 0]);
+});
+
+test('Orbit: подсказка — тот же шаг, что полёт: точка удара совпадает с местом крушения', function () {
+    const sim  = orbit();
+    const v    = launchVelocity(0, 60);
+    const path = preview(sim, sim.x, sim.y, v[0], v[1]);
+    assert.ok(path.hit);
+    assert.equal(outcome(sim, v[0], v[1]), O_CRASH);
+
+    sim.input(1, packPull(0, 60));
+    settle(sim);
+    assert.deepEqual([sim.x, sim.y], path.hit);
 });

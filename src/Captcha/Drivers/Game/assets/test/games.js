@@ -32,6 +32,7 @@ export const GAMES = {
     pinball:    { dir: 'Pinball', cls: 'PinballSim', tps: 60, goal: 3, goalRatio: 70, maxTime: 40, codes: [0, 1, 2, 3, 4, 5] },
     racing:     { dir: 'Racing', cls: 'RacingSim', tps: 30, goal: 8, maxTime: 90, collect: false, codes: [0], values: [0, 16], layout: { laps: 1 } },
     asteroids:  { dir: 'Asteroids', cls: 'AsteroidsSim', tps: 30, goal: 4, codes: [0, 0, 1, 2], values: [0, 150], layout: { w: 267 } },
+    orbit:      { dir: 'Orbit', cls: 'OrbitSim', tps: 60, goal: 3, maxTime: 40, codes: [0, 1, 1, 2], values: [0, 221 * 221], layout: { w: 1778, h: 1000 } },
     puzzle: {
         dir: 'Puzzle', cls: 'PuzzleSim', tps: 10, goal: 9, goalRatio: 0, collect: false, maxTime: 60, required: true,
         codes: [0, 1], values: [0, 9 * 128],
@@ -74,6 +75,7 @@ const OWN = {
     pinball:    { time: 15, actions: 8, quality: [0.55, 0.90] },
     racing:     { quality: [0.60, 0.90] },
     asteroids:  { quality: [0.50, 0.85] },
+    orbit:      { time: 12, actions: 8, quality: [0.25, 0.75] },
 };
 
 /** Порог сбора данных, как его отдаёт браузеру PHP; null — порога нет (пазл). */
