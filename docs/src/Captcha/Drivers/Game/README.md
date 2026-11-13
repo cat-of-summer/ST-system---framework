@@ -12,6 +12,7 @@
 - [Invaders](Invaders/)
 - [Memory](Memory/)
 - [Minesweeper](Minesweeper/)
+- [Orbit](Orbit/)
 - [PacMan](PacMan/)
 - [Pinball](Pinball/)
 - [Platformer](Platformer/)
