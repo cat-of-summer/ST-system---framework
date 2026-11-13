@@ -21,7 +21,7 @@ class ImageMime extends Mime {
                 'config' => [
                     'quality' => 90,
                     'force' => false,
-                    'metadata' => true
+                    'metadata' => false
                 ]
             ],
             'metadata' => [
