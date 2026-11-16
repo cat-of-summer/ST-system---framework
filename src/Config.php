@@ -4,10 +4,254 @@ namespace ST_system;
 
 use ST_system\Main;
 
+/**
+ * Конфигурация приложения: окружение, ini и файлы конфигурации.
+ *
+ * Статические методы — глобальный конфиг процесса (`init()` один раз). Экземпляр
+ * `new Config($dir)` — тот же каталог файлов как обычный объект: их в процессе может быть сколько
+ * угодно, каждый перечитывается сам (`changed()`, `refresh()`).
+ *
+ * Раскладка каталога одна для обоих: верхний ключ `X` — каталог `X/` (файл `Y.php` или `Y.json` —
+ * подключ `Y`, вложенный каталог — следующий уровень), поверх него глубоко сливается файл `X.php`
+ * или `X.json`. Словари сливаются по ключам; список, скаляр и замыкание из файла заменяют значение.
+ */
 final class Config {
 
     private static array $cache = [];
     private static string $configPath = '';
+
+    private string $dir = '';
+    private bool $strict = true;
+    /** @var array<string, mixed>|null */
+    private ?array $data = null;
+    private ?string $print = null;
+    /** @var array<string, int> файл → mtime при последнем чтении */
+    private array $seen = [];
+
+    /**
+     * Каталог конфигурации как объект.
+     *
+     * @param bool $strict файл, вернувший не массив, и битый JSON — `\UnexpectedValueException`;
+     *        без strict — пустой массив, как у глобального конфига
+     */
+    public function __construct(string $dir, bool $strict = true) {
+        $this->dir = rtrim($dir, '/\\');
+        $this->strict = $strict;
+    }
+
+    public function dir(): string {
+        return $this->dir;
+    }
+
+    /**
+     * Значение по dot-пути; `''` — вся конфигурация.
+     *
+     * @param mixed $default
+     * @return mixed
+     */
+    public function get(string $key = '', $default = null) {
+        $data = $this->all();
+
+        return $key === '' ? $data : Main::dotGet($data, $key, $default);
+    }
+
+    /** Есть ли верхний ключ: файл `X.php`, `X.json` или каталог `X/`. */
+    public function has(string $name): bool {
+        return array_key_exists($name, $this->all());
+    }
+
+    /** @return array<string, mixed> все верхние ключи; читается один раз до refresh() */
+    public function all(): array {
+        if ($this->data !== null)
+            return $this->data;
+
+        $data = [];
+        foreach ($this->names() as $name)
+            $data[$name] = $this->load($name);
+
+        $this->print ??= $this->fingerprint();
+
+        return $this->data = $data;
+    }
+
+    /**
+     * Один верхний ключ с диска, без кеша: каталог `X/`, поверх — `X.php` или `X.json`.
+     *
+     * @return array<mixed>
+     */
+    public function load(string $name): array {
+        $base = $this->dir . DIRECTORY_SEPARATOR . str_replace(['\\', '/'], DIRECTORY_SEPARATOR, $name);
+        $value = is_dir($base) ? $this->loadDir($base) : [];
+        foreach ([$base . '.php', $base . '.json'] as $file) {
+            if (is_file($file))
+                return static::merge($value, $this->parse($file));
+        }
+
+        return $value;
+    }
+
+    /** @return list<string> файлы конфигурации каталога в порядке обхода */
+    public function files(): array {
+        if (!is_dir($this->dir))
+            return [];
+
+        $files = [];
+        $walk = static function (string $dir) use (&$walk, &$files): void {
+            foreach (static::entries($dir) as $entry) {
+                $path = $dir . DIRECTORY_SEPARATOR . $entry;
+                if (is_dir($path))
+                    $walk($path);
+                elseif (static::isConfigFile($entry))
+                    $files[] = $path;
+            }
+        };
+        $walk($this->dir);
+
+        return $files;
+    }
+
+    /** Отпечаток состава файлов, их размеров и времени изменения. */
+    public function fingerprint(): string {
+        $parts = [];
+        foreach ($this->files() as $file) {
+            clearstatcache(true, $file);
+            $parts[] = substr($file, strlen($this->dir)) . ':' . (@filemtime($file) ?: 0) . ':' . (@filesize($file) ?: 0);
+        }
+
+        return sha1(implode("\n", $parts));
+    }
+
+    /** SHA-256 содержимого всех файлов: одинаков у процессов, читающих одни и те же байты. */
+    public function contentHash(): string {
+        $ctx = hash_init('sha256');
+        foreach ($this->files() as $file) {
+            hash_update($ctx, substr($file, strlen($this->dir)) . "\0" . (string) @file_get_contents($file) . "\0");
+        }
+
+        return hash_final($ctx);
+    }
+
+    /** Изменился ли каталог с последнего чтения. */
+    public function changed(): bool {
+        return $this->print === null || $this->print !== $this->fingerprint();
+    }
+
+    /**
+     * Сбросить прочитанное: следующее обращение читает файлы заново. Изменённые с прошлого чтения
+     * PHP-файлы вычищаются из opcache — иначе при `opcache.revalidate_freq` процесс ещё секунды
+     * получал бы старый массив.
+     */
+    public function refresh(): void {
+        if (function_exists('opcache_invalidate')) {
+            foreach ($this->seen as $file => $mtime) {
+                clearstatcache(true, $file);
+                if (!is_file($file) || (@filemtime($file) ?: 0) !== $mtime)
+                    @opcache_invalidate($file, true);
+            }
+        }
+        $this->data = null;
+        $this->print = null;
+        $this->seen = [];
+    }
+
+    /**
+     * Глубокое слияние: словари сливаются по ключам, всё остальное из `$over` заменяет значение.
+     *
+     * @param array<mixed> $base
+     * @param array<mixed> $over
+     * @return array<mixed>
+     */
+    public static function merge(array $base, array $over): array {
+        if ($over !== [] && static::isList($over))
+            return $over;
+
+        foreach ($over as $key => $value) {
+            if (is_array($value) && is_array($base[$key] ?? null) && !static::isList($value) && !static::isList($base[$key]))
+                $base[$key] = static::merge($base[$key], $value);
+            else
+                $base[$key] = $value;
+        }
+
+        return $base;
+    }
+
+    /** @return list<string> верхние ключи: имена файлов и каталогов без расширения */
+    private function names(): array {
+        if (!is_dir($this->dir))
+            return [];
+
+        $names = [];
+        foreach (static::entries($this->dir) as $entry) {
+            if (is_dir($this->dir . DIRECTORY_SEPARATOR . $entry))
+                $names[$entry] = true;
+            elseif (static::isConfigFile($entry))
+                $names[pathinfo($entry, PATHINFO_FILENAME)] = true;
+        }
+        $names = array_map('strval', array_keys($names));
+        sort($names);
+
+        return $names;
+    }
+
+    /** @return array<string, mixed> */
+    private function loadDir(string $dir): array {
+        $value = [];
+        $subdirs = [];
+        foreach (static::entries($dir) as $entry) {
+            $path = $dir . DIRECTORY_SEPARATOR . $entry;
+            if (is_dir($path))
+                $subdirs[$entry] = $path;
+            elseif (static::isConfigFile($entry))
+                $value[pathinfo($entry, PATHINFO_FILENAME)] = $this->parse($path);
+        }
+        foreach ($subdirs as $name => $path)
+            $value[$name] = static::merge($this->loadDir($path), is_array($value[$name] ?? null) ? $value[$name] : []);
+
+        return $value;
+    }
+
+    /** @return array<mixed> */
+    private function parse(string $path): array {
+        $this->seen[$path] = @filemtime($path) ?: 0;
+        $php = strtolower(pathinfo($path, PATHINFO_EXTENSION)) === 'php';
+        $result = $php
+            ? (static function (string $__file) { return require $__file; })($path)
+            : json_decode((string) file_get_contents($path), true);
+
+        if (is_array($result))
+            return $result;
+        if ($this->strict)
+            throw new \UnexpectedValueException($php ? "$path: файл конфигурации должен вернуть массив" : "$path: невалидный JSON");
+
+        return [];
+    }
+
+    /** @return list<string> имена в каталоге по порядку, без `.`, `..` и скрытых */
+    private static function entries(string $dir): array {
+        $entries = array_values(array_filter(scandir($dir) ?: [], static function (string $entry): bool {
+            return $entry !== '' && $entry[0] !== '.';
+        }));
+        sort($entries);
+
+        return $entries;
+    }
+
+    private static function isConfigFile(string $name): bool {
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+        return $ext === 'php' || $ext === 'json';
+    }
+
+    /** @param array<mixed> $value */
+    private static function isList(array $value): bool {
+        $i = 0;
+        foreach ($value as $key => $_) {
+            if ($key !== $i++)
+                return false;
+        }
+
+        return true;
+    }
 
     public static function init(array $params = []): void {
         static $initialized = false;
@@ -225,12 +469,11 @@ final class Config {
                 // Ключ с неймспейсом (`ST_system\View`) — вложенные папки на любой ОС.
                 $base = rtrim(static::$configPath, '/\\') . DIRECTORY_SEPARATOR
                       . str_replace(['\\', '/'], DIRECTORY_SEPARATOR, $fileKey);
-                foreach ([$base . '.php', $base . '.json', $base] as $path) {
-                    if (file_exists($path) && is_file($path)) {
-                        static::$cache[static::configKey()][$fileKey] = static::parseFile($path);
-                        break;
-                    }
-                }
+                // Каталог `X/` и файл `X.php` поверх него — та же раскладка, что у экземпляра
+                if (is_dir($base) || is_file($base . '.php') || is_file($base . '.json'))
+                    static::$cache[static::configKey()][$fileKey] = (new self(static::$configPath, false))->load($fileKey);
+                elseif (is_file($base))
+                    static::$cache[static::configKey()][$fileKey] = static::parseFile($base);
             }
         } elseif (is_file(static::$configPath) && !array_key_exists(static::fileKey(), static::$cache[static::configKey()] ?? [])) {
             $data = static::parseFile(static::$configPath);

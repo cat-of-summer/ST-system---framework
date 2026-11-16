@@ -165,6 +165,24 @@ final class ConfigTest extends TestCase {
     }
 
     /**
+     * Ключ X собирается из каталога X/ и файла X.php поверх него.
+     *
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testKeyMergesItsDirectoryAndFile(): void {
+        $dir = $this->tmpDir('config');
+        $this->writeFile("{$dir}/policy/tools.php", '<?php return ["*" => "R", "shell" => "X"];');
+        $this->writeFile("{$dir}/policy.php", '<?php return ["tools" => ["shell" => ""], "ask" => ["shell"]];');
+
+        Config::init(['config_path' => $dir, 'dotenv_path' => $this->tmpDir('noenv')]);
+
+        $this->assertSame('R', Config::config('policy.tools.*'));
+        $this->assertSame('', Config::config('policy.tools.shell'));
+        $this->assertSame(['shell'], Config::config('policy.ask'));
+    }
+
+    /**
      * @runInSeparateProcess
      * @preserveGlobalState disabled
      */
