@@ -17,7 +17,7 @@ class DefaultParser extends IntegrationDriver {
 
     protected static function getReservedEvents(): array {
         return array_merge(parent::getReservedEvents(), [
-            'before_fetch', 'before_fetch_one', 'after_fetch_one', 'after_fetch', 'after_redirect',
+            'before_fetch', 'before_fetch_one', 'after_response', 'after_fetch_one', 'after_fetch', 'after_redirect',
         ]);
     }
 
@@ -183,6 +183,8 @@ class DefaultParser extends IntegrationDriver {
             if ($newUrl !== $url)
                 $data['url'] = $newUrl;
         }
+
+        $this->fire('after_response', $data, $response);
 
         $resource = $response['data'] ?? null;
 

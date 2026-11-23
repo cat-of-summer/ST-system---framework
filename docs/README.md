@@ -249,6 +249,7 @@ GitHub Release бандлы прикрепляются отдельными фа
 | `Parsers\DefaultParser` | Базовый парсер | [src/API/Drivers/Parsers/DefaultParser.php.md](src/API/Drivers/Parsers/DefaultParser.php.md) |
 | `Parsers\Prodoctorov\DoctorDetailParser` | Парсер карточки врача (Prodoctorov) | [src/API/Drivers/Parsers/Prodoctorov/DoctorDetailParser.php.md](src/API/Drivers/Parsers/Prodoctorov/DoctorDetailParser.php.md) |
 | `Parsers\Prodoctorov\DoctorsReviewsParser` | Парсер отзывов о врачах (Prodoctorov) | [src/API/Drivers/Parsers/Prodoctorov/DoctorsReviewsParser.php.md](src/API/Drivers/Parsers/Prodoctorov/DoctorsReviewsParser.php.md) |
+| `Parsers\YandexReviews\OrganizationReviewsParser` | Парсер отзывов об организации (Яндекс Карты) | [src/API/Drivers/Parsers/YandexReviews/OrganizationReviewsParser.php.md](src/API/Drivers/Parsers/YandexReviews/OrganizationReviewsParser.php.md) |
 
 **Трейты драйверов (`API\Drivers\Traits`)**
 

@@ -13,7 +13,9 @@
 
 Схема/шаблон можно также передать через конструктор (`['schema' => [...], 'template' => '...']`, валидируется `Rule::object(['schema' => 'array', 'template' => 'string'])`).
 
-Жизненный цикл `fetch()` порождает дополнительные события (помимо базовых из `IntegrationDriver`): `before_fetch`, `before_fetch_one`, `after_fetch_one`, `after_fetch`, `after_redirect`.
+Жизненный цикл `fetch()` порождает дополнительные события (помимо базовых из `IntegrationDriver`): `before_fetch`, `before_fetch_one`, `after_response`, `after_fetch_one`, `after_fetch`, `after_redirect`.
+
+`after_response(&$data, &$response)` вызывается после успешной загрузки страницы, до извлечения данных по схеме. `$data` - параметры запроса вместе с `url` (тот же массив потом попадёт в `input` результата), `$response` - ответ `WebClient` (статус, заголовки, в том числе список `set-cookie`, тело). Нужен, когда подклассу требуются данные ответа, недоступные схеме, например cookie для последующих запросов к API.
 
 `fetch($input)` принимает:
 - `null` или строку URL — один запрос;

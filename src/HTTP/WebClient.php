@@ -552,8 +552,15 @@ final class WebClient {
             }
 
             $p = strpos($trim, ':');
-            if ($p !== false)
-                $state->headers[strtolower(trim(substr($trim, 0, $p)))] = trim(substr($trim, $p + 1));
+            if ($p !== false) {
+                $name  = strtolower(trim(substr($trim, 0, $p)));
+                $value = trim(substr($trim, $p + 1));
+
+                if ($name === 'set-cookie')
+                    $state->headers[$name][] = $value;
+                else
+                    $state->headers[$name] = $value;
+            }
 
             return $len;
         };
