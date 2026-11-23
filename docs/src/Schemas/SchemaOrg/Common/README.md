@@ -3,6 +3,7 @@
 
 ## Файлы
 
+- [AggregateRating.php](AggregateRating.php.md)
 - [ContactPoint.php](ContactPoint.php.md)
 - [GeoCoordinates.php](GeoCoordinates.php.md)
 - [ImageObject.php](ImageObject.php.md)
