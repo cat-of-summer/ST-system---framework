@@ -9,6 +9,7 @@ use ST_system\Schemas\SchemaOrg\Common\ImageObject;
 use ST_system\Schemas\SchemaOrg\Common\Place;
 use ST_system\Schemas\SchemaOrg\Common\PostalAddress;
 use ST_system\Schemas\SchemaOrg\Common\PropertyValue;
+use ST_system\Schemas\SchemaOrg\Common\Reference;
 
 final class Organization extends DefaultSchema
 {
@@ -31,6 +32,8 @@ final class Organization extends DefaultSchema
             'area_served'    => 'sometimes|string',
             'contact_points' => [self::arrayOf(ContactPoint::class), 'sometimes'],
             'same_as'        => 'sometimes|array',
+            'opening_hours'       => 'sometimes|array',
+            'parent_organization' => [Reference::class, 'sometimes'],
         ];
     }
 
@@ -78,9 +81,14 @@ final class Organization extends DefaultSchema
                 $data['address'] = $s->field('address')->toArray();
             }
 
+            // geo на самой организации нужен LocalBusiness-типам (HardwareStore и др.); без type - прежнее поведение
+            if ($s->field('type') !== null && $s->field('geo') !== null) {
+                $data['geo'] = $s->field('geo')->toArray();
+            }
+
             $location = $s->field('location');
 
-            if ($location === null && $s->field('geo') !== null) {
+            if ($location === null && $s->field('geo') !== null && $s->field('type') === null) {
                 $location = Place::create()->fill(array_filter([
                     'address' => $s->field('address'),
                     'geo'     => $s->field('geo'),
@@ -103,6 +111,14 @@ final class Organization extends DefaultSchema
                     static fn ($point) => $point->toArray(),
                     $s->field('contact_points')
                 );
+            }
+
+            if (!empty($s->field('opening_hours'))) {
+                $data['openingHours'] = array_values($s->field('opening_hours'));
+            }
+
+            if ($s->field('parent_organization') !== null) {
+                $data['parentOrganization'] = $s->field('parent_organization')->toArray();
             }
 
             if (!empty($s->field('same_as'))) {

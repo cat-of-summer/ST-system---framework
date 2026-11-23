@@ -3,6 +3,7 @@
 namespace ST_system\Schemas\SchemaOrg;
 
 use ST_system\Schemas\DefaultSchema;
+use ST_system\Schemas\SchemaOrg\Common\AggregateRating;
 use ST_system\Schemas\SchemaOrg\Common\PropertyValue;
 use ST_system\Schemas\SchemaOrg\Common\Reference;
 
@@ -22,6 +23,7 @@ final class Product extends DefaultSchema
             'category'            => 'sometimes|string',
             'additional_property' => [self::arrayOf(PropertyValue::class), 'sometimes'],
             'offers'              => 'sometimes|@offer',
+            'aggregate_rating'    => [AggregateRating::class, 'sometimes'],
         ];
     }
 
@@ -78,6 +80,10 @@ final class Product extends DefaultSchema
 
             if ($s->field('offers') !== null) {
                 $data['offers'] = $s->field('offers')->toArray();
+            }
+
+            if ($s->field('aggregate_rating') !== null) {
+                $data['aggregateRating'] = $s->field('aggregate_rating')->toArray();
             }
 
             return '<script type="application/ld+json">'
