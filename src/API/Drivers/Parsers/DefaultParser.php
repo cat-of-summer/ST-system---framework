@@ -132,7 +132,7 @@ class DefaultParser extends IntegrationDriver {
             'cache'            => [
                 'use'    => true,
                 'ttl'    => (int)CacheManager::config('default.ttl'),
-                'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+                'dir'    => Main::gluePath([CacheManager::config('default.dir'), Main::basename(static::class)]),
                 'driver' => 'filesystem',
             ],
         ];

@@ -20,7 +20,7 @@ final class File extends Resource {
     protected static function getDefaultConfig(): array {
         return array_merge(parent::getDefaultConfig(), [
             'cache' => [
-                'dir' => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+                'dir' => Main::gluePath([CacheManager::config('default.dir'), Main::basename(static::class)]),
                 'ttl' => CacheManager::config('default.ttl'),
             ],
             'request' => [

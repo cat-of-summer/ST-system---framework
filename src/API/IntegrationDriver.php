@@ -23,7 +23,7 @@ abstract class IntegrationDriver {
             'batch'           => 10,
             'delay'           => 0,
             'cache' => [
-                'dir' => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+                'dir' => Main::gluePath([CacheManager::config('default.dir'), Main::basename(static::class)]),
                 'use' => false,
                 'driver' => 'filesystem'
             ],

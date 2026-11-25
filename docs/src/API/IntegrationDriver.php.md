@@ -18,7 +18,7 @@
     'batch'           => 10,   // размер конкурентного батча для callMany()
     'delay'           => 0,    // задержка между батчами callMany(), мс
     'cache' => [
-        'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+        'dir'    => Main::gluePath([CacheManager::config('default.dir'), Main::basename(static::class)]),
         'use'    => false,          // включает instance-level кеш ($this->cache)
         'driver' => 'filesystem',
     ],

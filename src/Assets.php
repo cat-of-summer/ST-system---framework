@@ -451,7 +451,7 @@ final class Assets {
 
         $cache = CacheManager::make([__CLASS__, 'manifest', $params, $source->getPathname(), $source->mtime], [
             'driver' => 'filesystem',
-            'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+            'dir'    => Main::gluePath([CacheManager::config('default.dir'), Main::basename(static::class)]),
             'ttl'    => -1,
         ]);
 

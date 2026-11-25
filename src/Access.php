@@ -30,7 +30,7 @@ final class Access {
             'salt' => '',
             'firewall' => [
                 'driver'  => 'filesystem',
-                'dir'     => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+                'dir'     => Main::gluePath([CacheManager::config('default.dir'), Main::basename(static::class)]),
                 'limits'  => [[5, 1, 10], [10, 2, 30], [60, 60], [600, 3600]],
                 'ttl'     => CacheManager::config('default.ttl'),
                 'exclude'    => [],

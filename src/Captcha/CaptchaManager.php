@@ -94,7 +94,7 @@ final class CaptchaManager {
                 'salt'         => '',
                 'cache'        => [
                     'driver' => 'filesystem',
-                    'dir'    => Main::glue([Cache::config('default.dir'), 'Captcha'], '/'),
+                    'dir'    => Main::gluePath([Cache::config('default.dir'), 'Captcha']),
                 ],
                 // Необязательные задачи (игры на реакцию): итог = task·оценка задачи + behavior·скоринг
                 // (с нормировкой весов) не ниже pass, а оценка задачи не ниже floor.

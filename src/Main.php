@@ -54,6 +54,18 @@ final class Main {
         return implode($separator, $parts);
     }
 
+    /**
+     * glue() для путей: абсолютный путь остаётся абсолютным. Ведущий разделитель первой части
+     * сохраняется, остальное - как у glue(). Каталоги кеша классов строятся от
+     * CacheManager default.dir, а он может быть и `~/...`, и абсолютным.
+     */
+    public static function gluePath(array $parts, string $separator = '/'): string {
+        $first = $parts ? (string)reset($parts) : '';
+        $glued = static::glue($parts, $separator);
+
+        return strpos($first, $separator) === 0 ? $separator.$glued : $glued;
+    }
+
     public static function studlyCase(string $name): string {
         static $cache = [];
         return $cache[$name] ??= implode('', array_map(

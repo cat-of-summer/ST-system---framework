@@ -32,7 +32,7 @@ final class Lang {
             'cache' => [
                 'use'    => true,
                 'driver' => 'filesystem',
-                'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+                'dir'    => Main::gluePath([CacheManager::config('default.dir'), Main::basename(static::class)]),
             ],
             'plural' => [],
         ];

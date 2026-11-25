@@ -14,7 +14,9 @@
 `getDefaultConfig()` задаёт:
 
 - `default.dir` — базовая директория кеша (`'~/cache/'`, `~` резолвится в `DOCUMENT_ROOT`/
-  `COMPOSER_ROOT`, см. `Main::preparePath()`).
+  `COMPOSER_ROOT`, см. `Main::preparePath()`). Можно задать и абсолютный путь: каталоги кеша
+  классов (`Storage\File`, `View`, `WebClient` и другие) строятся от него через `Main::gluePath()`
+  и остаются абсолютными.
 - `default.ttl` — TTL по умолчанию (`3600` секунд), если конкретный вызов/драйвер его не
   переопределяет.
 - `drivers.default` — имя драйвера по умолчанию (`'filesystem'`).

@@ -85,17 +85,29 @@ Main::basename('a/b/c');                // "c"
 
 ### `Main::glue(array $parts, string $separator): string`
 
-Обрезает `$separator` с обоих концов у каждого элемента `$parts`, отбрасывает получившиеся пустые элементы и склеивает оставшиеся через `$separator`. Удобно для безопасной сборки путей/составных ключей из частей, у которых неизвестно, есть ли на концах разделитель.
+Обрезает `$separator` с обоих концов у каждого элемента `$parts`, отбрасывает получившиеся пустые элементы и склеивает оставшиеся через `$separator`. Удобно для составных ключей, URL и классов из частей, у которых неизвестно, есть ли на концах разделитель. Ведущий разделитель первой части тоже срезается, поэтому абсолютный путь становится относительным. Для путей файловой системы - `gluePath()`.
 
 ```php
 Main::glue(['/cache/', '/views/', 'Home'], '/'); // "cache/views/Home"
 Main::glue(['', 'a', null ?? '', 'b'], '/');     // "a/b"
 ```
 
-Типичное применение в фреймворке — построение пути к директории кеша конкретного класса:
+---
+
+### `Main::gluePath(array $parts, string $separator = '/'): string`
+
+То же, что `glue()`, но абсолютный путь остаётся абсолютным: если первая часть начинается с `$separator`, он сохраняется в начале результата.
 
 ```php
-'dir' => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+Main::gluePath(['/srv/cache/', 'File']); // "/srv/cache/File"
+Main::gluePath(['~/cache/', 'File']);    // "~/cache/File"
+Main::gluePath(['cache/', 'File']);      // "cache/File"
+```
+
+Так фреймворк строит каталог кеша конкретного класса. `CacheManager` `default.dir` может быть и `~/...`, и абсолютным путём:
+
+```php
+'dir' => Main::gluePath([CacheManager::config('default.dir'), Main::basename(static::class)]),
 ```
 
 ---

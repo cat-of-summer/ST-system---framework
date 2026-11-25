@@ -35,7 +35,7 @@ final class WebClient {
             'cache' => [
                 'use'    => false,
                 'ttl'    => CacheManager::config('default.ttl'),
-                'dir'    => Main::glue([CacheManager::config('default.dir'), Main::basename(static::class)], '/'),
+                'dir'    => Main::gluePath([CacheManager::config('default.dir'), Main::basename(static::class)]),
                 'driver' => 'filesystem',
             ],
         ];

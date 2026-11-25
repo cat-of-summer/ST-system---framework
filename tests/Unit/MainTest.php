@@ -53,6 +53,17 @@ final class MainTest extends TestCase {
         $this->assertSame('a.b', Main::glue(['.a.', 'b'], '.'));
     }
 
+    public function testGluePathKeepsAbsolutePath(): void {
+        $this->assertSame('/srv/cache/File', Main::gluePath(['/srv/cache/', 'File']));
+        $this->assertSame('/srv/cache/File', Main::gluePath(['/srv/cache', '/File/']));
+        $this->assertSame('~/cache/File', Main::gluePath(['~/cache/', 'File']));
+        $this->assertSame('cache/File', Main::gluePath(['cache/', 'File']));
+        $this->assertSame('/File', Main::gluePath(['/', 'File']));
+        $this->assertSame('a/b', Main::gluePath(['', 'a', '', 'b']));
+        $this->assertSame('', Main::gluePath([]));
+        $this->assertSame('.a.b', Main::gluePath(['.a.', 'b'], '.'));
+    }
+
     /** @dataProvider caseCases */
     public function testCaseConversions(string $input, string $studly, string $camel, string $snake, string $kebab): void {
         $this->assertSame($studly, Main::studlyCase($input));
