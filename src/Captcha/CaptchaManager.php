@@ -88,6 +88,8 @@ final class CaptchaManager {
                 'attempts'     => 3,
                 'min_score'    => 0.5,
                 'enabled'      => true,
+                // Встроенные <script> и <style> капчи - через JsMime/CssMime (с кешем по содержимому).
+                'minify'       => true,
                 'field_prefix' => 'st-captcha',
                 'salt'         => '',
                 'cache'        => [

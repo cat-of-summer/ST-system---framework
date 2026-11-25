@@ -399,7 +399,7 @@ class SvgMime extends Mime {
         return '<svg xmlns="'.$ns.'" xmlns:xlink="http://www.w3.org/1999/xlink" style="display:none">'.$body.'</svg>';
     }
 
-    protected function __minify(string $content, array $config): string {
+    public static function __minify(string $content, array $config): string {
         $content = preg_replace('/<!--[\s\S]*?-->/', '', $content);
         $content = preg_replace('/>\s+</', '><', $content);
         $content = preg_replace('/\s{2,}/', ' ', $content);

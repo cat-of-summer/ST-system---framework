@@ -2,8 +2,11 @@
 
 namespace ST_system\Tests\Unit\Captcha;
 
+use ST_system\Captcha\CaptchaDriver;
 use ST_system\Captcha\CaptchaManager;
 use ST_system\Captcha\Drivers\InvisibleCaptchaDriver;
+use ST_system\Storage\Mimes\CssMime;
+use ST_system\Storage\Mimes\JsMime;
 use ST_system\Tests\TestCase;
 
 /** Полный цикл на невидимой капче: она не требует ни GD, ни внешних сервисов. */
@@ -117,6 +120,30 @@ final class CaptchaManagerTest extends TestCase {
         $this->assertTrue($captcha->passed);
 
         $this->assertTrue($captcha->make('other', ['enabled' => true])->driver->enabled);
+    }
+
+    public function testIncludedCodeIsMinifiedUnlessDisabled(): void {
+        CaptchaDriver::resetEmitted();
+        $min = $this->captcha()->includeJs();
+        $css = $this->captcha()->includeCss();
+
+        CaptchaDriver::resetEmitted();
+        $raw    = $this->captcha('login', ['minify' => false])->includeJs();
+        $rawCss = $this->captcha('login', ['minify' => 'false'])->includeCss();
+
+        $this->assertStringContainsString("register('invisible'", $min);
+        $this->assertStringContainsString("\n    ", $raw, 'без minify код уходит с отступами');
+        $this->assertStringNotContainsString("\n    ", $min);
+        $this->assertLessThan(strlen($raw), strlen($min));
+
+        // Каждый <script> - результат JsMime, а не обрезка пробелов на месте.
+        preg_match_all('~<script type="text/javascript">(.*?)</script>~s', $raw, $sources);
+        $this->assertSame(
+            implode('', array_map(fn($js) => '<script type="text/javascript">'.JsMime::__minify(trim($js), []).'</script>', $sources[1])),
+            $min
+        );
+
+        $this->assertSame('<style type="text/css">'.CssMime::__minify(substr($rawCss, 23, -8), []).'</style>', $css);
     }
 
     public function testEmptyKeyIsRejected(): void {

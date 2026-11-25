@@ -20,6 +20,11 @@
   недоступность драйвера (нет GD и т. п.) не бросает исключение. Строки `"false"`/`"0"`/`"off"`
   тоже выключают — значение можно брать прямо из окружения. Задаётся и на драйвер
   (`drivers.text.enabled`), и на экземпляр (`['enabled' => false]`).
+- `default.minify` - `true`. Код из `includeJs()` и `includeCss()` проходит минификаторы
+  [`JsMime`](../Storage/Mimes/JsMime.php.md) и [`CssMime`](../Storage/Mimes/CssMime.php.md)
+  (`minifyString()`, с кешем по содержимому). При `false` код уходит как написан, с отступами -
+  удобно при отладке. Строки `"false"`/`"0"`/`"off"` выключают так же, как у `enabled`; задаётся
+  на драйвер и на экземпляр.
 - `default.salt` — соль для шифрования состояния. Пустая — используется `Access::config('salt')`;
   если и она пуста, конструктор драйвера бросает `LogicException`.
 - `default.cache` — где хранится состояние: `driver` (`'filesystem'`) и `dir`

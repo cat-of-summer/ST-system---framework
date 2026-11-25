@@ -3,6 +3,7 @@
 namespace ST_system\Tests\Unit\Storage;
 
 use ST_system\Storage\File;
+use ST_system\Storage\Mimes\JsMime;
 use ST_system\Tests\TestCase;
 
 final class JsMimeTest extends TestCase {
@@ -49,6 +50,14 @@ final class JsMimeTest extends TestCase {
                 "function g(){return\n1}",
             ],
         ];
+    }
+
+    public function testMinifyStringMatchesFileMinify(): void {
+        $js = "function f ( a ) {\n  // comment\n  return a + 1 ;\n}";
+
+        $this->assertSame($this->minify($js), JsMime::minifyString($js));
+        $this->assertSame('function f(a){return a+1;}', JsMime::minifyString($js), 'повторный вызов - из кеша');
+        $this->assertSame('', JsMime::minifyString(''));
     }
 
     public function testCombineJoinsWithSemicolons(): void {

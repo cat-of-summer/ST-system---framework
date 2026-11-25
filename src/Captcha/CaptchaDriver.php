@@ -6,6 +6,8 @@ use ST_system\Traits\HasConfig;
 use ST_system\Traits\HasAttributes;
 use ST_system\Traits\Events\HasEvents;
 use ST_system\Cache\CacheManager;
+use ST_system\Storage\Mimes\CssMime;
+use ST_system\Storage\Mimes\JsMime;
 use ST_system\Access;
 use ST_system\Main;
 use ST_system\Rule;
@@ -46,6 +48,7 @@ abstract class CaptchaDriver {
             'behavior'     => CaptchaManager::config('default.behavior'),
             'decision'     => CaptchaManager::config('default.decision'),
             'enabled'      => CaptchaManager::config('default.enabled'),
+            'minify'       => CaptchaManager::config('default.minify'),
         ];
     }
 
@@ -71,6 +74,7 @@ abstract class CaptchaDriver {
         $this->attributes['behavior']     = $this->resolveBehavior($config['behavior'] ?? true);
         $this->attributes['decision']     = self::resolveDecision($config['decision'] ?? []);
         $this->attributes['enabled']      = self::flag($config['enabled'] ?? true);
+        $this->attributes['minify']       = self::flag($config['minify'] ?? true);
         $this->attributes['issued_id']    = '';
 
         $this->purgeResult();
@@ -93,6 +97,7 @@ abstract class CaptchaDriver {
         if (isset($override['salt']))         $clone->attributes['salt']         = self::assertSalt((string)$override['salt']);
         if (isset($override['cache']))        $clone->attributes['cache']        = (array)$override['cache'];
         if (isset($override['enabled']))      $clone->attributes['enabled']      = self::flag($override['enabled']);
+        if (isset($override['minify']))       $clone->attributes['minify']       = self::flag($override['minify']);
         if (isset($override['decision']))     $clone->attributes['decision']     = self::resolveDecision((array)$override['decision'] + $clone->attributes['decision']);
 
         if (array_key_exists('behavior', $override))
@@ -322,7 +327,7 @@ abstract class CaptchaDriver {
 
         if (!isset(self::$js_emitted[''])) {
             self::$js_emitted[''] = true;
-            $js .= '<script type="text/javascript">'."\n".self::bootstrapJs()."\n".'</script>';
+            $js .= $this->script(self::bootstrapJs());
         }
 
         if (!isset(self::$js_emitted[$name])) {
@@ -330,10 +335,34 @@ abstract class CaptchaDriver {
             $body = $this->driverJs();
 
             if (trim($body) !== '')
-                $js .= '<script type="text/javascript">'."\n".$body."\n".'</script>';
+                $js .= $this->script($body, static::DRIVER_JS_MINIFIED);
         }
 
         return $js;
+    }
+
+    /**
+     * Код драйвера (driverJs()) уже минифицирован сборкой - у игр это dist/game.min.js. Повторный
+     * проход JsMime такому коду ничего не даёт, а разбирать его на каждой смене содержимого дорого.
+     */
+    protected const DRIVER_JS_MINIFIED = false;
+
+    private function script(string $js, bool $minified = false): string {
+        $js = $this->attributes['minify'] && !$minified ? self::minify(JsMime::class, $js) : "\n".$js."\n";
+
+        return '<script type="text/javascript">'.$js.'</script>';
+    }
+
+    /**
+     * Минификатор мог споткнуться о синтаксис, которого не знает: тогда код уходит как есть -
+     * несжатая капча работает, а исключение сломало бы всю страницу.
+     */
+    private static function minify(string $mime, string $code): string {
+        try {
+            return $mime::minifyString($code);
+        } catch (\RuntimeException $e) {
+            return $code;
+        }
     }
 
     final public function includeCss(): string {
@@ -360,7 +389,12 @@ abstract class CaptchaDriver {
             $css .= $this->driverCss();
         }
 
-        return trim($css) === '' ? '' : '<style type="text/css">'.$css.'</style>';
+        if (trim($css) === '') return '';
+
+        if ($this->attributes['minify'])
+            $css = self::minify(CssMime::class, $css);
+
+        return '<style type="text/css">'.$css.'</style>';
     }
 
     final protected function field(string $name): string {

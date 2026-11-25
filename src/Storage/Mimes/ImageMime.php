@@ -134,7 +134,8 @@ class ImageMime extends Mime {
 
         $binary = (string)static::config('metadata.binary');
 
-        if ($binary === '') return static::$METADATA_TOOL = false;
+        // exec в disable_functions: на PHP 8 его вызов - Error, а не предупреждение под @.
+        if ($binary === '' || !function_exists('exec')) return static::$METADATA_TOOL = false;
 
         $code = 1;
         @exec(escapeshellarg($binary).' -ver 2>/dev/null', $out, $code);

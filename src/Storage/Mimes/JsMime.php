@@ -52,9 +52,12 @@ class JsMime extends Mime {
     
     protected $locks = [];
     
-    public function __minify(string $content, array $config): string {
+    public static function __minify(string $content, array $config): string {
         try {
-            $instance = new static($this->file);
+            // Состояние разбора живёт в свойствах: на каждый прогон свой экземпляр. Файл ему не
+            // нужен, поэтому конструктор (он требует Resource и заводит кеш) не вызывается -
+            // так минифицируются и строки, собранные на лету (Minifiable::minifyString()).
+            $instance = (new \ReflectionClass(static::class))->newInstanceWithoutConstructor();
             $content = $instance->lock($content);
             $content = ltrim($instance->minifyToString($content, $config));
             $content = $instance->unlock($content);

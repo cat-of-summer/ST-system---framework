@@ -368,6 +368,9 @@ abstract class GameCaptchaDriver extends CaptchaDriver {
         return $log;
     }
 
+    /** Бандл собирает esbuild уже минифицированным. */
+    protected const DRIVER_JS_MINIFIED = true;
+
     protected function driverJs(): string {
         $file = static::bundle();
 

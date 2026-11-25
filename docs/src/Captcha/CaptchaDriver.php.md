@@ -28,6 +28,7 @@ protected function forcedSignals(): array { return []; }      // сигналы,
 protected function providesAnswerField(): bool { return false; }
 
 protected const REQUIRED = true;                              // задачу обязательно решить
+protected const DRIVER_JS_MINIFIED = false;                   // driverJs() уже минифицирован сборкой
 protected function taskScore(): float { return 1.0; }         // оценка задачи 0..1, если не обязательно
 ```
 
@@ -90,6 +91,15 @@ Assets::addString($captcha->includeCss(), 'head');
 Assets::addString($captcha->includeJs(),  'footer');
 echo '<form method="post">'.$captcha->putCaptcha().'<button>Send</button></form>';
 ```
+
+При `minify` (по умолчанию `true`, см. [CaptchaManager](CaptchaManager.php.md)) код внутри
+`<script>` проходит `JsMime::minifyString()`, внутри `<style>` - `CssMime::minifyString()`; результат
+кешируется по содержимому, поэтому разбор идёт один раз на версию кода, а не на запрос. Если
+минификатор споткнулся о синтаксис (`\RuntimeException`), код уходит несжатым: капча работает, а
+исключение сломало бы страницу. Драйвер с `DRIVER_JS_MINIFIED = true` отдаёт `driverJs()` как
+есть - так у игр: `dist/game.min.js` собирает esbuild с `--minify`, и повторный проход JsMime по
+нему выигрывает десятки байт из сотен килобайт. Маленький `<script>` очереди из `putCaptcha()`
+собирается сразу компактным и минификатор не проходит.
 
 Флаги выдачи статические, то есть живут в процессе, а не в объекте, — иначе две капчи на одной
 странице продублировали бы базовый скрипт. Сбрасывает их контрибьютор `CaptchaManager` на событии

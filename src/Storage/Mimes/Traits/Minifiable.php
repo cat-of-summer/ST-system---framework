@@ -17,6 +17,27 @@ trait Minifiable {
     protected CacheManager $cache;
     private bool $is_minified = false;
 
+    /** Алгоритм минификации формата. Статический: им пользуются и minify(), и minifyString(). */
+    abstract public static function __minify(string $content, array $config): string;
+
+    /**
+     * Минификация строки, у которой нет файла: код, который механизмы собирают на лету и
+     * встраивают в страницу (<script>/<style> капчи). Результат кешируется по содержимому:
+     * тот же код на следующем запросе не разбирается заново.
+     */
+    final public static function minifyString(string $content, array $config = []): string {
+        if (trim($content) === '') return $content;
+
+        $cache = CacheManager::make(static::class.':'.md5($content).':'.md5(serialize($config)), [
+            'driver' => 'filesystem',
+            'dir'    => static::config('cache_dir'),
+            'file'   => 'inline.min',
+            'ttl'    => -1
+        ]);
+
+        return (string)$cache->remember(fn() => static::__minify($content, $config) ?: $content);
+    }
+
     protected function __init(): void {
         $this->cache = CacheManager::make($this->file->getPathname(), [
             'driver' => 'filesystem',

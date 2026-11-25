@@ -219,7 +219,7 @@ src/Captcha/Drivers/Game/
   <Игра>/
     <Игра>CaptchaDriver.php  <Игра>Simulation.php
     package.json  src/sim.js  src/index.js  [src/controls.js]  test/bot.js
-    dist/game.min.js     собранный бандл; его встраивает driverJs()
+    dist/game.min.js     собранный бандл; его встраивает driverJs() без JsMime (DRIVER_JS_MINIFIED)
   assets/
     package.json         корень npm: workspaces engine и ../<Игра>, esbuild
     engine/src/          общий клиентский движок: Sim, Rng, обвязка, геймпад
