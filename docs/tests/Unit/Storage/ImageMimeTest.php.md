@@ -1,0 +1,1 @@
+# ImageMimeTest.php

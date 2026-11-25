@@ -4,6 +4,7 @@
 ## Файлы
 
 - [CssMimeTest.php](CssMimeTest.php.md)
+- [ImageMimeTest.php](ImageMimeTest.php.md)
 - [JsMimeTest.php](JsMimeTest.php.md)
 - [SvgMimeTest.php](SvgMimeTest.php.md)
 
